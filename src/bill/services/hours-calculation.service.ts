@@ -131,9 +131,9 @@ export class HoursCalculationService {
       paysheetHoursDistribution: group.paysheetHoursDistribution,
       amount: group.amount,
       pays: group.pays,
-      hours: groupSummary.hours || gfmt.tariffDetails.hours,
-      facturation_tariff: groupSummary.facturation_tariff || gfmt.tariffDetails.facturation_tariff,
-      paysheet_tariff: groupSummary.paysheet_tariff || gfmt.tariffDetails.paysheet_tariff,
+      hours: groupSummary.hours ?? gfmt.tariffDetails?.hours ?? 0,
+      facturation_tariff: groupSummary.facturation_tariff ?? gfmt.tariffDetails?.facturation_tariff ?? 0,
+      paysheet_tariff: groupSummary.paysheet_tariff ?? gfmt.tariffDetails?.paysheet_tariff ?? 0,
     };
 
     // ✅ AGREGAR LOGS PARA VERIFICAR op_duration
@@ -217,7 +217,7 @@ export class HoursCalculationService {
     this.baseCalculationService.calculateHoursByDistribution(
       combinedGroupData,
       combinedGroupData.billHoursDistribution,
-      combinedGroupData.facturation_tariff || combinedGroupData.tariffDetails.facturation_tariff,
+      combinedGroupData.facturation_tariff ?? combinedGroupData.tariffDetails?.facturation_tariff ?? 0,
       true, // usar multiplicadores FAC_
       startDate || undefined,
       endDate || undefined
@@ -229,7 +229,7 @@ export class HoursCalculationService {
     this.baseCalculationService.calculateHoursByDistribution(
       combinedGroupData,
       combinedGroupData.paysheetHoursDistribution,
-      combinedGroupData.paysheet_tariff || combinedGroupData.tariffDetails.paysheet_tariff,
+      combinedGroupData.paysheet_tariff ?? combinedGroupData.tariffDetails?.paysheet_tariff ?? 0,
       false, // usar multiplicadores normales
       startDate || undefined,
       endDate || undefined

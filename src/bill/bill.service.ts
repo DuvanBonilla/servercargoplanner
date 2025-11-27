@@ -386,15 +386,15 @@ export class BillService {
       matchingGroupSummary.schedule.facturation_unit ||
       matchingGroupSummary.schedule.unit_of_measure;
     const facturationTariff =
-      matchingGroupSummary.facturation_tariff ||
-      matchingGroupSummary.tariffDetails.facturation_tariff ||
+      matchingGroupSummary.facturation_tariff ??
+      matchingGroupSummary.tariffDetails?.facturation_tariff ??
       0;
     const paysheetUnit =
-      matchingGroupSummary.unit_of_measure ||
+      matchingGroupSummary.unit_of_measure ??
       matchingGroupSummary.schedule.unit_of_measure;
     const paysheetTariff =
-      matchingGroupSummary.paysheet_tariff ||
-      matchingGroupSummary.tariffDetails.paysheet_tariff ||
+      matchingGroupSummary.paysheet_tariff ??
+      matchingGroupSummary.tariffDetails?.paysheet_tariff ??
       0;
 
     let totalFacturation = 0;
@@ -404,7 +404,7 @@ export class BillService {
     if (facturationUnit === 'HORAS' || facturationUnit === 'JORNAL') {
       if (matchingGroupSummary.group_tariff === 'YES') {
         const factResult =
-          group.group_hours * (matchingGroupSummary.facturation_tariff || 0);
+          group.group_hours * (matchingGroupSummary.facturation_tariff ?? 0);
         totalFacturation = factResult;
       } else if (facturationUnit === 'HORAS') {
         const factResult =
@@ -457,10 +457,10 @@ export class BillService {
     amountDb: number,
   ) {
     const paysheetTariff =
-      matchingGroupSummary.tariffDetails?.paysheet_tariff || 0;
+      matchingGroupSummary.tariffDetails?.paysheet_tariff ?? 0;
     const facturationTariff =
-      matchingGroupSummary.tariffDetails?.facturation_tariff || 0;
-    const amount = group.amount || amountDb || 0;
+      matchingGroupSummary.tariffDetails?.facturation_tariff ?? 0;
+    const amount = group.amount ?? amountDb ?? 0;
     return {
       totalPaysheet: amount * paysheetTariff,
       totalFacturation: amount * facturationTariff,
@@ -713,8 +713,8 @@ export class BillService {
     const compensatoryHours = effectiveHours * compensatoryPerHour;
 
 
-    const workerCount = billDB.number_of_workers || 0;
-    const tariff = billDB.billDetails?.[0]?.operationWorker?.tariff?.paysheet_tariff || 0;
+    const workerCount = billDB.number_of_workers ?? 0;
+    const tariff = billDB.billDetails?.[0]?.operationWorker?.tariff?.paysheet_tariff ?? 0;
 
     const compensatoryAmount = compensatoryHours * workerCount * tariff;
 
@@ -1080,6 +1080,7 @@ export class BillService {
             timeStrat: true,
             timeEnd: true,
             op_duration: true,
+            motorShip: true,
             client: {
               select: {
                 id: true,
@@ -1109,6 +1110,7 @@ export class BillService {
                     subTask: {
                       select: {
                         id: true,
+                        code: true,
                         name: true,
                       },
                     },
@@ -1154,6 +1156,8 @@ export class BillService {
             timeStrat: true,
             timeEnd: true,
             op_duration: true,
+            motorShip: true,
+            subSite: true,
             client: {
               select: {
                 id: true,
@@ -1184,9 +1188,11 @@ export class BillService {
                     subTask: {
                       select: {
                         id: true,
+                        code: true,
                         name: true,
                       },
                     },
+                    
                   },
                 },
               },
@@ -1494,12 +1500,12 @@ export class BillService {
     //movio
     if (matchingGroupSummary.schedule.unit_of_measure === 'JORNAL') {
       matchingGroupSummary.paysheet_tariff =
-        matchingGroupSummary.tariffDetails.paysheet_tariff;
+        matchingGroupSummary.tariffDetails?.paysheet_tariff ?? 0;
       matchingGroupSummary.facturation_tariff =
-        matchingGroupSummary.tariffDetails.facturation_tariff;
+        matchingGroupSummary.tariffDetails?.facturation_tariff ?? 0;
       matchingGroupSummary.agreed_hours =
-        matchingGroupSummary.tariffDetails.agreed_hours;
-      matchingGroupSummary.hours = matchingGroupSummary.tariffDetails.hours;
+        matchingGroupSummary.tariffDetails?.agreed_hours ?? 0;
+      matchingGroupSummary.hours = matchingGroupSummary.tariffDetails?.hours ?? 0;
       matchingGroupSummary.workerCount =
         matchingGroupSummary.workers?.length || 0; // <-- Agrega esto
 
@@ -1515,8 +1521,16 @@ export class BillService {
       totalFacturationGroup = result?.billing?.totalAmount || 0;
     } else if (
       matchingGroupSummary.schedule.unit_of_measure === 'HORAS' &&
-      matchingGroupSummary.tariffDetails.alternative_paid_service !== 'YES'
+      matchingGroupSummary.tariffDetails?.alternative_paid_service !== 'YES'
     ) {
+
+      matchingGroupSummary.workerCount =
+        matchingGroupSummary.workers?.length || 0;
+      
+      console.log(`🔧 [calculateGroupTotalsForUpdate] HORAS - workerCount: ${matchingGroupSummary.workerCount}`);
+
+
+
       const result = await this.hoursCalculationService.processHoursGroups(
         matchingGroupSummary,
         group,
@@ -1524,7 +1538,7 @@ export class BillService {
       totalPaysheetGroup = result.totalFinalPayroll;
       totalFacturationGroup = result.totalFinalFacturation;
     } else if (
-      matchingGroupSummary.tariffDetails.alternative_paid_service === 'YES'
+      matchingGroupSummary.tariffDetails?.alternative_paid_service === 'YES'
     ) {
       const { totalFacturation, totalPaysheet } =
         await this.calculateAlternativeServiceTotals(
@@ -1553,49 +1567,83 @@ export class BillService {
     totalPaysheetGroup: number,
     totalFacturationGroup: number,
     operationId?: number,
-  ) {
-    for (const pay of group.pays) {
-      const operationWorker = await this.prisma.operation_Worker.findFirst({
-        where: {
-          id_worker: pay.id_worker,
-          id_operation: operationId || billId,
+  ){
+     // ✅ CORRECCIÓN: Obtener los trabajadores del grupo desde la BD si pays está vacío o mal formado
+    const operationWorkers = await this.prisma.operation_Worker.findMany({
+      where: {
+        id_operation: operationId,
+        id_group: group.id,
+      },
+      include: {
+        worker: {
+          select: {
+            id: true,
+            name: true,
+          },
         },
-      });
-      if (!operationWorker) continue;
+      },
+    });
 
+    console.log(`🔍 [updateWorkerDetails] Trabajadores encontrados en BD: ${operationWorkers.length}`);
+    console.log(`🔍 [updateWorkerDetails] Pays recibidos: ${JSON.stringify(group.pays)}`);
+
+    // ✅ Construir el array de pays correcto desde la BD y el DTO
+    const validPays = operationWorkers.map(ow => {
+      // Buscar si hay un pay específico en el DTO para este trabajador
+      const payDto = Array.isArray(group.pays) 
+        ? group.pays.find((p: any) => p?.id_worker === ow.id_worker)
+        : null;
+      
+      return {
+        id_worker: ow.id_worker,
+        pay: payDto?.pay ?? 1, // Por defecto 1 si no viene en el DTO
+      };
+    });
+
+    console.log(`✅ [updateWorkerDetails] Pays procesados: ${JSON.stringify(validPays)}`);
+
+    // ✅ Iterar sobre los trabajadores reales de la BD
+    for (const operationWorker of operationWorkers) {
       const billDetail = await this.prisma.billDetail.findFirst({
         where: {
           id_bill: billId,
           id_operation_worker: operationWorker.id,
         },
       });
-      if (!billDetail) continue;
+      if (!billDetail) {
+        console.warn(`⚠️ No se encontró billDetail para operation_worker ${operationWorker.id}`);
+        continue;
+      }
+
+      // Obtener el pay de este trabajador desde el array procesado
+      const workerPay = validPays.find(p => p.id_worker === operationWorker.id_worker);
+      const payValue = workerPay?.pay ?? 1;
+
+      console.log(`📊 [updateWorkerDetails] Worker ${operationWorker.id_worker} - pay: ${payValue}`);
 
       const totalWorkerPaysheet = this.calculateTotalWorker(
         totalPaysheetGroup,
-        group,
-        { id: pay.id_worker },
+        { ...group, pays: validPays }, // ✅ Usar pays procesados
+        { id: operationWorker.id_worker },
         matchingGroupSummary.workers,
       );
       const totalWorkerFacturation = this.calculateTotalWorker(
         totalFacturationGroup,
-        group,
-        { id: pay.id_worker },
+        { ...group, pays: validPays }, // ✅ Usar pays procesados
+        { id: operationWorker.id_worker },
         matchingGroupSummary.workers,
       );
 
-      // Construir groupPay para el cálculo del pay_rate
-      const groupPay = group.pays.map((p) => ({
-        id_worker: p.id_worker,
-        pay: p.pay,
-      }));
+      console.log(`💰 [updateWorkerDetails] Worker ${operationWorker.id_worker}:`);
+      console.log(`   - Nómina: ${totalWorkerPaysheet}`);
+      console.log(`   - Facturación: ${totalWorkerFacturation}`);
 
       // USAR la función calculatePayRateForWorker en lugar de lógica manual
       const payRate = this.calculatePayRateForWorker(
         matchingGroupSummary,
-        group,
-        groupPay,
-        Number(pay.pay),
+        { ...group, pays: validPays }, // ✅ Usar pays procesados
+        validPays,
+        Number(payValue),
         { amount: group.amount || 0 }, // existingBill simulado
       );
 
@@ -1603,13 +1651,73 @@ export class BillService {
         where: { id: billDetail.id },
         data: {
           pay_rate: payRate,
-          pay_unit: pay.pay ?? billDetail.pay_unit,
+          pay_unit: payValue,
           total_bill: totalWorkerFacturation,
           total_paysheet: totalWorkerPaysheet,
         },
       });
+
+      console.log(`✅ [updateWorkerDetails] BillDetail ${billDetail.id} actualizado`);
     }
   }
+  //  {
+  //   for (const pay of group.pays) {
+  //     const operationWorker = await this.prisma.operation_Worker.findFirst({
+  //       where: {
+  //         id_worker: pay.id_worker,
+  //         id_operation: operationId || billId,
+  //       },
+  //     });
+  //     if (!operationWorker) continue;
+
+  //     const billDetail = await this.prisma.billDetail.findFirst({
+  //       where: {
+  //         id_bill: billId,
+  //         id_operation_worker: operationWorker.id,
+  //       },
+  //     });
+  //     if (!billDetail) continue;
+
+  //     const totalWorkerPaysheet = this.calculateTotalWorker(
+  //       totalPaysheetGroup,
+  //       group,
+  //       { id: pay.id_worker },
+  //       matchingGroupSummary.workers,
+  //     );
+  //     const totalWorkerFacturation = this.calculateTotalWorker(
+  //       totalFacturationGroup,
+  //       group,
+  //       { id: pay.id_worker },
+  //       matchingGroupSummary.workers,
+  //     );
+
+  //     // Construir groupPay para el cálculo del pay_rate
+  //     const groupPay = group.pays.map((p) => ({
+  //       id_worker: p.id_worker,
+  //       pay: p.pay,
+  //     }));
+
+  //     // USAR la función calculatePayRateForWorker en lugar de lógica manual
+  //     const payRate = this.calculatePayRateForWorker(
+  //       matchingGroupSummary,
+  //       group,
+  //       groupPay,
+  //       Number(pay.pay),
+  //       { amount: group.amount || 0 }, // existingBill simulado
+  //     );
+
+  //     await this.prisma.billDetail.update({
+  //       where: { id: billDetail.id },
+  //       data: {
+  //         pay_rate: payRate,
+  //         pay_unit: pay.pay ?? billDetail.pay_unit,
+  //         total_bill: totalWorkerFacturation,
+  //         total_paysheet: totalWorkerPaysheet,
+  //       },
+  //     });
+  //   }
+  // }
+
 
   private async updateBillDetailsOnly(
     id: number,

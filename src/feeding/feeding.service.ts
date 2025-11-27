@@ -351,8 +351,14 @@ const availableMealTypes = this.getAvailableMealTypes(
             id: true,
             name: true,
           }
-        }
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+          } 
       }
+     }
     });
     if (!response || response.length === 0) {
       return { message: 'No worker feeding records found', status: 404 };
@@ -361,6 +367,7 @@ const availableMealTypes = this.getAvailableMealTypes(
       ...feeding,
       serviceName: feeding.operation?.task?.name || null,
       workerName: feeding.worker?.name || null,
+      userName: feeding.user?.name || null,
     }));
   } catch (error) {
     throw new Error(error.message || String(error));
@@ -374,13 +381,44 @@ const availableMealTypes = this.getAvailableMealTypes(
           id,
           worker: {
             id_site,
-          },
+          }, 
+        }, 
+           include: {
+        operation: {
+          select: {
+            id: true,
+            task: {
+              select: {
+                id: true,
+                name: true,
+              }
+            }
+          }
         },
+        worker: {
+          select: {
+            id: true,
+            name: true,
+          }
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+          }
+        }     
+      }
       });
       if (!response || Object.keys(response).length === 0) {
         return { message: 'Feeding not found', status: 404 };
       }
-      return response;
+      // return response;
+      return {
+      ...response,
+      serviceName: response.operation?.task?.name || null,
+      workerName: response.worker?.name || null,
+      userName: response.user?.name || null,
+    };
     } catch (error) {
       throw new Error(error);
     }
@@ -436,6 +474,31 @@ const availableMealTypes = this.getAvailableMealTypes(
             id_site,
           },
         },
+         include: {
+        operation: {
+          select: {
+            id: true,
+            task: {
+              select: {
+                id: true,
+                name: true,
+              }
+            }
+          }
+        },
+        worker: {
+          select: {
+            id: true,
+            name: true,
+          }
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+          }
+        }
+      }
       });
       if (!response || response.length === 0) {
         return { message: 'Feeding not found', status: 404 };

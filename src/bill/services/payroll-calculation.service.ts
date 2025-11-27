@@ -227,12 +227,10 @@ export class PayrollCalculationService {
 
   private validateGroup(group: any, tariffField: string) {
   const value = Number(group[tariffField]);
-  if (
-    isNaN(value) ||
-    value <= 0
+  if (isNaN(value) || value < 0
   ) {
     throw new Error(
-      `El grupo ${group.groupId} no tiene ${tariffField} definida o válida`,
+      `El grupo ${group.groupId} tiene ${tariffField} invalida, debe ser mayor o igual a 0`,
     );
   }
   if (!group.agreed_hours) {

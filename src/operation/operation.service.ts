@@ -3,6 +3,7 @@ import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { OperationWorkerService } from 'src/operation-worker/operation-worker.service';
+// import { BillService } from 'src/bill/bill.service';
 import { StatusComplete, StatusOperation } from '@prisma/client';
 import { OperationFinderService } from './services/operation-finder.service';
 import { OperationRelationService } from './services/operation-relation.service';
@@ -23,6 +24,7 @@ export class OperationService {
     private relationService: OperationRelationService,
     private workerService: WorkerService,
     private removeWorkerService: RemoveWorkerFromOperationService,
+    // private billService: BillService,
   ) {}
   /**
    * Obtiene todas las operaciones
@@ -134,15 +136,17 @@ export class OperationService {
 
       // Validar fecha para SUPERVISOR
       if (user?.role === 'SUPERVISOR' && createOperationDto.dateStart) {
-        const now = new Date();
-        const dateStart = new Date(createOperationDto.dateStart);
-        const diffMs = now.getTime() - dateStart.getTime();
-        const diffHours = diffMs / (1000 * 60 * 60);
-
-        if (diffHours > 48) {
+        // Si el usuario existe y su rol es 'SUPERVISOR', y además se proporcionó dateStart en el DTO
+        const now = new Date(); // Obtener la fecha/hora actual
+        const dateStart = new Date(createOperationDto.dateStart); // Convertir la fecha proporcionada a un objeto Date
+        const diffMs = now.getTime() - dateStart.getTime(); // Calcular la diferencia en milisegundos entre ahora y dateStart
+        const diffHours = diffMs / (1000 * 60 * 60); // Convertir la diferencia de ms a horas: $diffHours = \\frac{diffMs}{1000\\times60\\times60}$
+        
+        if (diffHours >= 120) {
+          // Si la diferencia es mayor o igual a 120 horas (5 días), devolver un objeto con mensaje y estado 400
           return {
             message:
-              'Como SUPERVISOR solo puedes crear operaciones con máximo 48 horas de antigüedad.',
+              'Como SUPERVISOR solo puedes crear operaciones con máximo o igual a 120 horas de antigüedad.',
             status: 400,
           };
         }
@@ -412,6 +416,60 @@ export class OperationService {
       await this.operationWorkerService.completeClientProgramming(id);
       await this.operationWorkerService.releaseAllWorkersFromOperation(id);
       await this.workerService.addWorkedHoursOnOperationEnd(id);
+
+      // // Intentar crear factura automáticamente (mismo comportamiento que el cron)
+      // try {
+      //   const operationWorkers = await this.prisma.operation_Worker.findMany({
+      //     where: { id_operation: id },
+      //     select: { id_worker: true, id_group: true },
+      //   });
+
+      //   const uniqueGroups = [
+      //     ...new Set(operationWorkers.map((ow) => ow.id_group)),
+      //   ];
+
+      //   const billGroups = uniqueGroups.map((groupId) => ({
+      //     id: String(groupId),
+      //     amount: 0,
+      //     group_hours: 0,
+      //     pays: operationWorkers
+      //       .filter((ow) => ow.id_group === groupId)
+      //       .map((ow) => ({
+      //         id_worker: ow.id_worker,
+      //         pay: 0,
+      //       })),
+      //     paysheetHoursDistribution: {
+      //       HOD: 0,
+      //       HON: 0,
+      //       HED: 0,
+      //       HEN: 0,
+      //       HFOD: 0,
+      //       HFON: 0,
+      //       HFED: 0,
+      //       HFEN: 0,
+      //     },
+      //     billHoursDistribution: {
+      //       HOD: 0,
+      //       HON: 0,
+      //       HED: 0,
+      //       HEN: 0,
+      //       HFOD: 0,
+      //       HFON: 0,
+      //       HFED: 0,
+      //       HFEN: 0,
+      //     },
+      //   }));
+
+      //   const createBillDto = {
+      //     id_operation: id,
+      //     groups: billGroups,
+      //   };
+
+      //   // await this.billService.create(createBillDto, 1);
+      //   // console.log(`[OperationService] Factura automática creada para operación ${id}`);
+      // } catch (billError) {
+      //   console.error('[OperationService] Error creando factura automática:', billError);
+      // }
     }
 
     // Get updated operation

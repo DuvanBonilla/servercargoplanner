@@ -15,8 +15,8 @@ export class BaseCalculationService {
     startDate?: Date,
     endDate?: Date
   ): { totalHours: number; totalAmount: number; details: any } {
-    if (!tariff) {
-      throw new Error(`El grupo ${group.groupId} no tiene tarifa definida`);
+    if (typeof tariff !== 'number' || isNaN(tariff) || tariff < 0) {
+      throw new Error(`El grupo ${group.groupId} tiene una tarifa invalida, debe ser mayor o igual a 0`);
     }
   
     if (!group.hours) {
