@@ -50,13 +50,23 @@ export class BillController {
   }
 
   @Get()
-  async findAll() {
-    const bills = await this.billService.findAll();
+  
+  async findAll(
+  @CurrentUser('id_site') id_site?: number,
+    @CurrentUser('id_subsite') id_subsite?: number | null,
+
+  ) {
+    const bills = await this.billService.findAll(id_site, id_subsite);
     return bills;
   }
 
   @Get(':id')
-  async findOne(@Param('id', ParseIntPipe) id: number) {
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+     @CurrentUser('id_site') id_site?: number,
+    @CurrentUser('id_subsite') id_subsite?: number | null,
+
+) {
     const bill = await this.billService.findOne(id);
     if (!bill) {
       throw new NotFoundException(`Bill with ID ${id} not found`);

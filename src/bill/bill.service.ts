@@ -1063,8 +1063,26 @@ export class BillService {
 
     return (totalGroup / payUnits) * individualPayment;
   }
-  async findAll() {
+  async findAll(id_site?: number, id_subsite?: number | null) {
+     const whereClause: any = {};
+
+    // Si viene id_site, filtrar por sitio
+    if (id_site) {
+      whereClause.operation = {
+        id_site: id_site,
+      };
+    }
+
+    // Solo filtrar por subsede si es un número válido (no null ni undefined)
+    if (typeof id_subsite === 'number' && !isNaN(id_subsite)) {
+      whereClause.operation = {
+        ...(whereClause.operation || {}),
+        id_subsite: id_subsite,
+      };
+    }
     const bills = await this.prisma.bill.findMany({
+      where: whereClause,
+      
       include: {
         user: {
           select: {
@@ -1138,9 +1156,129 @@ export class BillService {
     return billsWithCompensatory;
   }
 
-  async findOne(id: number) {
+  /**
+   * Encuentra todas las bills filtradas por site y subsite
+   * @param id_site - ID del site (opcional)
+   * @param id_subsite - ID del subsite (opcional)
+   * @returns Lista de bills filtradas con todas las relaciones
+   */
+  async findAllBySiteAndSubsite(id_site?: number, id_subsite?: number) {
+    // Construir filtro dinámico basado en los parámetros
+    const whereCondition: any = {};
+    
+    if (id_site !== undefined) {
+      whereCondition.operation = {
+        id_site: id_site,
+      };
+    }
+    
+    if (id_subsite !== undefined) {
+      if (whereCondition.operation) {
+        whereCondition.operation.id_subsite = id_subsite;
+      } else {
+        whereCondition.operation = {
+          id_subsite: id_subsite,
+        };
+      }
+    }
+
+    const bills = await this.prisma.bill.findMany({
+      where: whereCondition,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        operation: {
+          select: {
+            id: true,
+            dateStart: true,
+            dateEnd: true,
+            timeStrat: true,
+            timeEnd: true,
+            op_duration: true,
+            motorShip: true,
+            id_site: true,
+            id_subsite: true,
+            client: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            jobArea: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        billDetails: {
+          include: {
+            operationWorker: {
+              include: {
+                worker: {
+                  select: {
+                    name: true,
+                    dni: true,
+                  },
+                },
+                tariff: {
+                  include: {
+                    subTask: {
+                      select: {
+                        id: true,
+                        code: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Calcular compensatorio para cada factura
+    const billsWithCompensatory = await Promise.all(
+      bills.map(async (bill) => {
+        const compensatory = await this.calculateCompensatoryForBill(bill);
+        return {
+          ...bill,
+          op_duration: bill.operation?.op_duration,
+          compensatory,
+        };
+      }),
+    );
+
+    return billsWithCompensatory;
+  }
+
+  async findOne(id: number, id_site?: number, id_subsite?: number | null) {
+    const whereClause: any = {id};
+
+    // Si viene id_site, filtrar por sitio
+    if (id_site) {
+      whereClause.operation = {
+        id_site: id_site,
+      };
+    }
+
+    // Solo filtrar por subsede si es un número válido (no null ni undefined)
+    if (typeof id_subsite === 'number' && !isNaN(id_subsite)) {
+      whereClause.operation = {
+        ...(whereClause.operation || {}),
+        id_subsite: id_subsite,
+      };
+    }
     const billDB = await this.prisma.bill.findUnique({
-      where: { id },
+      where: whereClause,
       include: {
         user: {
           select: {

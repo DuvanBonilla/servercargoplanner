@@ -80,17 +80,17 @@ if (typeof createAreaDto.id_subsite === 'undefined' || createAreaDto.id_subsite 
     let effectiveSiteId: number | undefined = siteId;
     
     // Para SUPERADMIN y GH: permitir seleccionar cualquier subsede
-    if (userRole === Role.SUPERADMIN || userRole === Role.GH || userRole === Role.SUPERVISOR) {
+    if (userRole === Role.SUPERADMIN || userRole === Role.GH || userRole === Role.SUPERVISOR || userRole === Role.ADMIN) {
       if (querySubsiteId !== undefined && querySubsiteId !== null) {
         // Si especifican una subsede diferente, usarla
         effectiveSubsiteId = querySubsiteId;
         // GH y SUPERADMIN pueden ver cualquier subsede sin restricción de sede
         effectiveSiteId = undefined;
-      } else if (userRole === Role.SUPERADMIN) {
+      } else if (userRole === Role.SUPERADMIN || userRole === Role.ADMIN) {
         // SUPERADMIN sin query específica ve todas las áreas
         effectiveSiteId = undefined;
         effectiveSubsiteId = undefined;
-      } else if (userRole === Role.SUPERVISOR) {
+      } else if (userRole === Role.SUPERVISOR ) {
         // SUPERVISOR sin query específica mantiene su sede actual pero puede ver todas sus subsedes
         effectiveSiteId = undefined;
         effectiveSubsiteId = undefined;

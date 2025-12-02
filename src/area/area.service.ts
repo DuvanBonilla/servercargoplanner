@@ -147,13 +147,13 @@ export class AreaService {
   ) {
     try {
       // Buscar el área sin restricción de sede para poder validarla
-      const validate = await this.findOne(id, undefined, Role.SUPERADMIN);
+      const validate = await this.findOne(id, undefined, Role.SUPERADMIN || Role.ADMIN);
       if (validate['status'] === 404) {
         return validate;
       }
 
       // Solo validar autorización si no es SUPERADMIN
-      if (userRole !== Role.SUPERADMIN) {
+      if (userRole !== Role.SUPERADMIN ||  Role.ADMIN) {
         if (id_site !== undefined && validate['id_site'] !== id_site) {
           return { message: 'Not authorized to update this area', status: 403 };
         }

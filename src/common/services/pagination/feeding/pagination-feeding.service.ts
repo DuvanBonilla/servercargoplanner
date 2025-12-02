@@ -66,6 +66,13 @@ export class PaginationFeedingService {
                   name: true,
                 },
               },
+              
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
             },
           },
         },

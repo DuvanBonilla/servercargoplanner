@@ -108,133 +108,300 @@ private getAvailableMealTypes(operationDateStart: Date, operationTimeStart: stri
   return availableMeals;
 }
 
-  async create(createFeedingDto: CreateFeedingDto, id_site?: number) {
-    try {
-      const validation = await this.validation.validateAllIds({
-        workerIds: [createFeedingDto.id_worker],
-        id_operation: createFeedingDto.id_operation,
-      });
-      if (validation && 'status' in validation && validation.status === 404) {
-        return validation;
-      }
+//   async create(createFeedingDto: CreateFeedingDto, id_site?: number) {
+//     try {
+//       const validation = await this.validation.validateAllIds({
+//         workerIds: [createFeedingDto.id_worker],
+//         id_operation: createFeedingDto.id_operation,
+//       });
+//       if (validation && 'status' in validation && validation.status === 404) {
+//         return validation;
+//       }
 
-      if (id_site !== undefined) {
-        const workerValidation = validation?.existingWorkers?.[0];
-        if (workerValidation && workerValidation.id_site !== id_site) {
-          return {
-            message: 'Not authorized to create feeding for this worker',
-            status: 409,
-          };
-        }
-        const operationValidation = validation['operation'].id_site;
-        if (operationValidation && operationValidation !== id_site) {
-          return {
-            message: 'Not authorized to create feeding for this operation',
-            status: 409,
-          };
-        }
-      }
+//       if (id_site !== undefined) {
+//         const workerValidation = validation?.existingWorkers?.[0];
+//         if (workerValidation && workerValidation.id_site !== id_site) {
+//           return {
+//             message: 'Not authorized to create feeding for this worker',
+//             status: 409,
+//           };
+//         }
+//         const operationValidation = validation['operation'].id_site;
+//         if (operationValidation && operationValidation !== id_site) {
+//           return {
+//             message: 'Not authorized to create feeding for this operation',
+//             status: 409,
+//           };
+//         }
+//       }
 
-      // const operation = validation['operation'];
-      // const availableMealTypes = this.getAvailableMealTypes(operation.dateStart, operation.timeStrat);
-
-
-// En el método create, línea ~185:
-
-const operation = validation['operation'];
-
-// ✅ OBTENER LA OPERACIÓN COMPLETA CON timeEnd
-const fullOperation = await this.prisma.operation.findUnique({
-  where: { id: createFeedingDto.id_operation },
-  select: { dateStart: true, timeStrat: true, timeEnd: true }
-});
-if (!fullOperation) {
-  return { message: 'Operation not found', status: 404 };
-}
-
-// ✅ USAR LA OPERACIÓN COMPLETA
-const availableMealTypes = this.getAvailableMealTypes(
-  fullOperation.dateStart, 
-  fullOperation.timeStrat,
-  fullOperation.timeEnd
-);
+//       // const operation = validation['operation'];
+//       // const availableMealTypes = this.getAvailableMealTypes(operation.dateStart, operation.timeStrat);
 
 
-      // Validar horario solo si la comida NO es una faltante anterior
-      if (!availableMealTypes.includes(createFeedingDto.type)) {
-        // Consultar comidas faltantes anteriores
-        const missingMeals = await this.getMissingMealsForOperation(createFeedingDto.id_operation);
-        const isMissingMeal = missingMeals.some(worker =>
-          worker.workerId === createFeedingDto.id_worker &&
-          worker.missingMeals.includes(createFeedingDto.type)
-        );
 
-        if (!isMissingMeal) {
-          const feedingTypeNames = {
-            BREAKFAST: 'desayuno',
-            LUNCH: 'almuerzo',
-            DINNER: 'cena',
-            SNACK: 'refrigerio',
-          };
-          return {
-            message: `El ${feedingTypeNames[createFeedingDto.type]} no está disponible en este momento. Comidas disponibles: ${availableMealTypes.map(type => feedingTypeNames[type]).join(', ')}`,
-            status: 409,
-          };
-        }
-        // Si es una comida faltante, permitir registrar aunque no esté en horario
-      }
+// const operation = validation['operation'];
 
-      // **VALIDACIÓN EXISTENTE**: Verificar si el trabajador ya tiene una alimentación del mismo tipo hoy
-      const today = new Date();
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+// // ✅ OBTENER LA OPERACIÓN COMPLETA CON timeEnd
+// const fullOperation = await this.prisma.operation.findUnique({
+//   where: { id: createFeedingDto.id_operation },
+//   select: { dateStart: true, timeStrat: true, timeEnd: true }
+// });
+// if (!fullOperation) {
+//   return { message: 'Operation not found', status: 404 };
+// }
 
-      const existingFeeding = await this.prisma.workerFeeding.findFirst({
-        where: {
-          id_worker: createFeedingDto.id_worker,
-          type: createFeedingDto.type,
-          dateFeeding: {
-            gte: startOfDay,
-            lte: endOfDay,
-          },
-        },
-      });
+// // ✅ USAR LA OPERACIÓN COMPLETA
+// const availableMealTypes = this.getAvailableMealTypes(
+//   fullOperation.dateStart, 
+//   fullOperation.timeStrat,
+//   fullOperation.timeEnd
+// );
 
-      if (existingFeeding) {
-        const feedingTypeNames = {
-          BREAKFAST: 'desayuno',
-          LUNCH: 'almuerzo',
-          DINNER: 'cena',
-          SNACK: 'refrigerio',
-        };
 
+//       // Validar horario solo si la comida NO es una faltante anterior
+//       if (!availableMealTypes.includes(createFeedingDto.type)) {
+//         // Consultar comidas faltantes anteriores
+//         const missingMeals = await this.getMissingMealsForOperation(createFeedingDto.id_operation);
+//         const isMissingMeal = missingMeals.some(worker =>
+//           worker.workerId === createFeedingDto.id_worker &&
+//           worker.missingMeals.includes(createFeedingDto.type)
+//         );
+
+//         if (!isMissingMeal) {
+//           const feedingTypeNames = {
+//             BREAKFAST: 'desayuno',
+//             LUNCH: 'almuerzo',
+//             DINNER: 'cena',
+//             SNACK: 'refrigerio',
+//           };
+//           return {
+//             message: `El ${feedingTypeNames[createFeedingDto.type]} no está disponible en este momento. Comidas disponibles: ${availableMealTypes.map(type => feedingTypeNames[type]).join(', ')}`,
+//             status: 409,
+//           };
+//         }
+//         // Si es una comida faltante, permitir registrar aunque no esté en horario
+//       }
+
+//       // **VALIDACIÓN EXISTENTE**: Verificar si el trabajador ya tiene una alimentación del mismo tipo hoy
+//       const today = new Date();
+//       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+//       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+
+//       const existingFeeding = await this.prisma.workerFeeding.findFirst({
+//         where: {
+//           id_worker: createFeedingDto.id_worker,
+//           type: createFeedingDto.type,
+//           dateFeeding: {
+//             gte: startOfDay,
+//             lte: endOfDay,
+//           },
+//         },
+//       });
+
+//       if (existingFeeding) {
+//         const feedingTypeNames = {
+//           BREAKFAST: 'desayuno',
+//           LUNCH: 'almuerzo',
+//           DINNER: 'cena',
+//           SNACK: 'refrigerio',
+//         };
+
+//         return {
+//           message: `El trabajador ya tiene registrado un ${feedingTypeNames[createFeedingDto.type]} para el día de hoy`,
+//           status: 409,
+//         };
+//       }
+
+//       // Separar la propiedad forceMissingMeal si existe
+//       const { forceMissingMeal, ...feedingData } = createFeedingDto;
+//       const response = await this.prisma.workerFeeding.create({
+//         data: {
+//           ...feedingData,
+//           id_worker: createFeedingDto.id_worker,
+//           id_operation: createFeedingDto.id_operation,
+//           // Si no viene dateFeeding, usar la fecha actual
+//           dateFeeding: createFeedingDto.dateFeeding
+//             ? new Date(createFeedingDto.dateFeeding)
+//             : new Date(),
+//         },
+//       });
+//       if (!response) {
+//         return { message: 'Feeding not created', status: 404 };
+//       }
+//       return response;
+//     } catch (error) {
+//       throw new Error(error);
+//     }
+//   }
+
+async create(createFeedingDto: CreateFeedingDto, id_site?: number) {
+  try {
+    const validation = await this.validation.validateAllIds({
+      workerIds: [createFeedingDto.id_worker],
+      id_operation: createFeedingDto.id_operation,
+    });
+
+    if (validation && 'status' in validation && validation.status === 404) {
+      return validation;
+    }
+
+    // 🔹 Validación por sitio
+    if (id_site !== undefined) {
+      const workerValidation = validation?.existingWorkers?.[0];
+      if (workerValidation && workerValidation.id_site !== id_site) {
         return {
-          message: `El trabajador ya tiene registrado un ${feedingTypeNames[createFeedingDto.type]} para el día de hoy`,
+          message: 'Not authorized to create feeding for this worker',
           status: 409,
         };
       }
-
-      // Separar la propiedad forceMissingMeal si existe
-      const { forceMissingMeal, ...feedingData } = createFeedingDto;
-      const response = await this.prisma.workerFeeding.create({
-        data: {
-          ...feedingData,
-          id_worker: createFeedingDto.id_worker,
-          id_operation: createFeedingDto.id_operation,
-          // Si no viene dateFeeding, usar la fecha actual
-          dateFeeding: createFeedingDto.dateFeeding
-            ? new Date(createFeedingDto.dateFeeding)
-            : new Date(),
-        },
-      });
-      if (!response) {
-        return { message: 'Feeding not created', status: 404 };
+      const operationValidation = validation['operation'].id_site;
+      if (operationValidation && operationValidation !== id_site) {
+        return {
+          message: 'Not authorized to create feeding for this operation',
+          status: 409,
+        };
       }
-      return response;
-    } catch (error) {
-      throw new Error(error);
     }
+
+    // 🔹 Mapeo de nombres de comidas (lo usamos en dos validaciones)
+    const feedingTypeNames = {
+      BREAKFAST: 'desayuno',
+      LUNCH: 'almuerzo',
+      DINNER: 'cena',
+      SNACK: 'refrigerio',
+    } as const;
+
+    const operation = validation['operation'];
+
+    // ✅ OBTENER LA OPERACIÓN COMPLETA CON timeEnd
+    const fullOperation = await this.prisma.operation.findUnique({
+      where: { id: createFeedingDto.id_operation },
+      select: { dateStart: true, timeStrat: true, timeEnd: true },
+    });
+
+    if (!fullOperation) {
+      return { message: 'Operation not found', status: 404 };
+    }
+
+    // ✅ USAR LA OPERACIÓN COMPLETA
+    const availableMealTypes = this.getAvailableMealTypes(
+      fullOperation.dateStart,
+      fullOperation.timeStrat,
+      fullOperation.timeEnd,
+    );
+
+    // 🔹 Validar horario solo si la comida NO es una faltante anterior
+    if (!availableMealTypes.includes(createFeedingDto.type)) {
+      const missingMeals = await this.getMissingMealsForOperation(
+        createFeedingDto.id_operation,
+      );
+
+      const isMissingMeal = missingMeals.some(
+        (worker) =>
+          worker.workerId === createFeedingDto.id_worker &&
+          worker.missingMeals.includes(createFeedingDto.type),
+      );
+
+      if (!isMissingMeal) {
+        return {
+          message: `El ${feedingTypeNames[createFeedingDto.type]} no está disponible en este momento. Comidas disponibles: ${availableMealTypes
+            .map((type) => feedingTypeNames[type])
+            .join(', ')}`,
+          status: 409,
+        };
+      }
+      // Si es una comida faltante, permitir registrar aunque no esté en horario
+    }
+
+    // 🔹 Determinar la fecha de referencia para validar duplicados
+    let referenceDate: Date;
+    let referenceDateLabel: string;
+
+    if (createFeedingDto.dateFeeding) {
+      // Formato del DTO: "YYYY-MM-DD HH:MM" → nos quedamos con la parte de la fecha
+      const [datePart] = createFeedingDto.dateFeeding.split(' '); // "2025-11-27"
+      const [year, month, day] = datePart.split('-').map(Number);
+      referenceDate = new Date(year, month - 1, day);
+      referenceDateLabel = datePart;
+    } else if (fullOperation.dateStart) {
+      // Si no vino dateFeeding, usamos la fecha de la operación
+      referenceDate = new Date(fullOperation.dateStart);
+      const y = referenceDate.getFullYear();
+      const m = String(referenceDate.getMonth() + 1).padStart(2, '0');
+      const d = String(referenceDate.getDate()).padStart(2, '0');
+      referenceDateLabel = `${y}-${m}-${d}`;
+    } else {
+      // Último recurso: hoy
+      referenceDate = new Date();
+      const y = referenceDate.getFullYear();
+      const m = String(referenceDate.getMonth() + 1).padStart(2, '0');
+      const d = String(referenceDate.getDate()).padStart(2, '0');
+      referenceDateLabel = `${y}-${m}-${d}`;
+    }
+
+    const startOfDay = new Date(
+      referenceDate.getFullYear(),
+      referenceDate.getMonth(),
+      referenceDate.getDate(),
+      0,
+      0,
+      0,
+      0,
+    );
+
+    const endOfDay = new Date(
+      referenceDate.getFullYear(),
+      referenceDate.getMonth(),
+      referenceDate.getDate(),
+      23,
+      59,
+      59,
+      999,
+    );
+
+    const existingFeeding = await this.prisma.workerFeeding.findFirst({
+      where: {
+        id_worker: createFeedingDto.id_worker,
+        type: createFeedingDto.type,
+        dateFeeding: {
+          gte: new Date(startOfDay),
+          lte: new Date(endOfDay),
+        },
+      },
+    });
+
+    if (existingFeeding) {
+      return {
+        message: `El trabajador ya tiene registrado un ${feedingTypeNames[createFeedingDto.type]} para la fecha ${referenceDateLabel}`,
+        status: 409,
+      };
+    }
+
+    // Separar la propiedad forceMissingMeal si existe
+    const { forceMissingMeal, ...feedingData } = createFeedingDto;
+
+    const response = await this.prisma.workerFeeding.create({
+      data: {
+        ...feedingData,
+        id_worker: createFeedingDto.id_worker,
+        id_operation: createFeedingDto.id_operation,
+        // 👇 Si viene dateFeeding, lo usamos; si no, usamos la misma referenceDate
+        dateFeeding: createFeedingDto.dateFeeding
+          ? new Date(createFeedingDto.dateFeeding)
+          : referenceDate,
+      },
+    });
+
+    if (!response) {
+      return { message: 'Feeding not created', status: 404 };
+    }
+
+    return response;
+  } catch (error) {
+    throw new Error(error);
   }
+}
 
   /**
    * Método público para obtener las comidas disponibles para una operación
