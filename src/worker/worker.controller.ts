@@ -250,7 +250,7 @@ async update(
 
   return response;
 }
-
+ //remove worker
  @Delete(':id')
 async remove(
   @Param('id', ParseIntPipe) id: number,
