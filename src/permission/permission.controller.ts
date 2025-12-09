@@ -24,6 +24,7 @@ import { DateTransformPipe } from 'src/pipes/date-transform/date-transform.pipe'
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { FilterPermissionDto } from './dto/filter-permission.dto';
 import { Response } from 'express';
+import { UpdatePermissionService } from './services/update-permission.service';
 
 @Controller('permission')
 @UseGuards(JwtAuthGuard)
@@ -34,6 +35,7 @@ export class PermissionController {
 
   constructor(private readonly permissionService: PermissionService,
     private readonly excelExportService: ExcelExportService,
+    private readonly updatePermissionService: UpdatePermissionService,
   ) {}
 
   @Post()
@@ -160,5 +162,10 @@ export class PermissionController {
       throw new ConflictException(response['message']);
     }
     return response;
+  }
+
+  @Post('admin/test-update-expired')
+  async testUpdateExpiredPermissions() {
+    return await this.updatePermissionService.updateWorkersWithExpiredPermissions();
   }
 }

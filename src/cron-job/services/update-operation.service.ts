@@ -238,7 +238,11 @@ endDateTime.setHours(hours, minutes, 0, 0);
           // Paso 1: Obtener los trabajadores de esta operación desde la tabla intermedia
           const operationWorkers = await this.prisma.operation_Worker.findMany({
             where: { id_operation: operation.id },
-            select: { id_worker: true, id_group: true },
+            select: { 
+              worker: true,
+              id_worker: true, 
+              id_group: true 
+        },
           });
 
           const workerIds = operationWorkers.map((ow) => ow.id_worker);

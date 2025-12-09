@@ -10,6 +10,7 @@ import { OperationRelationService } from './services/operation-relation.service'
 import { OperationFilterDto } from './dto/fliter-operation.dto';
 import { WorkerService } from 'src/worker/worker.service';
 import { RemoveWorkerFromOperationService } from '../operation-worker/service/remove-worker-from-operation/remove-worker-from-operation.service';
+import { ModuleRef } from '@nestjs/core';
 // ... otras importaciones
 /**
  * Servicio para gestionar operaciones
@@ -24,6 +25,7 @@ export class OperationService {
     private relationService: OperationRelationService,
     private workerService: WorkerService,
     private removeWorkerService: RemoveWorkerFromOperationService,
+    private moduleRef: ModuleRef,
     // private billService: BillService,
   ) {}
   /**
@@ -284,6 +286,25 @@ export class OperationService {
         return { message: 'Subsite does not match', status: 400 };
       }
     }
+
+    // ✅ CALCULAR op_duration SI SE PROPORCIONA FECHA Y HORA COMPLETAS
+    let calculatedOpDuration = 0;
+    if (dateStart && timeStrat && dateEnd && timeEnd) {
+      const start = new Date(dateStart);
+      const [sh, sm] = timeStrat.split(':').map(Number);
+      start.setHours(sh, sm, 0, 0);
+
+      const end = new Date(dateEnd);
+      const [eh, em] = timeEnd.split(':').map(Number);
+      end.setHours(eh, em, 0, 0);
+
+      const diffMs = end.getTime() - start.getTime();
+      calculatedOpDuration = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+      calculatedOpDuration = calculatedOpDuration > 0 ? calculatedOpDuration : 0;
+      
+      console.log(`[OperationService] ✅ op_duration calculado al crear: ${calculatedOpDuration} horas`);
+    }
+
     const newOperation = await this.prisma.operation.create({
       data: {
         ...restOperationData,
@@ -295,6 +316,7 @@ export class OperationService {
         timeStrat: timeStrat,
         timeEnd: timeEnd || null,
         id_subsite: id_subsite || null,
+        op_duration: calculatedOpDuration,
       },
     });
 
@@ -386,92 +408,189 @@ export class OperationService {
     }
 
     // Handle status change
-    if (directFields.status === StatusOperation.COMPLETED) {
-      const operation = await this.prisma.operation.findUnique({
+    // if (directFields.status === StatusOperation.COMPLETED) {
+    //   const operation = await this.prisma.operation.findUnique({
+    //     where: { id },
+    //   });
+
+    //   if (
+    //     operation &&
+    //     operation.dateStart &&
+    //     operation.timeStrat &&
+    //     operation.dateEnd &&
+    //     operation.timeEnd
+    //   ) {
+    //     const opDuration = this.calculateOperationDuration(
+    //       operation.dateStart,
+    //       operation.timeStrat,
+    //       operation.dateEnd,
+    //       operation.timeEnd,
+    //     );
+
+    //     // Actualiza el campo op_duration
+    //     await this.prisma.operation.update({
+    //       where: { id },
+    //       data: { op_duration: opDuration },
+    //     });
+    //   }
+
+    //   // ✅ CAMBIAR EL ORDEN: PRIMERO ACTUALIZAR FECHAS, LUEGO CALCULAR HORAS
+    //   await this.operationWorkerService.completeClientProgramming(id);
+    //   await this.operationWorkerService.releaseAllWorkersFromOperation(id);
+    //   await this.workerService.addWorkedHoursOnOperationEnd(id);
+
+    //   // // Intentar crear factura automáticamente (mismo comportamiento que el cron)
+    //   // try {
+    //   //   const operationWorkers = await this.prisma.operation_Worker.findMany({
+    //   //     where: { id_operation: id },
+    //   //     select: { id_worker: true, id_group: true },
+    //   //   });
+
+    //   //   const uniqueGroups = [
+    //   //     ...new Set(operationWorkers.map((ow) => ow.id_group)),
+    //   //   ];
+
+    //   //   const billGroups = uniqueGroups.map((groupId) => ({
+    //   //     id: String(groupId),
+    //   //     amount: 0,
+    //   //     group_hours: 0,
+    //   //     pays: operationWorkers
+    //   //       .filter((ow) => ow.id_group === groupId)
+    //   //       .map((ow) => ({
+    //   //         id_worker: ow.id_worker,
+    //   //         pay: 0,
+    //   //       })),
+    //   //     paysheetHoursDistribution: {
+    //   //       HOD: 0,
+    //   //       HON: 0,
+    //   //       HED: 0,
+    //   //       HEN: 0,
+    //   //       HFOD: 0,
+    //   //       HFON: 0,
+    //   //       HFED: 0,
+    //   //       HFEN: 0,
+    //   //     },
+    //   //     billHoursDistribution: {
+    //   //       HOD: 0,
+    //   //       HON: 0,
+    //   //       HED: 0,
+    //   //       HEN: 0,
+    //   //       HFOD: 0,
+    //   //       HFON: 0,
+    //   //       HFED: 0,
+    //   //       HFEN: 0,
+    //   //     },
+    //   //   }));
+
+    //   //   const createBillDto = {
+    //   //     id_operation: id,
+    //   //     groups: billGroups,
+    //   //   };
+
+    //   //   // await this.billService.create(createBillDto, 1);
+    //   //   // console.log(`[OperationService] Factura automática creada para operación ${id}`);
+    //   // } catch (billError) {
+    //   //   console.error('[OperationService] Error creando factura automática:', billError);
+    //   // }
+    // }
+const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
+    
+    console.log('[OperationService] 🔍 Verificando cambios de fecha/hora:');
+    console.log('   - dateStart presente:', !!dateStart);
+    console.log('   - dateEnd presente:', !!dateEnd);
+    console.log('   - timeStrat presente:', !!timeStrat);
+    console.log('   - timeEnd presente:', !!timeEnd);
+    console.log('   - hasDateTimeChanges:', hasDateTimeChanges);
+    
+    if (hasDateTimeChanges) {
+      console.log('[OperationService] 🔄 Detectados cambios en fechas/horas, recalculando op_duration...');
+      
+      // Obtener la operación actualizada con todas las fechas
+      const updatedOp = await this.prisma.operation.findUnique({
         where: { id },
+        select: { dateStart: true, timeStrat: true, dateEnd: true, timeEnd: true, status: true, op_duration: true },
       });
 
-      if (
-        operation &&
-        operation.dateStart &&
-        operation.timeStrat &&
-        operation.dateEnd &&
-        operation.timeEnd
-      ) {
-        const opDuration = this.calculateOperationDuration(
-          operation.dateStart,
-          operation.timeStrat,
-          operation.dateEnd,
-          operation.timeEnd,
+      console.log('[OperationService] 📊 Operación leída de BD:');
+      console.log('   - dateStart:', updatedOp?.dateStart);
+      console.log('   - timeStrat:', updatedOp?.timeStrat);
+      console.log('   - dateEnd:', updatedOp?.dateEnd);
+      console.log('   - timeEnd:', updatedOp?.timeEnd);
+      console.log('   - op_duration actual:', updatedOp?.op_duration);
+      console.log('   - status:', updatedOp?.status);
+
+      if (updatedOp && updatedOp.dateStart && updatedOp.timeStrat && updatedOp.dateEnd && updatedOp.timeEnd) {
+        const oldOpDuration = updatedOp.op_duration;
+        const newOpDuration = this.calculateOperationDuration(
+          updatedOp.dateStart,
+          updatedOp.timeStrat,
+          updatedOp.dateEnd,
+          updatedOp.timeEnd,
         );
 
-        // Actualiza el campo op_duration
+        console.log(`[OperationService] 📐 Cálculo de duración:`);
+        console.log(`   - Duración anterior: ${oldOpDuration} horas`);
+        console.log(`   - Duración nueva: ${newOpDuration} horas`);
+        console.log(`   - ¿Cambió?: ${oldOpDuration !== newOpDuration}`);
+
         await this.prisma.operation.update({
           where: { id },
-          data: { op_duration: opDuration },
+          data: { op_duration: newOpDuration },
         });
-      }
 
+        console.log(`[OperationService] ✅ op_duration actualizado en BD: ${oldOpDuration} → ${newOpDuration} horas (status: ${updatedOp.status})`);
+
+        // ✅ SI LA OPERACIÓN ESTÁ COMPLETED Y CAMBIÓ op_duration, RECALCULAR FACTURA
+        if (updatedOp.status === 'COMPLETED' && oldOpDuration !== newOpDuration) {
+          console.log('[OperationService] 🔄 Operación COMPLETED con cambio de duración, buscando factura...');
+          
+          try {
+            // Buscar la factura de esta operación
+            const bill = await this.prisma.bill.findFirst({
+              where: { id_operation: id },
+            });
+
+            if (bill) {
+              console.log(`[OperationService] 📄 Factura encontrada (ID: ${bill.id}), recalculando compensatorio...`);
+              
+              // Importar dinámicamente BillService para evitar dependencia circular
+              const { BillService } = await import('../bill/bill.service');
+              const billService = this.moduleRef.get(BillService, { strict: false });
+              
+              // Recalcular la factura completa
+              await billService.recalculateBillAfterOpDurationChange(bill.id, id);
+              
+              console.log(`[OperationService] ✅ Factura ${bill.id} recalculada con nuevo compensatorio`);
+            } else {
+              console.log('[OperationService] ⚠️ No se encontró factura para esta operación');
+            }
+          } catch (error) {
+            console.error('[OperationService] ❌ Error recalculando factura:', error.message);
+            // No lanzar error para no bloquear la actualización de la operación
+          }
+        }
+      } else {
+        console.log('[OperationService] ⚠️ No se puede calcular op_duration:');
+        console.log('   - Operación existe:', !!updatedOp);
+        console.log('   - dateStart existe:', !!updatedOp?.dateStart);
+        console.log('   - timeStrat existe:', !!updatedOp?.timeStrat);
+        console.log('   - dateEnd existe:', !!updatedOp?.dateEnd);
+        console.log('   - timeEnd existe:', !!updatedOp?.timeEnd);
+      }
+    } else {
+      console.log('[OperationService] ℹ️ No se detectaron cambios en fechas/horas, no se recalcula op_duration');
+    }
+
+    // Handle status change
+    if (directFields.status === StatusOperation.COMPLETED) {
+      // Ya no necesitamos calcular op_duration aquí porque se calcula arriba cuando hay cambios de fecha
+      // O ya está calculado desde antes
+      
       // ✅ CAMBIAR EL ORDEN: PRIMERO ACTUALIZAR FECHAS, LUEGO CALCULAR HORAS
       await this.operationWorkerService.completeClientProgramming(id);
       await this.operationWorkerService.releaseAllWorkersFromOperation(id);
       await this.workerService.addWorkedHoursOnOperationEnd(id);
-
-      // // Intentar crear factura automáticamente (mismo comportamiento que el cron)
-      // try {
-      //   const operationWorkers = await this.prisma.operation_Worker.findMany({
-      //     where: { id_operation: id },
-      //     select: { id_worker: true, id_group: true },
-      //   });
-
-      //   const uniqueGroups = [
-      //     ...new Set(operationWorkers.map((ow) => ow.id_group)),
-      //   ];
-
-      //   const billGroups = uniqueGroups.map((groupId) => ({
-      //     id: String(groupId),
-      //     amount: 0,
-      //     group_hours: 0,
-      //     pays: operationWorkers
-      //       .filter((ow) => ow.id_group === groupId)
-      //       .map((ow) => ({
-      //         id_worker: ow.id_worker,
-      //         pay: 0,
-      //       })),
-      //     paysheetHoursDistribution: {
-      //       HOD: 0,
-      //       HON: 0,
-      //       HED: 0,
-      //       HEN: 0,
-      //       HFOD: 0,
-      //       HFON: 0,
-      //       HFED: 0,
-      //       HFEN: 0,
-      //     },
-      //     billHoursDistribution: {
-      //       HOD: 0,
-      //       HON: 0,
-      //       HED: 0,
-      //       HEN: 0,
-      //       HFOD: 0,
-      //       HFON: 0,
-      //       HFED: 0,
-      //       HFEN: 0,
-      //     },
-      //   }));
-
-      //   const createBillDto = {
-      //     id_operation: id,
-      //     groups: billGroups,
-      //   };
-
-      //   // await this.billService.create(createBillDto, 1);
-      //   // console.log(`[OperationService] Factura automática creada para operación ${id}`);
-      // } catch (billError) {
-      //   console.error('[OperationService] Error creando factura automática:', billError);
-      // }
     }
-
     // Get updated operation
     const updatedOperation = await this.findOne(id);
     console.log('[OperationService] Operación actualizada exitosamente');

@@ -50,21 +50,43 @@ export function getColombiaDaysOff(year: number): any[] {
  * @param date Fecha para la cual se quiere obtener el número de semana
  * @returns Número de semana (1-53)
  */
-export function getWeekNumber(date: Date): number {
+
+
+export function getWeekNumber(date: Date | string): number {
+  // Normalizar la fecha para evitar problemas de zona horaria
+  const normalizedDate = typeof date === 'string' 
+    ? toLocalDate(date)
+    : toLocalDate(date);
+  
   // Utiliza la función getWeek de date-fns con configuración para semanas ISO
   // (semana empieza lunes, primera semana tiene al menos 4 días)
-  return getWeek(date, { weekStartsOn: 1, firstWeekContainsDate: 4 });
-}
+  return getWeek(normalizedDate, { weekStartsOn: 1, firstWeekContainsDate: 4 });
+}  // Utiliza la función getWeek de date-fns con configuración para semanas ISO
+
+  // (semana empieza lunes, primera semana tiene al menos 4 días)
+  // export function getWeekNumber(date: Date): number {
+  // return getWeek(date, { weekStartsOn: 1, firstWeekContainsDate: 4 });
+// }
 
 /**
  * Obtiene información básica sobre la semana de una fecha
  * @param date Fecha para la cual se quiere obtener información de semana
  * @returns Objeto con número de semana y año
  */
-export function getWeekInfo(date: Date): { weekNumber: number; year: number } {
+// export function getWeekInfo(date: Date): { weekNumber: number; year: number } {
+//   return {
+//     weekNumber: getWeekNumber(date),
+//     year: date.getFullYear(),
+//   };
+// }
+export function getWeekInfo(date: Date | string): { weekNumber: number; year: number } {
+  const normalizedDate = typeof date === 'string' 
+    ? toLocalDate(date)
+    : toLocalDate(date);
+    
   return {
-    weekNumber: getWeekNumber(date),
-    year: date.getFullYear(),
+    weekNumber: getWeekNumber(normalizedDate),
+    year: normalizedDate.getFullYear(),
   };
 }
 

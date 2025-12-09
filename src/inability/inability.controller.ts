@@ -26,6 +26,7 @@ import { Response } from 'express';
 import { ExcelExportService } from 'src/common/validation/services/excel-export.service';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { SiteInterceptor } from 'src/common/interceptors/site.interceptor';
+import { UpdateInabilityService } from './service/update-inability.service';
 
 @Controller('inability')
 @UseGuards(JwtAuthGuard)
@@ -35,6 +36,7 @@ export class InabilityController {
   constructor(
     private readonly inabilityService: InabilityService,
     private readonly excelExportService: ExcelExportService,
+    private readonly updateInabilityService: UpdateInabilityService,
   ) {}
 
   @Post()
@@ -159,4 +161,10 @@ export class InabilityController {
     }
     return response;
   }
+
+  @Post('admin/test-update-expired')
+  async testUpdateExpiredInabilities() {
+    return await this.updateInabilityService.updateWorkersWithExpiredInabilities();
+  }
 }
+

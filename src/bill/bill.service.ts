@@ -1428,6 +1428,96 @@ export class BillService {
     }
 
     const billDB = await this.findOne(id);
+    return billDB;
+  }
+
+  /**
+   * Recalcula la factura completa después de cambiar op_duration
+   * Se usa cuando se actualizan fechas de una operación COMPLETED
+   */
+  async recalculateBillAfterOpDurationChange(billId: number, operationId: number) {
+    console.log(`[BillService] 🔄 Recalculando factura ${billId} por cambio en op_duration de operación ${operationId}`);
+    
+    try {
+      // Obtener la factura actual con sus detalles
+      const bill = await this.prisma.bill.findUnique({
+        where: { id: billId },
+        include: {
+          billDetails: {
+            include: {
+              operationWorker: {
+                include: {
+                  worker: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!bill) {
+        throw new ConflictException(`No se encontró la factura con ID: ${billId}`);
+      }
+
+      // Obtener información actualizada de la operación con nuevo op_duration
+      const validateOperationID = await this.validateOperation(operationId);
+      
+      if (validateOperationID['status'] === 404) {
+        throw new ConflictException(`No se encontró la operación con ID: ${operationId}`);
+      }
+
+      console.log(`[BillService] ✅ op_duration actualizado: ${validateOperationID.op_duration} horas`);
+
+      // ✅ PREPARAR DTO MÍNIMO CON DISTRIBUCIONES VACÍAS PARA FORZAR RECÁLCULO
+      const updateBillDto: UpdateBillDto = {
+        id: String(bill.id_group || ''),
+        amount: 0, // ✅ Forzar recálculo desde cero
+        group_hours: 0, // ✅ No usar, se calculará con op_duration del grupo
+        billHoursDistribution: {
+          HOD: 0,
+          HON: 0,
+          HED: 0,
+          HEN: 0,
+          HFOD: 0,
+          HFON: 0,
+          HFED: 0,
+          HFEN: 0,
+        },
+        paysheetHoursDistribution: {
+          HOD: 0,
+          HON: 0,
+          HED: 0,
+          HEN: 0,
+          HFOD: 0,
+          HFON: 0,
+          HFED: 0,
+          HFEN: 0,
+        },
+        pays: bill.billDetails.map((detail) => ({
+          id_worker: detail.operationWorker.worker.id,
+          pay: 0, // ✅ Recalcular desde cero
+        })),
+      };
+
+      console.log(`[BillService] 🔄 Recalculando con op_duration=${validateOperationID.op_duration} (distribuciones en cero para recálculo completo)`);
+
+      // Recalcular totales con el nuevo op_duration propagado en validateOperationID
+      await this.recalculateBillTotals(
+        billId,
+        updateBillDto,
+        validateOperationID,
+        bill.id_user,
+        operationId,
+        bill.amount,
+      );
+
+      console.log(`[BillService] ✅ Factura ${billId} recalculada con nuevo compensatorio`);
+      
+      return { success: true, message: 'Factura recalculada con nuevo compensatorio' };
+    } catch (error) {
+      console.error(`[BillService] ❌ Error recalculando factura ${billId}:`, error);
+      throw error;
+    }
   }
 
   async updateStatus(id: number, status: BillStatus, userId: number) {

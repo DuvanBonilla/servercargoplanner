@@ -103,6 +103,19 @@ export class PaginateOperationService {
     whereClause.OR = [
       { client: { name: { contains: filters.search, mode: 'insensitive' } } },
       { jobArea: { name: { contains: filters.search, mode: 'insensitive' } } },
+      // ✅ BUSCAR POR SUBTASK Y CÓDIGO DE SUBTASK EN LOS TRABAJADORES
+      { 
+        workers: {
+          some: {
+            SubTask: {
+              OR: [
+                { name: { contains: filters.search, mode: 'insensitive' } },
+                { code: { contains: filters.search, mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
+      },
     ];
   }
 

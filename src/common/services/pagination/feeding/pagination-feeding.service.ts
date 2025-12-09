@@ -66,6 +66,21 @@ export class PaginationFeedingService {
                   name: true,
                 },
               },
+              // ✅ INCLUIR LOS TRABAJADORES ASIGNADOS A LA OPERACIÓN CON SUS SUBTASKS
+              workers: {
+                select: {
+                  id_subtask: true,
+                  SubTask: {
+                    select: {
+                      id: true,
+                      name: true,
+                      code: true,
+                    },
+                  },
+                },
+                // Limitar a solo un trabajador para obtener la subtask (todas deberían ser iguales en el grupo)
+                take: 1,
+              },
               
             },
           },
