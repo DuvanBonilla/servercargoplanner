@@ -6,14 +6,28 @@ export class OperationTransformerService {
   transformOperationResponse(operation) {
     if (!operation) return null;
     const { id_area, id_task, workers, inChargeOperation, ...rest } = operation;
+    // ✅ Ordenar workers por id_group y luego por id antes de transformar
+    const sortedWorkers = workers?.sort((a, b) => {
+      // Primero por grupo (null/undefined van al final)
+      if (!a.id_group && !b.id_group) return a.id - b.id;
+      if (!a.id_group) return 1;
+      if (!b.id_group) return -1;
+      
+      const groupComparison = a.id_group.localeCompare(b.id_group);
+      if (groupComparison !== 0) return groupComparison;
+      
+      // Si están en el mismo grupo, ordenar por ID (orden de creación)
+      return a.id - b.id;
+    });
     // Transformar trabajadores incluyendo el groupId
     const workersWithSchedule =
-      workers?.map((w) => {
+      sortedWorkers?.map((w) => {
         return ({
         id: w.id_worker,
         name: w.worker.name,
         dni: w.worker.dni,
         groupId: w.id_group, // Incluir el ID del grupo
+        operationWorkerId: w.id, // Incluir el ID de la relación Operation_Worker
         schedule: {
           dateStart: w.dateStart
             ? new Date(w.dateStart).toISOString().split('T')[0]
@@ -66,33 +80,76 @@ export class OperationTransformerService {
   /**
    * Agrupa trabajadores por horario y ID de grupo
    */
-  groupWorkersByScheduleAndGroup(workers) {
-    // Primero agrupar por ID de grupo
+  // groupWorkersByScheduleAndGroup(workers) {
+  //   // Primero agrupar por ID de grupo
+  //   const groupedByGroupId = {};
+
+  //   workers.forEach((worker) => {
+  //     const { groupId = 'default', ...workerData } = worker;
+
+  //     if (!groupedByGroupId[groupId]) {
+  //       groupedByGroupId[groupId] = {
+  //         groupId,
+  //         schedule: worker.schedule,
+  //         subTask: worker.subTask,
+  //         workers: [],
+  //       };
+  //     }
+
+  //     groupedByGroupId[groupId].workers.push({
+  //       id: workerData.id,
+  //       name: workerData.name,
+  //       dni: workerData.dni,
+  //     });
+  //   });
+
+  //   // Convertir el objeto en array
+  //   return Object.values(groupedByGroupId);
+  // }
+groupWorkersByScheduleAndGroup(workers) {
+    // ✅ CAMBIO CRÍTICO: Agrupar por id_group + id_tariff para evitar mezclas
     const groupedByGroupId = {};
 
-    workers.forEach((worker) => {
-      const { groupId = 'default', ...workerData } = worker;
+    workers.forEach((worker, index) => {
+      const { groupId = 'default', operationWorkerId, ...workerData } = worker;
+      
+      // ✅ Crear clave única combinando groupId + tariff para evitar conflictos
+      const tariffId = worker.schedule?.id_tariff || 'no-tariff';
+      const uniqueKey = `${groupId}_${tariffId}`;
 
-      if (!groupedByGroupId[groupId]) {
-        groupedByGroupId[groupId] = {
-          groupId,
-          schedule: worker.schedule,
-          subTask: worker.subTask,
+      if (!groupedByGroupId[uniqueKey]) {
+        groupedByGroupId[uniqueKey] = {
+          groupId: groupId, // ✅ Mantener el groupId original para el frontend
+          schedule: worker.schedule, // ✅ Schedule específico de esta combinación
+          subTask: worker.subTask,   // ✅ SubTask específico de esta combinación
           workers: [],
+          minOperationWorkerId: operationWorkerId, // ✅ ID mínimo para ordenamiento
         };
+      } else {
+        // ✅ Solo actualizar minOperationWorkerId si encontramos uno menor
+        if (operationWorkerId < groupedByGroupId[uniqueKey].minOperationWorkerId) {
+          groupedByGroupId[uniqueKey].minOperationWorkerId = operationWorkerId;
+        }
       }
 
-      groupedByGroupId[groupId].workers.push({
+      groupedByGroupId[uniqueKey].workers.push({
         id: workerData.id,
         name: workerData.name,
         dni: workerData.dni,
       });
     });
 
-    // Convertir el objeto en array
-    return Object.values(groupedByGroupId);
-  }
+    // ✅ MANTENER ORDEN POR ID DE OPERATION_WORKER (orden de creación en BD)
+    const sortedGroups = Object.values(groupedByGroupId)
+      .sort((a: any, b: any) => a.minOperationWorkerId - b.minOperationWorkerId);
 
+    return sortedGroups
+      .map((group: any) => {
+        // Eliminar campo auxiliar antes de retornar
+        const { minOperationWorkerId, ...cleanGroup } = group;
+        return cleanGroup;
+      });
+  }
   // ✅ AGREGAR MÉTODO PARA FILTRAR DUPLICADOS DE ENCARGADOS
   private removeDuplicateInCharge(inChargeData: any[]): any[] {
     if (!Array.isArray(inChargeData)) return [];

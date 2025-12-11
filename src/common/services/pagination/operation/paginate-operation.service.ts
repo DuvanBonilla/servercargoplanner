@@ -100,10 +100,14 @@ export class PaginateOperationService {
     }
 
     if (filters.search) {
+      // Verificar si el search es un número (posible ID de operación)
+    const searchAsNumber = parseInt(filters.search);
+    const isNumericSearch = !isNaN(searchAsNumber);
+
     whereClause.OR = [
       { client: { name: { contains: filters.search, mode: 'insensitive' } } },
       { jobArea: { name: { contains: filters.search, mode: 'insensitive' } } },
-      // ✅ BUSCAR POR SUBTASK Y CÓDIGO DE SUBTASK EN LOS TRABAJADORES
+      // BUSCAR POR SUBTASK Y CÓDIGO DE SUBTASK EN LOS TRABAJADORES
       { 
         workers: {
           some: {
@@ -117,6 +121,10 @@ export class PaginateOperationService {
         },
       },
     ];
+    //  AGREGAR BÚSQUEDA POR ID DE OPERACIÓN SI ES UN NÚMERO
+    if (isNumericSearch) {
+      whereClause.OR.push({ id: searchAsNumber });
+    }
   }
 
     return whereClause;

@@ -98,16 +98,17 @@ export class WorkerPay {
 }
 
 export class CreateBillDto {
-  @ApiProperty({ example: '1' })
+  @ApiProperty({ example: '1', description: 'ID de la operación a facturar' })
   @IsNumber()
   @Type(() => Number)
-  @IsOptional()
+  @Min(1)
   id_operation: number;
 
-  // @ApiProperty({ example: 'ACTIVE', enum: ['ACTIVE', 'COMPLETED'] })
-  // @IsOptional()
-  // @IsString()
-  // status?: string;
-
+  @ApiProperty({ 
+    description: 'Grupos de trabajadores con sus distribuciones horarias y pagos',
+    type: [GroupBillDto]
+  })
+  @ValidateNested({ each: true })
+  @Type(() => GroupBillDto)
   groups: GroupBillDto[];
 }

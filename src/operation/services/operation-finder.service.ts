@@ -281,8 +281,29 @@ export class OperationFinderService {
 
       // Actualizar cada trabajador con detalles completos de tarifa
       transformedOperation.workerGroups.forEach((group, index) => {
+        // ✅ OBTENER EL TARIFF_ID CORRECTO DEL PRIMER WORKER DEL GRUPO
+        // Como el transformer ya creó grupos únicos por groupId+tariffId, 
+        // todos los workers en este grupo DEBEN tener la misma tarifa
+        const firstWorkerInGroup = group.workers?.[0];
+        if (!firstWorkerInGroup) {
+          console.warn(`[FinderService] Grupo ${group.groupId} no tiene trabajadores`);
+          return;
+        }
+
+        // ✅ BUSCAR EL OPERATION_WORKER RECORD POR worker ID para obtener su tariff
+        const firstWorkerRecord = operation.workers.find(
+          (w) => w.id_worker === firstWorkerInGroup.id && w.id_group === group.groupId
+        );
+        
+        if (!firstWorkerRecord) {
+          console.warn(`[FinderService] No se encontró registro para worker ${firstWorkerInGroup.id} en grupo ${group.groupId}`);
+          return;
+        }
+
+        const correctTariffId = firstWorkerRecord.tariff?.id;
+        console.log(`[FinderService] Grupo ${index + 1} (${group.groupId}) → Usando tariff ${correctTariffId} del worker ${firstWorkerInGroup.id}`);
         const originalWorkers = operation.workers.filter(
-          (w) => w.id_group === group.groupId,
+          (w) => w.id_group === group.groupId && w.tariff?.id === correctTariffId,
         );
 
         group.tariffDetails =
@@ -297,8 +318,14 @@ export class OperationFinderService {
                 facturation_tariff: Number(
                   (originalWorkers[0].tariff as any).facturation_tariff ?? 0,
                 ),
+                // ✅ AGREGAR ID ÚNICO PARA VERIFICAR INDEPENDENCIA
+                _uniqueId: `${group.groupId}_${correctTariffId}_${Date.now()}`,
               }
-            : { paysheet_tariff: 0, facturation_tariff: 0 };
+            : { 
+              paysheet_tariff: 0, 
+              facturation_tariff: 0,
+              _uniqueId: `${group.groupId}_default_${Date.now()}`,
+              };
 
         // ✅ PROPAGAR op_duration DE LA OPERACIÓN AL GRUPO
         group.op_duration = operation.op_duration;

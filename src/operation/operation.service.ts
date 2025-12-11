@@ -699,12 +699,46 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
       // Usar transacción para eliminar la operación y sus dependencias
       return await this.prisma.$transaction(async (tx) => {
-        // 1. Eliminar todos los trabajadores asignados a la operación
+        // 1. Buscar facturas asociadas a esta operación
+        const bills = await tx.bill.findMany({
+          where: { id_operation: id },
+          select: { id: true },
+        });
+
+        // 2. Si hay facturas, eliminar primero los detalles de las facturas
+        if (bills.length > 0) {
+          const billIds = bills.map(bill => bill.id);
+          
+          console.log(`[OperationService] Eliminando detalles de ${bills.length} factura(s) asociadas a operación ${id}`);
+          
+          await tx.billDetail.deleteMany({
+            where: { 
+              id_bill: { in: billIds }
+            },
+          });
+
+          // 3. Eliminar las facturas
+          console.log(`[OperationService] Eliminando ${bills.length} factura(s) de operación ${id}`);
+          
+          await tx.bill.deleteMany({
+            where: { id_operation: id },
+          });
+        }
+
+        // 4. Eliminar registros de WorkerFeeding asociados a esta operación
+        console.log(`[OperationService] Eliminando registros de alimentación de operación ${id}`);
+        await tx.workerFeeding.deleteMany({
+          where: { id_operation: id },
+        });
+
+       
+
+        // 6. Eliminar todos los trabajadores asignados a la operación
         await tx.operation_Worker.deleteMany({
           where: { id_operation: id },
         });
 
-        // 2. Eliminar encargados si existen
+        // 7. Eliminar encargados si existen
         try {
           await tx.inChargeOperation.deleteMany({
             where: { id_operation: id },
@@ -713,10 +747,12 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           // Si la tabla no existe, continuar
         }
 
-        // 3. Eliminar la operación
+        // 8. Eliminar la operación
         const response = await tx.operation.delete({
           where: { id },
         });
+
+        console.log(`[OperationService] ✅ Operación ${id} eliminada exitosamente`);
 
         return response;
       });

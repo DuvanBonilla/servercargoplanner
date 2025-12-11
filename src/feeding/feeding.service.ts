@@ -987,11 +987,11 @@ async getMissingMealsForOperation(operationId: number) {
     const workerIsFirstDay = todayDate.getTime() === workerStartLocal.getTime();
     const workerDaysFromStart = Math.floor((todayDate.getTime() - workerStartLocal.getTime()) / (24 * 60 * 60 * 1000));
     
-    console.log(`🔍 [DEBUG] ${opWorker.worker.name}:`);
-    console.log(`   workerStartLocal: ${workerStartLocal.toISOString()}`);
-    console.log(`   todayDate: ${todayDate.toISOString()}`);
-    console.log(`   workerIsFirstDay: ${workerIsFirstDay}`);
-    console.log(`   workerDaysFromStart: ${workerDaysFromStart}`);
+    // console.log(`🔍 [DEBUG] ${opWorker.worker.name}:`);
+    // console.log(`   workerStartLocal: ${workerStartLocal.toISOString()}`);
+    // console.log(`   todayDate: ${todayDate.toISOString()}`);
+    // console.log(`   workerIsFirstDay: ${workerIsFirstDay}`);
+    // console.log(`   workerDaysFromStart: ${workerDaysFromStart}`);
     
     // Obtener hora de inicio del trabajador
     const [wHours, wMinutes] = (opWorker.timeStart || operation.timeStrat).split(':').map(Number);
@@ -1033,10 +1033,10 @@ async getMissingMealsForOperation(operationId: number) {
       }
     } else if (todayDate.getTime() > workerStartLocal.getTime()) {
       // ✅ DÍAS POSTERIORES: Solo comidas que YA PASARON HOY
-      console.log(`🎯 [DEBUG] ${opWorker.worker.name} - DÍAS POSTERIORES`);
-      console.log(`   Fecha inicio trabajador: ${workerStartLocal.toISOString().split('T')[0]}`);
-      console.log(`   Fecha hoy: ${todayDate.toISOString().split('T')[0]}`);
-      console.log(`   Hora actual: ${currentHour}:${currentMinutes} (${currentTotalMinutes} minutos)`);
+      // console.log(`🎯 [DEBUG] ${opWorker.worker.name} - DÍAS POSTERIORES`);
+      // console.log(`   Fecha inicio trabajador: ${workerStartLocal.toISOString().split('T')[0]}`);
+      // console.log(`   Fecha hoy: ${todayDate.toISOString().split('T')[0]}`);
+      // console.log(`   Hora actual: ${currentHour}:${currentMinutes} (${currentTotalMinutes} minutos)`);
       
       // Comidas que ya pasaron HOY (solo las que terminaron)
       for (const mealType of mealTypes) {
@@ -1137,9 +1137,9 @@ async getMissingMealsForOperation(operationId: number) {
         }
       }
       
-      allMissing = [...todayMissing, ...previousDaysMissing];
-      console.log(`📊 [DEBUG] ${opWorker.worker.name} - Faltantes HOY: [${todayMissing.join(', ')}]`);
-      console.log(`📊 [DEBUG] ${opWorker.worker.name} - Faltantes ANTERIORES: [${previousDaysMissing.join(', ')}]`);
+       allMissing = [...todayMissing, ...previousDaysMissing];
+      // console.log(`📊 [DEBUG] ${opWorker.worker.name} - Faltantes HOY: [${todayMissing.join(', ')}]`);
+      // console.log(`📊 [DEBUG] ${opWorker.worker.name} - Faltantes ANTERIORES: [${previousDaysMissing.join(', ')}]`);
     }
     
     if (allMissing.length > 0) {

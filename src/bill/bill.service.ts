@@ -32,12 +32,32 @@ export class BillService {
     private configurationService: ConfigurationService
   ) {}
   async create(createBillDto: CreateBillDto, userId: number) {
+    console.log('=== [BillService] Iniciando creación de factura ===');
+    console.log('[BillService] userId:', userId);
+    console.log('[BillService] createBillDto:', JSON.stringify(createBillDto, null, 2));
+    
+    // ✅ VALIDAR QUE EXISTA id_operation
+    if (!createBillDto.id_operation) {
+      console.error('[BillService] ❌ Error: id_operation no proporcionado');
+      throw new ConflictException('El ID de la operación es obligatorio para crear una factura');
+    }
+
+    // ✅ VALIDAR QUE EXISTAN GRUPOS
+    if (!createBillDto.groups || createBillDto.groups.length === 0) {
+      console.error('[BillService] ❌ Error: No se proporcionaron grupos');
+      throw new ConflictException('La operación debe tener al menos un grupo de trabajadores para facturar');
+    }
+
+    console.log(`[BillService] ✅ Validación básica correcta: ${createBillDto.groups.length} grupos a procesar`);
+
     const validateOperationID = await this.validateOperation(
       createBillDto.id_operation,
     );
     if (validateOperationID['status'] === 404) {
       return validateOperationID;
     }
+
+    console.log('[BillService] ✅ Operación validada correctamente');
 
     // Procesar todos los tipos de grupos
     await this.processJornalGroups(createBillDto, userId, validateOperationID);
@@ -57,6 +77,8 @@ export class BillService {
       validateOperationID,
       0,
     );
+
+    console.log('[BillService] ✅ Factura creada exitosamente');
 
     return {
       message: 'Cálculos y guardado de facturación realizados con éxito',

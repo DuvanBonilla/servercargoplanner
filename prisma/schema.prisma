@@ -4,9 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
-  // shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
-}
+ }
 
 model User {
   id                Int                 @id @default(autoincrement())
@@ -334,8 +332,8 @@ model Tariff {
   unitOfMeasure         UnitOfMeasure      @relation("PaysheetUnit", fields: [id_unidOfMeasure], references: [id])
   id_facturation_unit   Int?
   facturationUnit       UnitOfMeasure?     @relation("FacturationUnit", fields: [id_facturation_unit], references: [id])
-  paysheet_tariff       Decimal            @db.Decimal(10, 2)
-  facturation_tariff    Decimal            @db.Decimal(10, 2)
+  paysheet_tariff       Decimal            @db.Decimal(15, 2)
+  facturation_tariff    Decimal            @db.Decimal(15, 2)
   full_tariff           YES_NO
   compensatory          YES_NO
   alternative_paid_service   YES_NO
@@ -389,8 +387,8 @@ model Bill {
   // tariff            Tariff    @relation(fields: [id_tariff], references: [id])
   amount            Int
   number_of_workers Int
-  total_bill        Decimal   @db.Decimal(10, 2)
-  total_paysheet    Decimal   @db.Decimal(10, 2)
+  total_bill        Decimal   @db.Decimal(15, 2)
+  total_paysheet    Decimal   @db.Decimal(15, 2)
   week_number       Int
   status            BillStatus @default(ACTIVE)
   number_of_hours   Decimal?  @db.Decimal(4, 2)
@@ -428,9 +426,9 @@ model BillDetail {
   id_operation_worker Int
   operationWorker Operation_Worker @relation(fields: [id_operation_worker], references: [id])
   pay_unit            Decimal?           @db.Decimal(4, 2)
-  pay_rate           Decimal?           @db.Decimal(10, 2)
-  total_bill        Decimal?           @db.Decimal(10, 2)
-  total_paysheet    Decimal?           @db.Decimal(10, 2)
+  pay_rate           Decimal?           @db.Decimal(15, 2)
+  total_bill        Decimal?           @db.Decimal(15, 2)
+  total_paysheet    Decimal?           @db.Decimal(15, 2)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
