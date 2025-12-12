@@ -70,15 +70,16 @@ export class OperationFinderService {
         where,
         include: {
           ...this.defaultInclude,
-          Bill: {
-            include: {
-              billDetails: {
-                include: {
-                  operationWorker: true,
-                },
-              },
-            },
-          },
+          Bill: true,
+          // Bill: {
+          //   include: {
+          //     billDetails: {
+          //       include: {
+          //         operationWorker: true,
+          //       },
+          //     },
+          //   },
+          // },
         },
       });
 
