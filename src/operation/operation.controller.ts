@@ -392,8 +392,21 @@ console.log('Body crudo recibido:', arguments[0]);
   }
 
   @Delete(':id')
+  @ApiOperation({
+    summary: 'Eliminar operación o grupo específico',
+    description:
+      'Si id_group no se proporciona: si hay un solo grupo se elimina automáticamente, si hay múltiples grupos devuelve la lista para que el usuario elija. Solo se pueden eliminar grupos con facturas en estado ACTIVE.',
+  })
+  @ApiQuery({
+    name: 'id_group',
+    required: false,
+    type: String,
+    description: 'ID del grupo a eliminar (opcional)',
+  })
   async remove(
     @Param('id', ParseIntPipe) id: number,
+    @Query('id_group') id_group: string,
+    @CurrentUser('userId') userId: number,
     @CurrentUser('isSupervisor') isSupervisor: number,
     @CurrentUser('isAdmin') isAdmin: number,
     @CurrentUser('siteId') siteId: number,
@@ -403,11 +416,15 @@ console.log('Body crudo recibido:', arguments[0]);
       id,
       isAdmin ? siteId : undefined,
       isSupervisor ? subsiteId : undefined,
+      id_group || undefined,
+      userId,
     );
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
     } else if (response['status'] === 400) {
       throw new BadRequestException(response['message']);
+    } else if (response['status'] === 403) {
+      throw new ForbiddenException(response['message']);
     }
 
     return response;

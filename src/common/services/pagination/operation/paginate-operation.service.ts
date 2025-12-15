@@ -73,12 +73,27 @@ export class PaginateOperationService {
       whereClause.status = { in: filters.status };
     }
 
-    if (filters.dateStart) {
-      whereClause.dateStart = { gte: filters.dateStart };
-    }
+    // ✅ FILTROS DE FECHA: Buscar operaciones que INICIARON en el rango
+    if (filters.dateStart && filters.dateEnd) {
+      const startDate = new Date(filters.dateStart);
+      const endDate = new Date(filters.dateEnd);
 
-    if (filters.dateEnd) {
-      whereClause.dateEnd = { lte: filters.dateEnd };
+      console.log('[PaginateOperationService] Filtros de fecha aplicados:');
+      console.log('  - dateStart:', startDate.toISOString());
+      console.log('  - dateEnd:', endDate.toISOString());
+      console.log('  - Status en filtros:', filters.status || 'TODOS');
+
+      // Filtrar solo por operaciones que INICIARON dentro del rango
+      whereClause.dateStart = {
+        gte: startDate,
+        lte: endDate
+      };
+      
+      console.log('[PaginateOperationService] whereClause completo:', JSON.stringify(whereClause, null, 2));
+    } else if (filters.dateStart) {
+      whereClause.dateStart = { gte: filters.dateStart };
+    } else if (filters.dateEnd) {
+      whereClause.dateStart = { lte: filters.dateEnd };
     }
 
     if (filters.jobAreaId) {
@@ -100,32 +115,32 @@ export class PaginateOperationService {
     }
 
     if (filters.search) {
-      // Verificar si el search es un número (posible ID de operación)
-    const searchAsNumber = parseInt(filters.search);
-    const isNumericSearch = !isNaN(searchAsNumber);
+      const searchAsNumber = parseInt(filters.search);
+      const isNumericSearch = !isNaN(searchAsNumber);
 
-    whereClause.OR = [
-      { client: { name: { contains: filters.search, mode: 'insensitive' } } },
-      { jobArea: { name: { contains: filters.search, mode: 'insensitive' } } },
-      // BUSCAR POR SUBTASK Y CÓDIGO DE SUBTASK EN LOS TRABAJADORES
-      { 
-        workers: {
-          some: {
-            SubTask: {
-              OR: [
-                { name: { contains: filters.search, mode: 'insensitive' } },
-                { code: { contains: filters.search, mode: 'insensitive' } },
-              ],
+      const searchConditions: any[] = [
+        { client: { name: { contains: filters.search, mode: 'insensitive' } } },
+        { jobArea: { name: { contains: filters.search, mode: 'insensitive' } } },
+        { 
+          workers: {
+            some: {
+              SubTask: {
+                OR: [
+                  { name: { contains: filters.search, mode: 'insensitive' } },
+                  { code: { contains: filters.search, mode: 'insensitive' } },
+                ],
+              },
             },
           },
         },
-      },
-    ];
-    //  AGREGAR BÚSQUEDA POR ID DE OPERACIÓN SI ES UN NÚMERO
-    if (isNumericSearch) {
-      whereClause.OR.push({ id: searchAsNumber });
+      ];
+
+      if (isNumericSearch) {
+        searchConditions.push({ id: searchAsNumber });
+      }
+
+      whereClause.OR = searchConditions;
     }
-  }
 
     return whereClause;
   }

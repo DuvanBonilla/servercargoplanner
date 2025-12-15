@@ -156,17 +156,39 @@ export class OperationFinderService {
     id_subsite?: number,
   ) {
     try {
+      // No normalizar horas - usar fechas tal como vienen
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      console.log('[OperationFinderService] Búsqueda por rango de fechas:');
+      console.log('  - Fecha inicio:', startDate.toISOString());
+      console.log('  - Fecha fin:', endDate.toISOString());
+
       const where: any = {
-        dateStart: { gte: start },
-        dateEnd: { lte: end },
+        dateStart: {
+          gte: startDate,
+          lte: endDate
+        }
       };
+      
       if (typeof id_site === 'number') where.id_site = id_site;
       if (typeof id_subsite === 'number') where.id_subsite = id_subsite;
+
+      console.log('[OperationFinderService] Filtros aplicados:', JSON.stringify(where, null, 2));
 
       const response = await this.prisma.operation.findMany({
         where,
         include: this.defaultInclude,
+        orderBy: { dateStart: 'desc' },
       });
+
+      console.log(`[OperationFinderService] Operaciones encontradas: ${response.length}`);
+      
+      if (response.length > 0) {
+        response.forEach(op => {
+          console.log(`  - ID: ${op.id}, Status: ${op.status}, dateStart: ${op.dateStart}, dateEnd: ${op.dateEnd}`);
+        });
+      }
 
       if (response.length === 0) {
         return { message: 'No operations found in this range', status: 404 };

@@ -322,6 +322,26 @@ export class RemoveWorkerFromOperationService {
       throw new BadRequestException('Parámetros inválidos: operationId, workerId y groupId son requeridos');
     }
 
+    // ✅ VALIDAR QUE LA FACTURA DEL GRUPO NO ESTÉ COMPLETED
+    const billInGroup = await this.prisma.bill.findFirst({
+      where: {
+        id_operation: operationId,
+        id_group: groupId,
+        status: 'COMPLETED',
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (billInGroup) {
+      console.log(`[RemoveWorkerService] ❌ Intento de eliminar trabajador de grupo con factura COMPLETED`);
+      throw new BadRequestException(
+        `No se puede eliminar el trabajador del grupo porque la factura asociada (ID: ${billInGroup.id}) tiene estado COMPLETED. Las facturas completadas no pueden ser modificadas.`
+      );
+    }
+
     // Validar que el trabajador existe - QUITAR operationIds
     console.log('[RemoveWorkerService] Validando trabajador:', workerId);
     await this.validationService.validateAllIds({
