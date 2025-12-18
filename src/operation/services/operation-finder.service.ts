@@ -43,7 +43,9 @@ export class OperationFinderService {
 
       const response = await this.prisma.operation.findMany({
         where,
-        include: this.defaultInclude,
+        include: { ...this.defaultInclude, //traer la bill en el ednpoint de operation find all
+          Bill: true
+        },
       });
 
       return response.map((op) =>
@@ -223,7 +225,9 @@ export class OperationFinderService {
         limit,
         filters,
         activatePaginated,
-        defaultInclude: this.defaultInclude,
+        defaultInclude:{ ...this.defaultInclude,
+          Bill: true,
+        },
         transformer: this.transformer,
       });
     } catch (error) {

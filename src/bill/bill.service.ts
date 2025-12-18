@@ -338,11 +338,12 @@ export class BillService {
 
     const quantityGroups = groupsSource.filter(
       (group) =>
-        group.schedule.unit_of_measure !== 'HORAS' &&
-        group.schedule.unit_of_measure !== 'JORNAL' &&
+        group.schedule?.unit_of_measure !== 'HORAS' &&
+        group.schedule?.unit_of_measure !== 'JORNAL' &&
+        group.schedule?.alternative_paid_service !== 'YES' &&
         // Acepta null o undefined en cualquiera de los dos campos
-        (group.schedule.id_facturation_unit === null ||
-          group.schedule.id_facturation_unit === undefined) &&
+        (group.schedule?.id_facturation_unit === null ||
+          group.schedule?.id_facturation_unit === undefined) &&
         (!group.tariffDetails?.facturationUnit ||
           group.tariffDetails?.facturationUnit === null),
     );
@@ -355,7 +356,7 @@ export class BillService {
 
     for (const group of createBillDto.groups) {
       const matchingGroupSummary = quantityGroupsFiltered.find(
-        (summary) => summary.groupId === group.id,
+        (summary) => summary.groupId === group.id
       );
       if (!matchingGroupSummary) continue;
 
@@ -860,6 +861,7 @@ export class BillService {
       const operationWorker = await this.findOperationWorker(
         worker.id,
         operationId,
+        groupDto.id,
       );
 
       const totalPaysheetWorker = this.calculateTotalWorker(
@@ -901,6 +903,7 @@ export class BillService {
       const operationWorker = await this.findOperationWorker(
         worker.id,
         operationId,
+        group.id,
       );
       const groupDto = this.getGroupDto([group], result.groupId);
 
@@ -949,6 +952,7 @@ export class BillService {
       const operationWorker = await this.findOperationWorker(
         worker.id,
         operationId,
+        group.id,
       );
 
       const totalPaysheetWorker = this.calculateTotalWorker(
@@ -1001,6 +1005,7 @@ export class BillService {
       const operationWorker = await this.findOperationWorker(
         worker.id,
         operationId,
+        group.id,
       );
 
       const totalUnitPays = group.pays.reduce(
@@ -1043,19 +1048,52 @@ export class BillService {
   }
 
   // Funciones utilitarias reutilizables
-  private async findOperationWorker(workerId: number, operationId: number) {
+// Funciones utilitarias reutilizables
+  private async findOperationWorker(workerId: number, operationId: number, groupId?: string) {
+    const whereClause: any = {
+      id_worker: workerId,
+      id_operation: operationId,
+    };
+    
+    // ✅ CRÍTICO: Si se proporciona groupId, úsalo para diferenciar al mismo worker en diferentes grupos
+    if (groupId) {
+      whereClause.id_group = groupId;
+      console.log(`🔍 [findOperationWorker] Buscando worker ${workerId} en grupo ${groupId}`);
+    }
+    
     const operationWorker = await this.prisma.operation_Worker.findFirst({
-      where: {
-        id_worker: workerId,
-        id_operation: operationId,
+      where: whereClause,
+      include: {
+        tariff: {
+          include: {
+            subTask: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+            unitOfMeasure: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
 
     if (!operationWorker) {
       throw new ConflictException(
-        `No se encontró el trabajador con ID: ${workerId}`,
+        `No se encontró el trabajador con ID: ${workerId} en operación ${operationId}${groupId ? ` y grupo ${groupId}` : ''}`,
       );
     }
+    
+    console.log(`✅ [findOperationWorker] Encontrado worker ${workerId}:`);
+    console.log(`   - Tarifa ID: ${operationWorker.tariff?.id}`);
+    console.log(`   - Subservicio: ${operationWorker.tariff?.subTask?.name} (${operationWorker.tariff?.subTask?.code})`);
+    console.log(`   - Unidad: ${operationWorker.tariff?.unitOfMeasure?.name}`);
 
     return operationWorker;
   }
@@ -1078,12 +1116,15 @@ export class BillService {
       payUnits = workers.length;
     }
 
+
     const payObj = Array.isArray(group.pays)
       ? group.pays.find((p) => p.id_worker === worker.id)
       : null;
     const individualPayment = payObj?.pay ?? 1;
 
-    return (totalGroup / payUnits) * individualPayment;
+    const totalWorker = (totalGroup / payUnits) * individualPayment
+
+    return totalWorker;
   }
   async findAll(id_site?: number, id_subsite?: number | null) {
      const whereClause: any = {};
@@ -1150,8 +1191,8 @@ export class BillService {
                     subTask: {
                       select: {
                         id: true,
-                        code: true,
                         name: true,
+                        code: true,
                       },
                     },
                   },
@@ -1348,8 +1389,8 @@ export class BillService {
                     subTask: {
                       select: {
                         id: true,
-                        code: true,
                         name: true,
+                        code: true,
                       },
                     },
                     
@@ -1773,7 +1814,7 @@ export class BillService {
       matchingGroupSummary.schedule.unit_of_measure === 'HORAS' &&
       matchingGroupSummary.tariffDetails?.alternative_paid_service !== 'YES'
     ) {
-
+// AGREGAR workerCount para grupos de HORAS
       matchingGroupSummary.workerCount =
         matchingGroupSummary.workers?.length || 0;
       

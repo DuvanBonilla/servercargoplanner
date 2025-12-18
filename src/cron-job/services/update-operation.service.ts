@@ -265,33 +265,64 @@ endDateTime.setHours(hours, minutes, 0, 0);
               `Released ${result.count} workers from operation ${operation.id}`,
             );
           }
+// Paso 3: Calcular op_duration antes de actualizar a COMPLETED
+          let opDuration = 0;
+          if (operation.dateStart && operation.timeStrat && operation.dateEnd && operation.timeEnd) {
+            const start = new Date(operation.dateStart);
+            const [sh, sm] = operation.timeStrat.split(':').map(Number);
+            start.setHours(sh, sm, 0, 0);
 
-          // Paso 3: Actualizar el estado de la operación a COMPLETED
+            const end = new Date(operation.dateEnd);
+            const [eh, em] = operation.timeEnd.split(':').map(Number);
+            end.setHours(eh, em, 0, 0);
+
+            const diffMs = end.getTime() - start.getTime();
+            opDuration = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100; // 2 decimales
+            opDuration = opDuration > 0 ? opDuration : 0;
+            
+            this.logger.debug(
+              `Calculated op_duration for operation ${operation.id}: ${opDuration} hours`,
+            );
+          }
+
+          // Paso 4: Actualizar el estado de la operación a COMPLETED con op_duration
           const response = await this.prisma.operation.update({
             where: { id: operation.id },
-            data: { status: 'COMPLETED' },
+            data: { status: 'COMPLETED',
+             op_duration: opDuration
+             },
           });
 
-          // Paso 4: Crear factura en ceros automáticamente
-          try {
-            // Obtener grupos únicos de la operación
+          // Paso 5: Crear factura automáticamente clalculando compensatorio
+         try {
+            // // Obtener grupos únicos de la operación con información completa
+            // const operationWorkersWithDetails = await this.prisma.operation_Worker.findMany({
+            //   where: { id_operation: operation.id },
+            //   include: {
+            //     worker: true,
+            //   },
+            // });
+
             const uniqueGroups = [
               ...new Set(operationWorkers.map((ow) => ow.id_group)),
             ];
 
-            // Crear grupos para la factura en ceros
-            const billGroups = uniqueGroups
-              // .filter((groupId) => groupId !== null) // filtra los null
-              .map((groupId) => ({
+            this.logger.debug(
+              `Creando factura para operación ${operation.id} con op_duration: ${opDuration} horas`,
+            );
+
+            // Crear grupos para la factura con op_duration para calcular compensatorio
+            const billGroups = uniqueGroups.map((groupId) => {
+              const groupWorkers = operationWorkers.filter((ow) => ow.id_group === groupId);
+              
+              return {
                 id: String(groupId),
                 amount: 0,
-                group_hours: 0,
-                pays: operationWorkers
-                  .filter((ow) => ow.id_group === groupId)
-                  .map((ow) => ({
-                    id_worker: ow.id_worker,
-                    pay: 0,
-                  })),
+                group_hours: opDuration, // ✅ USAR op_duration REAL EN LUGAR DE 0
+                pays: groupWorkers.map((ow) => ({
+                  id_worker: ow.id_worker,
+                  pay: 0,
+                })),
                 paysheetHoursDistribution: {
                   HOD: 0,
                   HON: 0,
@@ -312,23 +343,28 @@ endDateTime.setHours(hours, minutes, 0, 0);
                   HFED: 0,
                   HFEN: 0,
                 },
-              }));
+              };
+            });
 
             const createBillDto = {
               id_operation: operation.id,
               groups: billGroups,
             };
 
+            this.logger.debug(
+             `DTO de factura con op_duration: ${JSON.stringify({ op_duration: opDuration, groupsCount: billGroups.length })}`,
+            );
+
             // Llamar al servicio de facturación (userId 1 para sistema automático)
             await this.billService.create(createBillDto, 1);
 
             billsCreatedCount++;
             this.logger.debug(
-              `Factura en ceros creada automáticamente para operación ${operation.id}`,
+              `Factura creada automáticamente para operación ${operation.id} con compensatorio calculado`,
             );
           } catch (billError) {
             this.logger.error(
-              `Error creando factura en ceros para operación ${operation.id}:`,
+            `Error creando factura para operación ${operation.id}:`,
               billError,
             );
             // No interrumpir el proceso por error en facturación

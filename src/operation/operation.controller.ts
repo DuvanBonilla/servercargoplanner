@@ -23,7 +23,7 @@ import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { ParseIntPipe } from 'src/pipes/parse-int/parse-int.pipe';
 import { DateTransformPipe } from 'src/pipes/date-transform/date-transform.pipe';
-import { ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { Role, StatusOperation } from '@prisma/client';
@@ -425,6 +425,68 @@ console.log('Body crudo recibido:', arguments[0]);
       throw new BadRequestException(response['message']);
     } else if (response['status'] === 403) {
       throw new ForbiddenException(response['message']);
+    }
+
+    return response;
+  }
+
+  @Delete(':id/groups/bulk')
+  @ApiOperation({
+    summary: 'Eliminar múltiples grupos de una operación',
+    description:
+      'Elimina varios grupos a la vez aplicando las mismas validaciones: no permite eliminar grupos con facturas COMPLETED y SUPERVISOR solo puede eliminar de la semana actual.',
+  })
+  @ApiBody({
+    description: 'Array de IDs de grupos a eliminar',
+    schema: {
+      type: 'object',
+      properties: {
+        id_groups: {
+          type: 'array',
+          items: {
+            type: 'string',
+          },
+          example: [
+            '83f2e536-f56c-4af4-8cf6-28b880b89309',
+            'a19a3bde-a8c8-4b7e-a8cc-cd24e51f8d67',
+            'f4d3c2b1-a0e9-4d8c-b7a6-5e4d3c2b1a09',
+          ],
+          description: 'Lista de UUIDs de los grupos a eliminar',
+        },
+      },
+      required: ['id_groups'],
+    },
+  })
+  async removeMultipleGroups(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('id_groups') id_groups: string[],
+    @CurrentUser('userId') userId: number,
+    @CurrentUser('isSupervisor') isSupervisor: number,
+    @CurrentUser('isAdmin') isAdmin: number,
+    @CurrentUser('siteId') siteId: number,
+    @CurrentUser('subsiteId') subsiteId: number,
+  ) {
+    if (!id_groups || !Array.isArray(id_groups) || id_groups.length === 0) {
+      throw new BadRequestException('Se requiere un array de id_groups con al menos un elemento');
+    }
+
+    const response = await this.operationService.removeMultipleGroups(
+      id,
+      id_groups,
+      isAdmin ? siteId : undefined,
+      isSupervisor ? subsiteId : undefined,
+      userId,
+    );
+
+    if (response['status'] === 404) {
+      throw new NotFoundException(response['message']);
+    } else if (response['status'] === 400) {
+      throw new BadRequestException(response['message']);
+    } else if (response['status'] === 403) {
+      throw new ForbiddenException(response['message']);
+    } else if (response['status'] === 207) {
+      // 207 Multi-Status: algunos grupos se eliminaron, otros no
+      return response;
     }
 
     return response;
