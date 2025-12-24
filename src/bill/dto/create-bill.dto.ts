@@ -9,6 +9,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { AdditionalHours } from '../entities/worker-group-analysis.types';
+import { Decimal } from '@prisma/client/runtime/library';
 
 export class HoursDistribution {
   @ApiProperty({ example: '1' })
@@ -64,7 +65,7 @@ export class GroupBillDto {
   @Min(0)
   @Type(() => Number)
   @IsOptional()
-  group_hours?: number;
+  group_hours: Decimal;
 
 
   @ApiProperty({ example: 'Observation text' })

@@ -8,6 +8,7 @@ import {
   getColombianEndOfDay,
 } from 'src/common/utils/dateColombia';
 import { BillService } from 'src/bill/bill.service';
+import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class UpdateOperationService {
@@ -319,7 +320,7 @@ endDateTime.setHours(hours, minutes, 0, 0);
               return {
                 id: String(groupId),
                 amount: 0,
-                group_hours: opDuration, // ✅ USAR op_duration REAL EN LUGAR DE 0
+                group_hours: new Decimal(opDuration), // ✅ USAR op_duration REAL EN LUGAR DE 0
                 pays: groupWorkers.map((ow) => ({
                   id_worker: ow.id_worker,
                   pay: 0,

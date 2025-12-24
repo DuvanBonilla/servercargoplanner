@@ -4,6 +4,7 @@ import { IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-valid
 import { Type } from 'class-transformer';
 import { IsEnum } from 'class-validator';
 import { BillStatus } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 /**
  * DTO para actualizar un Bill existente.
@@ -72,7 +73,7 @@ export class UpdateBillDto {
   @Min(0)
   @Type(() => Number)
   @IsOptional()
-  group_hours: number;
+  group_hours: Decimal;
 
   @ApiProperty({ 
     example: 'Duración ajustada por cambio en fechas de trabajadores',

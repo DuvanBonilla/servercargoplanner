@@ -19,6 +19,7 @@ import {
   getColombianDateTime,
   getColombianTimeString,
 } from 'src/common/utils/dateColombia';
+import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class BillService {
@@ -291,7 +292,7 @@ export class BillService {
       const billSaved = await this.prisma.bill.create({
         data: {
           ...billData,
-          group_hours: group.group_hours,
+          group_hours: group.group_hours ? Number(group.group_hours) : null,
         },
       });
 
@@ -450,8 +451,9 @@ export class BillService {
     // Calcular facturación
     if (facturationUnit === 'HORAS' || facturationUnit === 'JORNAL') {
       if (matchingGroupSummary.group_tariff === 'YES') {
+        const groupHoursNum = group.group_hours ? Number(group.group_hours) : 0;
         const factResult =
-          (group.group_hours || 0) * (matchingGroupSummary.facturation_tariff ?? 0);
+          groupHoursNum * (matchingGroupSummary.facturation_tariff ?? 0);
         totalFacturation = factResult;
       } else if (facturationUnit === 'HORAS') {
         const factResult =
@@ -1707,7 +1709,7 @@ export class BillService {
       const updateBillDto: UpdateBillDto = {
         id: String(bill.id_group || ''),
         amount: bill.amount,
-        group_hours: bill.group_hours || 0,
+        group_hours: bill.group_hours ? new Decimal(bill.group_hours.toString()) : new Decimal(0),
         billHoursDistribution: {
           HOD: Number(bill.FAC_HOD) || 0,
           HON: Number(bill.FAC_HON) || 0,
