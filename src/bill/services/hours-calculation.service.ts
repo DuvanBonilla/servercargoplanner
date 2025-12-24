@@ -375,7 +375,8 @@ export class HoursCalculationService {
     // Facturación
     let billingTotal = 0;
     if (group.group_tariff === 'YES') {
-      billingTotal = (groupBill.group_hours || 0) * (group.facturation_tariff || 0);
+      const groupHoursNum = groupBill.group_hours ? Number(groupBill.group_hours) : 0;
+      billingTotal = groupHoursNum * (group.facturation_tariff || 0);
     } else if (
       group.facturation_unit !== 'HORAS' &&
       group.facturation_unit !== 'JORNAL'
