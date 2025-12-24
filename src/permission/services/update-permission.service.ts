@@ -112,7 +112,7 @@ export class UpdatePermissionService {
 
       if (expireDateOnly.getTime() < startOfDayTime) {
         expiredWorkerIds.push(p.id_worker);
-        this.logger.log(`✅ Worker ${p.id_worker}: Permission EXPIRED (date is before today)`);
+        // this.logger.log(`✅ Worker ${p.id_worker}: Permission EXPIRED (date is before today)`);
         continue;
       }
 
@@ -135,9 +135,9 @@ export class UpdatePermissionService {
 
       if (expireTime <= nowTime) {
         expiredWorkerIds.push(p.id_worker);
-        this.logger.log(`✅ Worker ${p.id_worker}: Permission EXPIRED at ${expireDateTime.toLocaleString('sv-SE')}`);
+        // this.logger.log(`✅ Worker ${p.id_worker}: Permission EXPIRED at ${expireDateTime.toLocaleString('sv-SE')}`);
       } else {
-        this.logger.log(`⏳ Worker ${p.id_worker}: Permission NOT yet expired (expires in ${expireTime - nowTime}ms at ${expireDateTime.toLocaleString('sv-SE')})`);
+        // this.logger.log(`⏳ Worker ${p.id_worker}: Permission NOT yet expired (expires in ${expireTime - nowTime}ms at ${expireDateTime.toLocaleString('sv-SE')})`);
       }
     }
 
@@ -152,7 +152,7 @@ export class UpdatePermissionService {
           dateDisableEnd: null,
         },
       });
-      this.logger.log(`✔️ Updated ${workerIds.length} workers to AVALIABLE`);
+      // this.logger.log(`✔️ Updated ${workerIds.length} workers to AVALIABLE`);
     } else {
       this.logger.log(`ℹ️ No expired permissions found`); 
     }

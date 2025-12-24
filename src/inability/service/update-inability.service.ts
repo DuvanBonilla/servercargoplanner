@@ -72,13 +72,13 @@ export class UpdateInabilityService {
       // Si la fecha de fin es anterior a hoy, ya está vencida
       if (endDateTime < startOfDayTime) {
         expiredWorkerIds.push(inability.id_worker);
-        this.logger.log(`✅ Worker ${inability.id_worker}: Inability EXPIRED (date is before today)`);
+        // this.logger.log(`✅ Worker ${inability.id_worker}: Inability EXPIRED (date is before today)`);
       } else if (endDateTime === startOfDayTime) {
         // Si es exactamente hoy, también se considera vencida (el permiso/incapacidad terminó)
         expiredWorkerIds.push(inability.id_worker);
-        this.logger.log(`✅ Worker ${inability.id_worker}: Inability EXPIRED (date is today)`);
+        // this.logger.log(`✅ Worker ${inability.id_worker}: Inability EXPIRED (date is today)`);
       } else {
-        this.logger.log(`⏳ Worker ${inability.id_worker}: Inability NOT yet expired (expires in ${endDateTime - startOfDayTime}ms at ${endDateOnly.toLocaleString('sv-SE')})`);
+        // this.logger.log(`⏳ Worker ${inability.id_worker}: Inability NOT yet expired (expires in ${endDateTime - startOfDayTime}ms at ${endDateOnly.toLocaleString('sv-SE')})`);
       }
     }
 
@@ -93,7 +93,7 @@ export class UpdateInabilityService {
           dateDisableEnd: null,
         },
       });
-      this.logger.log(`✔️ Updated ${workerIds.length} workers to AVALIABLE due to expired inabilities`);
+      // this.logger.log(`✔️ Updated ${workerIds.length} workers to AVALIABLE due to expired inabilities`);
     } else {
       this.logger.log(`ℹ️ No expired inabilities found`);
     }

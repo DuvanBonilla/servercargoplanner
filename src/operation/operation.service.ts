@@ -370,11 +370,61 @@ export class OperationService {
       ...directFields
     } = updateOperationDto;
 
+    // ✅ VERIFICAR SI LA OPERACIÓN ESTÁ COMPLETADA ANTES DE PROCESAR TRABAJADORES
+    const currentOperation = await this.prisma.operation.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+
+    const isCompletedOperation = currentOperation?.status === 'COMPLETED';
+
+    // Process workers
+    // if (workers) {
+    //   console.log('[OperationService] Procesando workers con nuevo flujo V2');
+    //   await this.processWorkersOperationsV2(id, workers);
+    // }
+
+    //Process workers
+
     // Process workers
     if (workers) {
       console.log('[OperationService] Procesando workers con nuevo flujo V2');
-      await this.processWorkersOperationsV2(id, workers);
+      
+      // ✅ SI ES OPERACIÓN COMPLETADA Y HAY CAMBIOS EN TRABAJADORES, RECALCULAR FACTURA
+      if (isCompletedOperation) {
+        console.log('[OperationService] 🔄 Operación COMPLETED detectada, procesando cambios en trabajadores...');
+        await this.processWorkersOperationsV2(id, workers, true); // ✅ Pasar flag isCompleted
+        
+        // Buscar y recalcular factura
+        try {
+          const bill = await this.prisma.bill.findFirst({
+            where: { id_operation: id },
+          });
+
+          if (bill) {
+            console.log(`[OperationService] 📄 Factura encontrada (ID: ${bill.id}), recalculando por cambios en trabajadores...`);
+            
+            // Importar dinámicamente BillService para evitar dependencia circular
+            const { BillService } = await import('../bill/bill.service');
+            const billService = this.moduleRef.get(BillService, { strict: false });
+            
+            // Recalcular la factura por cambios en trabajadores
+            await billService.recalculateBillAfterOpDurationChange(bill.id, id);
+            
+            console.log(`[OperationService] ✅ Factura ${bill.id} recalculada por cambios en trabajadores`);
+          } else {
+            console.log('[OperationService] ⚠️ No se encontró factura para esta operación completada');
+          }
+        } catch (error) {
+          console.error('[OperationService] ❌ Error recalculando factura por cambios en trabajadores:', error.message);
+          // No lanzar error para no bloquear la actualización de la operación
+        }
+      } else {
+        // Operación no completada, proceso normal
+        await this.processWorkersOperationsV2(id, workers);
+      }
     }
+
 
     // ✅ PROCESAR GRUPOS (FINALIZACIÓN DE GRUPOS)
     if (groups && Array.isArray(groups) && groups.length > 0) {
@@ -694,35 +744,48 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           `[OperationService] Operation_Worker IDs: ${operationWorkerIds.join(', ')}`,
         );
 
-        // 2. Si hay factura del grupo, eliminar TODOS sus BillDetails y luego la factura
-        if (billInGroup && billInGroup.status === 'ACTIVE') {
+        // 2. PRIMERO: Eliminar TODOS los BillDetails que referencian a los Operation_Worker del grupo
+        if (operationWorkerIds.length > 0) {
           console.log(
-            `[OperationService] Eliminando TODOS los BillDetails de la factura ${billInGroup.id} del grupo ${id_group}`,
+            // `[OperationService] Eliminando TODOS los BillDetails que referencian a los ${operationWorkerIds.length} Operation_Worker del grupo`,
           );
           
           const deletedAllBillDetails = await tx.billDetail.deleteMany({
             where: { 
-              id_bill: billInGroup.id
+              id_operation_worker: { in: operationWorkerIds }
             },
           });
           
           console.log(
-            `[OperationService] ✅ Eliminados ${deletedAllBillDetails.count} BillDetails de la factura ${billInGroup.id}`,
-          );
-          
-          console.log(
-            `[OperationService] Eliminando factura ${billInGroup.id} del grupo ${id_group}`,
-          );
-          await tx.bill.delete({
-            where: { id: billInGroup.id },
-          });
-          
-          console.log(
-            `[OperationService] ✅ Factura ${billInGroup.id} eliminada`,
+            `[OperationService] ✅ Eliminados ${deletedAllBillDetails.count} BillDetails que referenciaban a los Operation_Worker`,
           );
         }
 
-        // 3. Eliminar WorkerFeeding asociados a esta operación y trabajadores del grupo
+        // 3. Si hay factura del grupo y quedó vacía (sin BillDetails), eliminarla
+        if (billInGroup && billInGroup.status === 'ACTIVE') {
+          // Verificar si la factura tiene BillDetails restantes
+          const remainingBillDetails = await tx.billDetail.count({
+            where: { id_bill: billInGroup.id },
+          });
+
+          if (remainingBillDetails === 0) {
+            console.log(
+              `[OperationService] Eliminando factura ${billInGroup.id} del grupo ${id_group} (sin BillDetails restantes)`,
+            );
+            await tx.bill.delete({
+              where: { id: billInGroup.id },
+            });
+            console.log(
+              `[OperationService] ✅ Factura ${billInGroup.id} eliminada`,
+            );
+          } else {
+            console.log(
+              `[OperationService] ℹ️ Factura ${billInGroup.id} conservada (tiene ${remainingBillDetails} BillDetails de otros grupos)`,
+            );
+          }
+        }
+
+        // 4. Eliminar WorkerFeeding asociados a esta operación y trabajadores del grupo
         if (workerIds.length > 0) {
           console.log(
             `[OperationService] Eliminando WorkerFeeding de ${workerIds.length} trabajadores`,
@@ -735,7 +798,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           });
         }
 
-        // 4. Eliminar Operation_Workers del grupo - SIEMPRE (basado en id_group)
+        // 5. Eliminar Operation_Workers del grupo - SIEMPRE (basado en id_group)
         console.log(
           `[OperationService] Eliminando ${operationWorkerIds.length} registros de Operation_Worker del grupo ${id_group}`,
         );
@@ -1164,8 +1227,12 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         };
       }
     } catch (error) {
-      console.error('[OperationService] Error en eliminación múltiple:', error);
-      throw new Error(error.message);
+      console.error('[OperationService] ❌ Error crítico en eliminación múltiple:', error);
+      return {
+        message: `Error crítico en eliminación múltiple: ${error.message}`,
+        status: 500,
+        error: error.message,
+      };
     }
   }
 
@@ -1288,9 +1355,12 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
     });
   }
 
-  private async processWorkersOperationsV2(operationId: number, workersOps: any) {
+  private async processWorkersOperationsV2(operationId: number, workersOps: any, isCompleted: boolean = false) {
   console.log('[OperationService] Procesando operaciones de trabajadores V2:', JSON.stringify(workersOps, null, 2));
 
+  if (isCompleted) {
+    console.log('[OperationService] 🔄 Procesando cambios en operación COMPLETADA');
+  }
   // 1. DESCONECTAR/ELIMINAR TRABAJADORES (mantener igual)
   if (workersOps.disconnect && Array.isArray(workersOps.disconnect) && workersOps.disconnect.length > 0) {
     // console.log('[OperationService] Eliminando trabajadores:', workersOps.disconnect);
@@ -1553,18 +1623,53 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           // ✅ CASO: AGREGAR A GRUPO EXISTENTE REAL
           console.log('[OperationService] 🔗 Agregando a grupo existente real:', connectOp.groupId);
           
+          // ✅ OBTENER VALORES DEL GRUPO EXISTENTE PARA HEREDARLOS
+          const existingGroupWorker = await this.prisma.operation_Worker.findFirst({
+            where: {
+              id_operation: operationId,
+              id_group: connectOp.groupId,
+            },
+            include: {
+              tariff: true,
+            },
+          });
+
+          console.log('[OperationService] 🔍 Worker existente en grupo encontrado:', {
+            id_group: existingGroupWorker?.id_group,
+            dateStart: existingGroupWorker?.dateStart,
+            timeStart: existingGroupWorker?.timeStart,
+            id_task: existingGroupWorker?.id_task,
+            id_tariff: existingGroupWorker?.id_tariff,
+          });
+
+          // const assignData = {
+          //   id_operation: operationId,
+          //   workersWithSchedule: [{
+          //     workerIds: connectOp.workerIds.map(id => Number(id)),
+          //     id_group: connectOp.groupId, // ✅ USAR GRUPO EXISTENTE
+          //     dateStart: connectOp.dateStart,
+          //     dateEnd: connectOp.dateEnd || null,
+          //     timeStart: connectOp.timeStart,
+          //     timeEnd: connectOp.timeEnd || null,
+          //     id_task: connectOp.id_task,
+          //     id_subtask: connectOp.id_subtask,
+          //     id_tariff: connectOp.id_tariff,
+          //   }]
+          // };
+
           const assignData = {
             id_operation: operationId,
             workersWithSchedule: [{
               workerIds: connectOp.workerIds.map(id => Number(id)),
               id_group: connectOp.groupId, // ✅ USAR GRUPO EXISTENTE
-              dateStart: connectOp.dateStart,
-              dateEnd: connectOp.dateEnd || null,
-              timeStart: connectOp.timeStart,
-              timeEnd: connectOp.timeEnd || null,
-              id_task: connectOp.id_task,
-              id_subtask: connectOp.id_subtask,
-              id_tariff: connectOp.id_tariff,
+              // ✅ HEREDAR VALORES DEL GRUPO EXISTENTE
+              dateStart: connectOp.dateStart ?? existingGroupWorker?.dateStart,
+              dateEnd: connectOp.dateEnd ?? existingGroupWorker?.dateEnd,
+              timeStart: connectOp.timeStart ?? existingGroupWorker?.timeStart,
+              timeEnd: connectOp.timeEnd ?? existingGroupWorker?.timeEnd,
+              id_task: connectOp.id_task ?? existingGroupWorker?.id_task,
+              id_subtask: connectOp.id_subtask ?? existingGroupWorker?.id_subtask,
+              id_tariff: connectOp.id_tariff ?? existingGroupWorker?.id_tariff,
             }]
           };
 

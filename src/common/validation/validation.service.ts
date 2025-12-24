@@ -146,12 +146,8 @@ export class ValidationService {
           );
         }
         
-        console.log(`[ValidationService] ${validationId} - ✅ Código ${code_worker} está disponible para uso`);
-      } else {
-        console.log(`[ValidationService] ⚪ No se proporcionó código para validar`);
-      }
-
-
+        // console.log(`[ValidationService] ${validationId} - ✅ Código ${code_worker} está disponible para uso`);
+      } 
 
       // 6. Validar DNI si se proporciona
       if (dni_worker !== undefined) {

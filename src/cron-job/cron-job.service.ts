@@ -23,8 +23,9 @@ export class OperationsCronService {
   ) {}
   /**
    * Actualiza las operaciones en progreso
+   * Cambiado de EVERY_MINUTE a cada 2 minutos para reducir carga del servidor
    */
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron('*/2 * * * *') // Cada 2 minutos
   async handleUpdateInProgressOperations() {
     try {
       await this.updateOperation.updateInProgressOperations();

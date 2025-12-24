@@ -161,8 +161,9 @@ for (const operation of pendingOperations) {
 
       return { updatedCount };
     } catch (error) {
-      this.logger.error('Error updating operations:', error);
-      throw error;
+      this.logger.error('❌ Error crítico updating operations:', error);
+      // No lanzar el error, solo loggearlo para evitar que el servidor se caiga
+      return { updatedCount: 0, error: error.message };
     }
   }
 
@@ -409,8 +410,14 @@ endDateTime.setHours(hours, minutes, 0, 0);
         releasedWorkersCount
        };
     } catch (error) {
-      this.logger.error('Error updating completed operations:', error);
-      throw error;
+      this.logger.error('❌ Error crítico updating completed operations:', error);
+      // No lanzar el error, solo loggearlo para evitar que el servidor se caiga
+      return { 
+        updatedCount: 0,
+        billsCreatedCount: 0,
+        releasedWorkersCount: 0,
+        error: error.message 
+      };
     }
   }
 }

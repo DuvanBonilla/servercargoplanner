@@ -164,6 +164,12 @@ export class BillService {
         groupDto,
         result,
       );
+
+      // ✅ Calcular automáticamente group_hours basándose en Operation_Worker
+      await this.recalculateGroupHoursFromWorkerDates(
+        createBillDto.id_operation,
+        result.groupId,
+      );
     }
   }
 
@@ -226,6 +232,12 @@ export class BillService {
       createBillDto.id_operation,
       group,
       result,
+    );
+
+    // ✅ Calcular automáticamente group_hours basándose en Operation_Worker
+    await this.recalculateGroupHoursFromWorkerDates(
+      createBillDto.id_operation,
+      matchingGroupSummary.groupId,
     );
   }
 }
@@ -291,6 +303,12 @@ export class BillService {
         totalFacturation,
         totalPaysheet,
         matchingGroupSummary,
+      );
+
+      // ✅ Calcular automáticamente group_hours basándose en Operation_Worker
+      await this.recalculateGroupHoursFromWorkerDates(
+        createBillDto.id_operation,
+        matchingGroupSummary.groupId,
       );
     }
   }
@@ -396,6 +414,12 @@ export class BillService {
         totalFacturation,
         matchingGroupSummary,
       );
+
+      // ✅ Calcular automáticamente group_hours basándose en Operation_Worker
+      await this.recalculateGroupHoursFromWorkerDates(
+        createBillDto.id_operation,
+        matchingGroupSummary.groupId,
+      );
     }
   }
 
@@ -427,7 +451,7 @@ export class BillService {
     if (facturationUnit === 'HORAS' || facturationUnit === 'JORNAL') {
       if (matchingGroupSummary.group_tariff === 'YES') {
         const factResult =
-          group.group_hours * (matchingGroupSummary.facturation_tariff ?? 0);
+          (group.group_hours || 0) * (matchingGroupSummary.facturation_tariff ?? 0);
         totalFacturation = factResult;
       } else if (facturationUnit === 'HORAS') {
         const factResult =
@@ -1179,9 +1203,21 @@ export class BillService {
         billDetails: {
           include: {
             operationWorker: {
-              include: {
+              select: {
+                id: true,
+                id_operation: true,
+                id_worker: true,
+                id_group: true,
+                dateStart: true,
+                dateEnd: true,
+                timeStart: true,
+                timeEnd: true,
+                id_task: true,
+                id_subtask: true,
+                id_tariff: true,
                 worker: {
                   select: {
+                    id: true,
                     name: true,
                     dni: true,
                   },
@@ -1282,9 +1318,21 @@ export class BillService {
         billDetails: {
           include: {
             operationWorker: {
-              include: {
+              select: {
+                id: true,
+                id_operation: true,
+                id_worker: true,
+                id_group: true,
+                dateStart: true,
+                dateEnd: true,
+                timeStart: true,
+                timeEnd: true,
+                id_task: true,
+                id_subtask: true,
+                id_tariff: true,
                 worker: {
                   select: {
+                    id: true,
                     name: true,
                     dni: true,
                   },
@@ -1376,7 +1424,18 @@ export class BillService {
         billDetails: {
           include: {
             operationWorker: {
-              include: {
+              select: {
+                id: true,
+                id_operation: true,
+                id_worker: true,
+                id_group: true,
+                dateStart: true,
+                dateEnd: true,
+                timeStart: true,
+                timeEnd: true,
+                id_task: true,
+                id_subtask: true,
+                id_tariff: true,
                 worker: {
                   select: {
                     id: true,
@@ -1393,7 +1452,6 @@ export class BillService {
                         code: true,
                       },
                     },
-                    
                   },
                 },
               },
@@ -1490,6 +1548,12 @@ export class BillService {
       );
     }
 
+    // ✅ Recalcular group_hours automáticamente después de editar la Bill
+    await this.recalculateGroupHoursFromWorkerDates(
+      billDb.id_operation,
+      updateBillDto.id,
+    );
+
     const billDB = await this.findOne(id);
     return billDB;
   }
@@ -1521,6 +1585,68 @@ export class BillService {
       if (!bill) {
         throw new ConflictException(`No se encontró la factura con ID: ${billId}`);
       }
+      console.log(`[BillService] 📊 Factura actual tiene ${bill.billDetails.length} detalles`);
+
+      // ✅ OBTENER TRABAJADORES ACTUALES DE LA OPERACIÓN (puede incluir nuevos trabajadores)
+      const currentOperationWorkers = await this.prisma.operation_Worker.findMany({
+        where: { 
+          id_operation: operationId,
+          id_group: bill.id_group, // Solo trabajadores del grupo de esta factura
+        },
+        include: {
+          worker: true,
+        },
+      });
+
+      console.log(`[BillService] 👥 Operación tiene ${currentOperationWorkers.length} trabajadores en el grupo ${bill.id_group}`);
+
+      // Identificar trabajadores a eliminar de la factura
+      const currentWorkerIds = currentOperationWorkers.map(ow => ow.id_worker);
+      const billWorkerIds = bill.billDetails.map(bd => bd.operationWorker.id_worker);
+      
+      const workersToRemove = billWorkerIds.filter(id => !currentWorkerIds.includes(id));
+      const workersToAdd = currentWorkerIds.filter(id => !billWorkerIds.includes(id));
+
+      console.log(`[BillService] 🔍 Trabajadores a eliminar: ${workersToRemove.length}`);
+      console.log(`[BillService] 🔍 Trabajadores a agregar: ${workersToAdd.length}`);
+
+      // Eliminar detalles de trabajadores que ya no están en la operación
+      if (workersToRemove.length > 0) {
+        const operationWorkerIdsToRemove = bill.billDetails
+          .filter(bd => workersToRemove.includes(bd.operationWorker.id_worker))
+          .map(bd => bd.id_operation_worker);
+
+        await this.prisma.billDetail.deleteMany({
+          where: {
+            id_bill: billId,
+            id_operation_worker: { in: operationWorkerIdsToRemove },
+          },
+        });
+
+        console.log(`[BillService] 🗑️ Eliminados ${operationWorkerIdsToRemove.length} detalles de factura`);
+      }
+
+      // Agregar detalles para trabajadores nuevos
+      if (workersToAdd.length > 0) {
+        const newOperationWorkers = currentOperationWorkers.filter(ow => 
+          workersToAdd.includes(ow.id_worker)
+        );
+
+        const newBillDetails = newOperationWorkers.map(ow => ({
+          id_bill: billId,
+          id_operation_worker: ow.id,
+          pay_unit: 1,
+          pay_rate: 0,
+          total_bill: 0,
+          total_paysheet: 0,
+        }));
+
+        await this.prisma.billDetail.createMany({
+          data: newBillDetails,
+        });
+
+        console.log(`[BillService] ➕ Agregados ${newBillDetails.length} nuevos detalles de factura`);
+      }
 
       // Obtener información actualizada de la operación con nuevo op_duration
       const validateOperationID = await this.validateOperation(operationId);
@@ -1531,38 +1657,87 @@ export class BillService {
 
       console.log(`[BillService] ✅ op_duration actualizado: ${validateOperationID.op_duration} horas`);
 
-      // ✅ PREPARAR DTO MÍNIMO CON DISTRIBUCIONES VACÍAS PARA FORZAR RECÁLCULO
+      // // ✅ PREPARAR DTO MÍNIMO CON DISTRIBUCIONES VACÍAS PARA FORZAR RECÁLCULO
+      // const updateBillDto: UpdateBillDto = {
+      //   id: String(bill.id_group || ''),
+      //   amount: 0, // ✅ Forzar recálculo desde cero
+      //   billHoursDistribution: {
+      //     HOD: 0,
+      //     HON: 0,
+      //     HED: 0,
+      //     HEN: 0,
+      //     HFOD: 0,
+      //     HFON: 0,
+      //     HFED: 0,
+      //     HFEN: 0,
+      //   },
+      //   paysheetHoursDistribution: {
+      //     HOD: 0,
+      //     HON: 0,
+      //     HED: 0,
+      //     HEN: 0,
+      //     HFOD: 0,
+      //     HFON: 0,
+      //     HFED: 0,
+      //     HFEN: 0,
+      //   },
+      //   pays: bill.billDetails.map((detail) => ({
+      //     id_worker: detail.operationWorker.worker.id,
+      //     pay: 0, // ✅ Recalcular desde cero
+      //   })),
+      // };
+
+      // console.log(`[BillService] 🔄 Recalculando con op_duration=${validateOperationID.op_duration} (distribuciones en cero para recálculo completo)`);
+
+      // Preparar DTO para recálculo completo
+      const updatedBillDetails = await this.prisma.billDetail.findMany({
+        where: { id_bill: billId },
+        include: {
+          operationWorker: {
+            include: {
+              worker: true,
+            },
+          },
+        },
+      });
+
+      // ✅ MANTENER LAS DISTRIBUCIONES ORIGINALES DE LA BASE DE DATOS
+      // Las distribuciones fueron calculadas correctamente en el frontend y guardadas en la BD
+      // NO debemos recalcularlas, solo recalcular los totales con el nuevo número de trabajadores
       const updateBillDto: UpdateBillDto = {
         id: String(bill.id_group || ''),
-        amount: 0, // ✅ Forzar recálculo desde cero
-        group_hours: 0, // ✅ No usar, se calculará con op_duration del grupo
+        amount: bill.amount,
+        group_hours: bill.group_hours || 0,
         billHoursDistribution: {
-          HOD: 0,
-          HON: 0,
-          HED: 0,
-          HEN: 0,
-          HFOD: 0,
-          HFON: 0,
-          HFED: 0,
-          HFEN: 0,
+          HOD: Number(bill.FAC_HOD) || 0,
+          HON: Number(bill.FAC_HON) || 0,
+          HED: Number(bill.FAC_HED) || 0,
+          HEN: Number(bill.FAC_HEN) || 0,
+          HFOD: Number(bill.FAC_HFOD) || 0,
+          HFON: Number(bill.FAC_HFON) || 0,
+          HFED: Number(bill.FAC_HFED) || 0,
+          HFEN: Number(bill.FAC_HFEN) || 0,
         },
         paysheetHoursDistribution: {
-          HOD: 0,
-          HON: 0,
-          HED: 0,
-          HEN: 0,
-          HFOD: 0,
-          HFON: 0,
-          HFED: 0,
-          HFEN: 0,
+          HOD: Number(bill.HOD) || 0,
+          HON: Number(bill.HON) || 0,
+          HED: Number(bill.HED) || 0,
+          HEN: Number(bill.HEN) || 0,
+          HFOD: Number(bill.HFOD) || 0,
+          HFON: Number(bill.HFON) || 0,
+          HFED: Number(bill.HFED) || 0,
+          HFEN: Number(bill.HFEN) || 0,
         },
-        pays: bill.billDetails.map((detail) => ({
+        pays: updatedBillDetails.map((detail) => ({
           id_worker: detail.operationWorker.worker.id,
-          pay: 0, // ✅ Recalcular desde cero
+          pay: Number(detail.pay_unit) || 1,
         })),
       };
 
-      console.log(`[BillService] 🔄 Recalculando con op_duration=${validateOperationID.op_duration} (distribuciones en cero para recálculo completo)`);
+      console.log(`[BillService] 🔄 Recalculando factura con ${updatedBillDetails.length} trabajadores`);
+
+
+
 
       // Recalcular totales con el nuevo op_duration propagado en validateOperationID
       await this.recalculateBillTotals(
@@ -1574,9 +1749,23 @@ export class BillService {
         bill.amount,
       );
 
-      console.log(`[BillService] ✅ Factura ${billId} recalculada con nuevo compensatorio`);
+      // ✅ Recalcular group_hours automáticamente después de recalcular la factura
+      await this.recalculateGroupHoursFromWorkerDates(
+        operationId,
+        String(bill.id_group),
+      );
+
+      // console.log(`[BillService] ✅ Factura ${billId} recalculada con nuevo compensatorio`);
       
-      return { success: true, message: 'Factura recalculada con nuevo compensatorio' };
+      // return { success: true, message: 'Factura recalculada con nuevo compensatorio' };
+      console.log(`[BillService] ✅ Factura ${billId} recalculada con los nuevos trabajadores`);
+      
+      return { 
+        success: true, 
+        message: 'Factura recalculada con los nuevos trabajadores',
+        workersRemoved: workersToRemove.length,
+        workersAdded: workersToAdd.length,
+      };
     } catch (error) {
       console.error(`[BillService] ❌ Error recalculando factura ${billId}:`, error);
       throw error;
@@ -1625,8 +1814,7 @@ export class BillService {
       (group) =>
         group.billHoursDistribution ||
         group.paysheetHoursDistribution ||
-        typeof group.amount !== 'undefined' ||
-        typeof group.group_hours !== 'undefined',
+        typeof group.amount !== 'undefined',
     );
   }
 
@@ -1647,10 +1835,13 @@ export class BillService {
         updateData.observation = group.observation;
       }
 
-      // === AGREGAR ESTA LÍNEA PARA ACTUALIZAR AMOUNT ===
+      // === ACTUALIZAR AMOUNT SI SE PROPORCIONA ===
       if (typeof group.amount !== 'undefined') {
         updateData.amount = group.amount;
       }
+
+      // NOTA: group_hours NO se actualiza aquí porque se calcula automáticamente
+      // desde las fechas de Operation_Worker mediante recalculateGroupHoursFromWorkerDates()
 
       let finalNumberOfHours: number | undefined = undefined;
 
@@ -2275,6 +2466,156 @@ export class BillService {
     // Fallback: retornar payValue
     return payValue;
   }
+
+  /**
+   * Recalcula el op_duration de una operación sumando todos los group_hours de sus bills
+   * @param id_operation ID de la operación
+   * @param id_group ID del grupo que se modificó (opcional, solo para logs)
+   */
+  private async recalculateOpDuration(id_operation: number, id_group?: string) {
+    console.log(`[BillService] 🔄 Recalculando op_duration para operación ${id_operation}`);
+    
+    try {
+      // Obtener todas las bills de la operación con sus group_hours
+      const bills = await this.prisma.bill.findMany({
+        where: {
+          id_operation: id_operation,
+        },
+        select: {
+          id_group: true,
+          group_hours: true,
+        },
+      });
+
+      console.log(`[BillService] 📊 Se encontraron ${bills.length} bills para la operación`);
+
+      // Sumar todos los group_hours de los grupos
+      const totalOpDuration = bills.reduce((sum, bill) => {
+        const groupHours = Number(bill.group_hours) || 0;
+        console.log(`[BillService]   - Grupo ${bill.id_group}: ${groupHours} horas`);
+        return sum + groupHours;
+      }, 0);
+
+      console.log(`[BillService] ✅ Nuevo op_duration calculado: ${totalOpDuration} horas`);
+
+      // Actualizar el op_duration en la tabla Operation
+      await this.prisma.operation.update({
+        where: { id: id_operation },
+        data: {
+          op_duration: totalOpDuration,
+        },
+      });
+
+      console.log(`[BillService] ✅ op_duration actualizado en la operación ${id_operation}`);
+
+    } catch (error) {
+      console.error(`[BillService] ❌ Error recalculando op_duration:`, error);
+      throw new ConflictException(`Error al recalcular la duración de la operación: ${error.message}`);
+    }
+  }
+
+  /**
+   * Recalcula el group_hours de un grupo específico basándose en las fechas de los Operation_Worker
+   * Esta función debe ser llamada cuando se actualizan las fechas de los trabajadores de un grupo
+   * @param id_operation ID de la operación
+   * @param id_group ID del grupo
+   * @returns El group_hours calculado
+   */
+  async recalculateGroupHoursFromWorkerDates(
+    id_operation: number,
+    id_group: string
+  ): Promise<number> {
+    console.log(`[BillService] 🔄 Recalculando group_hours para grupo ${id_group} de operación ${id_operation}`);
+    
+    try {
+      // Obtener todos los trabajadores del grupo
+      const workers = await this.prisma.operation_Worker.findMany({
+        where: {
+          id_operation,
+          id_group: String(id_group),
+        },
+        select: {
+          id: true,
+          dateStart: true,
+          timeStart: true,
+          dateEnd: true,
+          timeEnd: true,
+        },
+      });
+
+      if (workers.length === 0) {
+        console.warn(`[BillService] ⚠️ No se encontraron trabajadores para el grupo ${id_group}`);
+        return 0;
+      }
+
+      console.log(`[BillService] 📊 Calculando duración promedio de ${workers.length} trabajadores`);
+
+      // Calcular la duración promedio de los trabajadores del grupo
+      let totalHoras = 0;
+      let count = 0;
+
+      for (const worker of workers) {
+        if (worker.dateStart && worker.timeStart && worker.dateEnd && worker.timeEnd) {
+          let startDate = new Date(worker.dateStart);
+          const [sh, sm] = worker.timeStart.split(':').map(Number);
+          startDate.setHours(sh, sm, 0, 0);
+
+          let endDate = new Date(worker.dateEnd);
+          const [eh, em] = worker.timeEnd.split(':').map(Number);
+          endDate.setHours(eh, em, 0, 0);
+
+          // ✅ Detectar y corregir fechas invertidas
+          if (startDate > endDate) {
+            console.warn(`[BillService] ⚠️ Fechas invertidas detectadas para worker ${worker.id}, intercambiando...`);
+            [startDate, endDate] = [endDate, startDate];
+          }
+
+          const diff = (endDate.getTime() - startDate.getTime()) / 3_600_000; // Convertir a horas
+
+          if (diff > 0) {
+            totalHoras += diff;
+            count++;
+            console.log(`[BillService]   - Worker ${worker.id}: ${diff.toFixed(2)} horas`);
+          }
+        }
+      }
+
+      const groupHours = count > 0 ? Math.round((totalHoras / count) * 100) / 100 : 0;
+      console.log(`[BillService] ✅ group_hours calculado: ${groupHours} horas (promedio de ${count} trabajadores)`);
+
+      // Actualizar el bill del grupo con el nuevo group_hours
+      const bill = await this.prisma.bill.findFirst({
+        where: {
+          id_operation,
+          id_group: String(id_group),
+        },
+      });
+
+      if (bill) {
+        console.log(`[BillService] 📝 Actualizando Bill ${bill.id} con group_hours: ${groupHours}`);
+        
+        const updatedBill = await this.prisma.bill.update({
+          where: { id: bill.id },
+          data: {
+            group_hours: groupHours,
+          },
+        });
+        
+        console.log(`[BillService] ✅ Bill ${bill.id} actualizado. Nuevo valor: ${updatedBill.group_hours}`);
+
+        // Recalcular op_duration de toda la operación
+        await this.recalculateOpDuration(id_operation, id_group);
+      } else {
+        console.warn(`[BillService] ⚠️ No se encontró bill para el grupo ${id_group}`);
+      }
+
+      return groupHours;
+    } catch (error) {
+      console.error(`[BillService] ❌ Error recalculando group_hours:`, error);
+      throw new ConflictException(`Error al recalcular las horas del grupo: ${error.message}`);
+    }
+  }
+
   async remove(id: number) {
     return await this.prisma.bill.delete({
       where: { id },

@@ -416,7 +416,7 @@ model Bill {
   id_user           Int
   user              User      @relation(fields: [id_user], references: [id])
   billDetails       BillDetail[]
-  group_hours       Int?
+  group_hours       Decimal?  @db.Decimal(5, 3)
   observation       String?
 }
 

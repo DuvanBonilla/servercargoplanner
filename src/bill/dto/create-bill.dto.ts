@@ -55,12 +55,16 @@ export class GroupBillDto {
   @IsOptional()
   amount: number;
 
-  @ApiProperty({ example: '1' })
+  @ApiProperty({ 
+    example: 1,
+    description: 'Duración total en horas del grupo (opcional). Este valor se calcula automáticamente desde las fechas de Operation_Worker. Solo se usa al crear la factura inicialmente.',
+    required: false
+  })
   @IsNumber()
   @Min(0)
   @Type(() => Number)
   @IsOptional()
-  group_hours: number;
+  group_hours?: number;
 
 
   @ApiProperty({ example: 'Observation text' })

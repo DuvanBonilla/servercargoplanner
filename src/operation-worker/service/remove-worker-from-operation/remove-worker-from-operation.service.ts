@@ -35,6 +35,31 @@ export class RemoveWorkerFromOperationService {
         }
 
         // Eliminar de toda la operación (comportamiento original)
+        // ✅ APLICAR ELIMINACIÓN EN CASCADA
+        const operationWorkersToDelete = await this.prisma.operation_Worker.findMany({
+          where: {
+            id_operation,
+            id_worker: { in: workerIds },
+          },
+        });
+
+        // Eliminar registros relacionados primero
+        for (const opWorker of operationWorkersToDelete) {
+          // Eliminar BillDetail
+          await this.prisma.billDetail.deleteMany({
+            where: { id_operation_worker: opWorker.id },
+          });
+
+          // Eliminar WorkerFeeding
+          await this.prisma.workerFeeding.deleteMany({
+            where: { 
+              id_worker: opWorker.id_worker,
+              id_operation: opWorker.id_operation 
+            },
+          });
+        }
+
+        // Ahora eliminar Operation_Worker
         await this.prisma.operation_Worker.deleteMany({
           where: {
             id_operation,
@@ -79,12 +104,13 @@ export class RemoveWorkerFromOperationService {
           return workerValidation;
         }
 
-        for (const workerToRemove of workersToRemove) {
+       for (const workerToRemove of workersToRemove) {
           const { id: workerId, id_group } = workerToRemove;
 
           if (id_group) {
             // Eliminar solo del grupo específico
-            const deleteResult = await this.prisma.operation_Worker.deleteMany({
+            // ✅ APLICAR ELIMINACIÓN EN CASCADA
+            const operationWorkerToDelete = await this.prisma.operation_Worker.findFirst({
               where: {
                 id_operation,
                 id_worker: workerId,
@@ -92,26 +118,117 @@ export class RemoveWorkerFromOperationService {
               },
             });
 
-            if (deleteResult.count > 0) {
+            if (operationWorkerToDelete) {
+              // Eliminar BillDetail relacionados
+              await this.prisma.billDetail.deleteMany({
+                where: { id_operation_worker: operationWorkerToDelete.id },
+              });
+
+              // Eliminar WorkerFeeding relacionados
+              await this.prisma.workerFeeding.deleteMany({
+                where: { 
+                  id_worker: operationWorkerToDelete.id_worker,
+                  id_operation: operationWorkerToDelete.id_operation 
+                },
+              });
+
+              // Eliminar Operation_Worker
+              const deleteResult = await this.prisma.operation_Worker.delete({
+                where: { id: operationWorkerToDelete.id },
+              });
+
+              if (deleteResult) {
+                results.push({
+                  workerId,
+                  groupId: id_group,
+                  action: 'removed_from_group',
+                  success: true,
+                });
+
+                // Verificar si el trabajador aún está en otros grupos de esta operación
+                const remainingInOperation =
+                  await this.prisma.operation_Worker.findFirst({
+                    where: {
+                      id_operation,
+                      id_worker: workerId,
+                    },
+                  });
+
+                // Solo liberar si no está en otros grupos de esta operación
+                if (!remainingInOperation) {
+                  // Verificar si está en otras operaciones activas
+                  const inOtherActiveOps =
+                    await this.prisma.operation_Worker.findFirst({
+                      where: {
+                        id_worker: workerId,
+                        id_operation: { not: id_operation },
+                        operation: {
+                          status: { in: ['PENDING', 'INPROGRESS'] },
+                        },
+                      },
+                    });
+
+                  if (!inOtherActiveOps) {
+                    await this.prisma.worker.update({
+                      where: { id: workerId },
+                      data: { status: 'AVALIABLE' },
+                    });
+                    results[results.length - 1].workerReleased = true;
+                  }
+                }
+              }
+            } else {
               results.push({
                 workerId,
                 groupId: id_group,
-                action: 'removed_from_group',
-                success: true,
+                action: 'not_found_in_group',
+                success: false,
               });
+            }
+          } else {
+            // Eliminar de toda la operación
+            // ✅ APLICAR ELIMINACIÓN EN CASCADA
+            const operationWorkersToDelete = await this.prisma.operation_Worker.findMany({
+              where: {
+                id_operation,
+                id_worker: workerId,
+              },
+            });
 
-              // Verificar si el trabajador aún está en otros grupos de esta operación
-              const remainingInOperation =
-                await this.prisma.operation_Worker.findFirst({
-                  where: {
-                    id_operation,
-                    id_worker: workerId,
-                  },
+            if (operationWorkersToDelete.length > 0) {
+              // Eliminar registros relacionados primero
+              for (const opWorker of operationWorkersToDelete) {
+                // Eliminar BillDetail
+                await this.prisma.billDetail.deleteMany({
+                  where: { id_operation_worker: opWorker.id },
                 });
 
-              // Solo liberar si no está en otros grupos de esta operación
-              if (!remainingInOperation) {
-                // Verificar si está en otras operaciones activas
+                // Eliminar WorkerFeeding
+                await this.prisma.workerFeeding.deleteMany({
+                  where: { 
+                    id_worker: opWorker.id_worker,
+                    id_operation: opWorker.id_operation 
+                  },
+                });
+              }
+
+              // Eliminar Operation_Worker
+              const deleteResult = await this.prisma.operation_Worker.deleteMany({
+                where: {
+                  id_operation,
+                  id_worker: workerId,
+                },
+              });
+
+              if (deleteResult.count > 0) {
+                results.push({
+                  workerId,
+                  action: 'removed_from_operation',
+                  groupsRemoved: deleteResult.count,
+                  success: true,
+                });
+
+                // Verificar si está en otras operaciones activas antes de liberar
                 const inOtherActiveOps =
                   await this.prisma.operation_Worker.findFirst({
                     where: {
@@ -130,50 +247,6 @@ export class RemoveWorkerFromOperationService {
                   });
                   results[results.length - 1].workerReleased = true;
                 }
-              }
-            } else {
-              results.push({
-                workerId,
-                groupId: id_group,
-                action: 'not_found_in_group',
-                success: false,
-              });
-            }
-          } else {
-            // Eliminar de toda la operación
-            const deleteResult = await this.prisma.operation_Worker.deleteMany({
-              where: {
-                id_operation,
-                id_worker: workerId,
-              },
-            });
-
-            if (deleteResult.count > 0) {
-              results.push({
-                workerId,
-                action: 'removed_from_operation',
-                groupsRemoved: deleteResult.count,
-                success: true,
-              });
-
-              // Verificar si está en otras operaciones activas antes de liberar
-              const inOtherActiveOps =
-                await this.prisma.operation_Worker.findFirst({
-                  where: {
-                    id_worker: workerId,
-                    id_operation: { not: id_operation },
-                    operation: {
-                      status: { in: ['PENDING', 'INPROGRESS'] },
-                    },
-                  },
-                });
-
-              if (!inOtherActiveOps) {
-                await this.prisma.worker.update({
-                  where: { id: workerId },
-                  data: { status: 'AVALIABLE' },
-                });
-                results[results.length - 1].workerReleased = true;
               }
             } else {
               results.push({
@@ -360,7 +433,8 @@ export class RemoveWorkerFromOperationService {
 
     console.log('[RemoveWorkerService] Validación completada, eliminando del grupo');
 
-    const deleteResult = await this.prisma.operation_Worker.deleteMany({
+    // ✅ PRIMERO: Buscar el operation_worker para obtener su ID
+    const operationWorker = await this.prisma.operation_Worker.findFirst({
       where: {
         id_operation: operationId,
         id_worker: workerId,
@@ -368,14 +442,57 @@ export class RemoveWorkerFromOperationService {
       },
     });
 
-    console.log('[RemoveWorkerService] Resultado de eliminación:', deleteResult);
+    // console.log('[RemoveWorkerService] Resultado de eliminación:', operationWorker);
 
-    if (deleteResult.count === 0) {
+    if (!operationWorker) {
       throw new NotFoundException(
         `Trabajador ${workerId} no encontrado en el grupo ${groupId} de la operación ${operationId}`,
       );
     }
+console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operationWorker.id}`);
 
+    // ✅ SEGUNDO: Eliminar BillDetail relacionados (si existen)
+    const billDetailsToDelete = await this.prisma.billDetail.findMany({
+      where: { id_operation_worker: operationWorker.id },
+    });
+
+    if (billDetailsToDelete.length > 0) {
+      console.log(`[RemoveWorkerService] Eliminando ${billDetailsToDelete.length} BillDetail(s)...`);
+      
+      await this.prisma.billDetail.deleteMany({
+        where: { id_operation_worker: operationWorker.id },
+      });
+      
+      console.log('[RemoveWorkerService] ✅ BillDetails eliminados');
+    }
+
+    // ✅ TERCERO: Eliminar WorkerFeeding relacionados (si existen)
+    const workerFeedingToDelete = await this.prisma.workerFeeding.findMany({
+      where: { 
+        id_worker: operationWorker.id_worker,
+        id_operation: operationWorker.id_operation 
+      },
+    });
+
+    if (workerFeedingToDelete.length > 0) {
+      console.log(`[RemoveWorkerService] Eliminando ${workerFeedingToDelete.length} WorkerFeeding(s)...`);
+      
+      await this.prisma.workerFeeding.deleteMany({
+        where: { 
+          id_worker: operationWorker.id_worker,
+          id_operation: operationWorker.id_operation 
+        },
+      });
+      
+      // console.log('[RemoveWorkerService] ✅ WorkerFeeding eliminados');
+    }
+
+    // ✅ CUARTO: Ahora sí eliminar el Operation_Worker
+    const deleteResult = await this.prisma.operation_Worker.delete({
+      where: { id: operationWorker.id },
+    });
+
+    console.log('[RemoveWorkerService] ✅ Operation_Worker eliminado:', deleteResult);
     // Verificar si el trabajador ya no tiene más asignaciones
     const remainingAssignments = await this.prisma.operation_Worker.count({
       where: { id_worker: workerId },
@@ -393,7 +510,7 @@ export class RemoveWorkerFromOperationService {
 
     return {
       message: `Trabajador ${workerId} eliminado del grupo ${groupId}`,
-      workersRemoved: deleteResult.count,
+      workersRemoved: 1,
     };
   }
 
@@ -427,6 +544,61 @@ export class RemoveWorkerFromOperationService {
 
     console.log('[RemoveWorkerService] Validación completada, eliminando de la operación');
     
+   // ✅ PRIMERO: Buscar todos los operation_workers del trabajador en esta operación
+    const operationWorkers = await this.prisma.operation_Worker.findMany({
+      where: {
+        id_operation: operationId,
+        id_worker: workerId,
+      },
+    });
+
+    if (operationWorkers.length === 0) {
+      throw new NotFoundException(`Trabajador ${workerId} no encontrado en la operación ${operationId}`);
+    }
+
+    console.log(`[RemoveWorkerService] Encontrados ${operationWorkers.length} registros Operation_Worker para eliminar`);
+
+    // ✅ SEGUNDO: Eliminar BillDetail y WorkerFeeding para cada operation_worker
+    for (const opWorker of operationWorkers) {
+      console.log(`[RemoveWorkerService] Procesando Operation_Worker ID: ${opWorker.id}`);
+      // Eliminar BillDetail relacionados
+      const billDetailsToDelete = await this.prisma.billDetail.findMany({
+        where: { id_operation_worker: opWorker.id },
+      });
+
+      if (billDetailsToDelete.length > 0) {
+        console.log(`[RemoveWorkerService] Eliminando ${billDetailsToDelete.length} BillDetail(s) para Operation_Worker ${opWorker.id}...`);
+        
+        await this.prisma.billDetail.deleteMany({
+          where: { id_operation_worker: opWorker.id },
+        });
+        
+        console.log('[RemoveWorkerService] ✅ BillDetails eliminados');
+      }
+
+      // Eliminar WorkerFeeding relacionados
+      const workerFeedingToDelete = await this.prisma.workerFeeding.findMany({
+        where: { 
+          id_worker: opWorker.id_worker,
+          id_operation: opWorker.id_operation 
+        },
+      });
+
+      if (workerFeedingToDelete.length > 0) {
+        console.log(`[RemoveWorkerService] Eliminando ${workerFeedingToDelete.length} WorkerFeeding(s) para Operation_Worker ${opWorker.id}...`);
+        
+        await this.prisma.workerFeeding.deleteMany({
+          where: { 
+            id_worker: opWorker.id_worker,
+            id_operation: opWorker.id_operation 
+          },
+        });
+        
+        // console.log('[RemoveWorkerService] ✅ WorkerFeeding eliminados');
+      }
+    }
+
+    // ✅ TERCERO: Ahora sí eliminar todos los Operation_Worker
     const deleteResult = await this.prisma.operation_Worker.deleteMany({
       where: {
         id_operation: operationId,
@@ -434,11 +606,7 @@ export class RemoveWorkerFromOperationService {
       },
     });
 
-    console.log('[RemoveWorkerService] Resultado de eliminación:', deleteResult);
-
-    if (deleteResult.count === 0) {
-      throw new NotFoundException(`Trabajador ${workerId} no encontrado en la operación ${operationId}`);
-    }
+    console.log('[RemoveWorkerService] ✅ Operation_Workers eliminados:', deleteResult);
 
     // Verificar si el trabajador ya no tiene más asignaciones
     const remainingAssignments = await this.prisma.operation_Worker.count({

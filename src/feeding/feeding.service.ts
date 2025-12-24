@@ -59,8 +59,8 @@ private getAvailableMealTypes(operationDateStart: Date, operationTimeStart: stri
       operationEnd.getUTCHours() * 60 + operationEnd.getUTCMinutes()) : (24 * 60);
     const currentTotalMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
     
-    console.log(`⏰ Horario trabajo: ${Math.floor(startTotalMinutes/60)}:${(startTotalMinutes%60).toString().padStart(2,'0')} - ${Math.floor(endTotalMinutes/60)}:${(endTotalMinutes%60).toString().padStart(2,'0')}`);
-    console.log(`⏰ Hora actual: ${Math.floor(currentTotalMinutes/60)}:${(currentTotalMinutes%60).toString().padStart(2,'0')}`);
+    // console.log(`⏰ Horario trabajo: ${Math.floor(startTotalMinutes/60)}:${(startTotalMinutes%60).toString().padStart(2,'0')} - ${Math.floor(endTotalMinutes/60)}:${(endTotalMinutes%60).toString().padStart(2,'0')}`);
+    // console.log(`⏰ Hora actual: ${Math.floor(currentTotalMinutes/60)}:${(currentTotalMinutes%60).toString().padStart(2,'0')}`);
     
     // Verificar cada comida contra el horario de trabajo
     Object.entries(mealSchedule).forEach(([mealType, schedule]) => {
@@ -999,8 +999,8 @@ async getMissingMealsForOperation(operationId: number) {
     workerStartTime.setHours(wHours, wMinutes, 0, 0);
     const workerStartTotalMinutes = wHours * 60 + wMinutes;
     
-    console.log(`   Hora inicio: ${wHours}:${wMinutes} (${workerStartTotalMinutes} min)`);
-    console.log(`   Hora actual: ${currentHour}:${currentMinutes} (${currentTotalMinutes} min)`);
+    // console.log(`   Hora inicio: ${wHours}:${wMinutes} (${workerStartTotalMinutes} min)`);
+    // console.log(`   Hora actual: ${currentHour}:${currentMinutes} (${currentTotalMinutes} min)`);
     
     let workerPassedMeals: string[] = [];
     
@@ -1043,7 +1043,7 @@ async getMissingMealsForOperation(operationId: number) {
         const schedule = mealSchedule[mealType];
         if (schedule) {
           const hasPassedToday = currentTotalMinutes > schedule.end;
-          console.log(`   ${mealType}: fin=${schedule.end} min, actual=${currentTotalMinutes} min, pasó? ${hasPassedToday}`);
+          // console.log(`   ${mealType}: fin=${schedule.end} min, actual=${currentTotalMinutes} min, pasó? ${hasPassedToday}`);
           
           if (hasPassedToday) {
             workerPassedMeals.push(mealType);
@@ -1051,7 +1051,7 @@ async getMissingMealsForOperation(operationId: number) {
         }
       }
       
-      console.log(`   Comidas que YA PASARON hoy: [${workerPassedMeals.join(', ')}]`);
+      // console.log(`   Comidas que YA PASARON hoy: [${workerPassedMeals.join(', ')}]`);
     }
     
     // ✅ Si no han pasado comidas para este trabajador, continuar con el siguiente
