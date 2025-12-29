@@ -116,23 +116,24 @@ export class FeedingController {
     }
   }
 
-  @Get(':id')
-  async findOne(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser('siteId') id_site: number,
-  ) {
-    const response = await this.feedingService.findOne(id, id_site);
-    if (response['status'] === 404) {
-      throw new NotFoundException(response['message']);
-    }
-    return response;
-  }
   @Get('operation/:id')
   async findByOperation(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('siteId') id_site: number,
   ) {
     const response = await this.feedingService.findByOperation(id, id_site);
+    if (response['status'] === 404) {
+      throw new NotFoundException(response['message']);
+    }
+    return response;
+  }
+
+  @Get(':id')
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('siteId') id_site: number,
+  ) {
+    const response = await this.feedingService.findOne(id, id_site);
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
     }
