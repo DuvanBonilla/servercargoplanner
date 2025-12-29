@@ -53,11 +53,7 @@ export class FeedingController {
 
   @Get()
   async findAll(@CurrentUser('siteId') siteId: number) {
-    const response = await this.feedingService.findAll(siteId);
-    if (response['status'] === 404) {
-      throw new NotFoundException(response['message']);
-    }
-    return response;
+    return await this.feedingService.findAll(siteId);
   }
 
   @Get('paginated')

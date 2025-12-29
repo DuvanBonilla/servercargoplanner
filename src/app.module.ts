@@ -38,6 +38,7 @@ import { ConfigurationModule } from './configuration/configuration.module';
 import { BillModule } from './bill/bill.module';
 import { PermissionModule } from './permission/permission.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -80,7 +81,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaService,
     DocsAuthMiddleware
   ],
-  controllers: [DocsController],
+  controllers: [AppController, DocsController],
   exports: [PrismaService],
 })
 export class AppModule implements NestModule {

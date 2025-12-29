@@ -28,8 +28,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleInit() {
     console.log('🔌 Connecting to database...');
-    await this.$connect();
-    console.log('✅ Database connected successfully');
+    try {
+      await this.$connect();
+      console.log('✅ Database connected successfully');
+    } catch (error) {
+      console.error('❌ Database connection FAILED:');
+      console.error(`   Error: ${error.message}`);
+      if (error.message?.includes('timeout')) {
+        console.error('   ⚠️ Connection timeout - Check DATABASE_URL and PostgreSQL server status');
+      } else if (error.message?.includes('authentication failed')) {
+        console.error('   ⚠️ Authentication failed - Check username/password in DATABASE_URL');
+      } else if (error.message?.includes('too many clients')) {
+        console.error('   ⚠️ Too many connections - Reduce connection_limit in DATABASE_URL');
+      }
+      throw error; // Re-throw para que NestJS maneje el error
+    }
   }
 
   async onModuleDestroy() {

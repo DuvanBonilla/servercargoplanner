@@ -117,18 +117,26 @@ export class LoginController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Obtener información de la sesión' })
   async validationToken(@Request() req) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      throw new UnauthorizedException('No token provided');
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        console.warn('⚠️ /login/validation: No authorization header');
+        throw new UnauthorizedException('No token provided');
+      }
+      const token = authHeader.split(' ')[1];
+      if (!token) {
+        console.warn('⚠️ /login/validation: Invalid token format');
+        throw new UnauthorizedException('Invalid token format');
+      }
+      const response = await this.loginService.validationToken(token);
+      if (response === 'Invalid token') {
+        console.warn('⚠️ /login/validation: Invalid token');
+        throw new UnauthorizedException(response);
+      }
+      return response;
+    } catch (error) {
+      console.error('❌ Error in /login/validation:', error.message);
+      throw error;
     }
-    const token = authHeader.split(' ')[1];
-    if (!token) {
-      throw new UnauthorizedException('Invalid token format');
-    }
-    const response = await this.loginService.validationToken(token);
-    if (response === 'Invalid token') {
-      throw new UnauthorizedException(response);
-    }
-    return response;
   }
 }

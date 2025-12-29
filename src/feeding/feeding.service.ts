@@ -539,7 +539,7 @@ const availableMealTypes = this.getAvailableMealTypes(
       }
     });
     if (!response || response.length === 0) {
-      return { message: 'No worker feeding records found', status: 404 };
+      return []; // Retornar array vacío en lugar de 404
     }
     return response.map(feeding => ({
       ...feeding,
