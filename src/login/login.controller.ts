@@ -113,11 +113,18 @@ export class LoginController {
   }
 
   @Get('validation')
+  @Public()
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Obtener información de la sesión' })
   async validationToken(@Request() req) {
     const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      throw new UnauthorizedException('No token provided');
+    }
     const token = authHeader.split(' ')[1];
+    if (!token) {
+      throw new UnauthorizedException('Invalid token format');
+    }
     const response = await this.loginService.validationToken(token);
     if (response === 'Invalid token') {
       throw new UnauthorizedException(response);

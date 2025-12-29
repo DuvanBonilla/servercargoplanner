@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { StatusOperation } from '@prisma/client';
 import { OperationFilterDto } from 'src/operation/dto/fliter-operation.dto';
 import { PaginationService } from '../pagination.service';
@@ -6,7 +8,12 @@ import { PaginatedResponse } from '../../interface/paginate-operation';
 
 @Injectable()
 export class PaginateOperationService {
-  constructor(private readonly paginationService: PaginationService) {}
+  private readonly STATS_CACHE_TTL = 300; // 5 minutos en segundos
+  
+  constructor(
+    private readonly paginationService: PaginationService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {}
 
   /**
    * Pagina operaciones con sus estadísticas específicas
@@ -78,18 +85,11 @@ export class PaginateOperationService {
       const startDate = new Date(filters.dateStart);
       const endDate = new Date(filters.dateEnd);
 
-      console.log('[PaginateOperationService] Filtros de fecha aplicados:');
-      console.log('  - dateStart:', startDate.toISOString());
-      console.log('  - dateEnd:', endDate.toISOString());
-      console.log('  - Status en filtros:', filters.status || 'TODOS');
-
       // Filtrar solo por operaciones que INICIARON dentro del rango
       whereClause.dateStart = {
         gte: startDate,
         lte: endDate
       };
-      
-      console.log('[PaginateOperationService] whereClause completo:', JSON.stringify(whereClause, null, 2));
     } else if (filters.dateStart) {
       whereClause.dateStart = { gte: filters.dateStart };
     } else if (filters.dateEnd) {
@@ -146,10 +146,18 @@ export class PaginateOperationService {
   }
 
   /**
-   * Obtiene estadísticas de operaciones por estado
+   * Obtiene estadísticas de operaciones por estado (con caché de 5 minutos)
    */
   private async getOperationStats(prisma: any) {
     try {
+      // Intentar obtener del caché primero
+      const cacheKey = 'operation-stats';
+      const cached = await this.cacheManager.get(cacheKey);
+      
+      if (cached) {
+        return cached;
+      }
+
       const colombiaTime = new Date(
         new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }),
       );
@@ -186,12 +194,17 @@ export class PaginateOperationService {
           }),
         ]);
 
-      return {
+      const stats = {
         totalInProgress,
         totalPending,
         totalCompleted,
         totalCanceled,
       };
+      
+      // Guardar en caché por 5 minutos
+      await this.cacheManager.set(cacheKey, stats, this.STATS_CACHE_TTL * 1000);
+      
+      return stats;
     } catch (error) {
       console.error('Error getting operation stats:', error);
       return {

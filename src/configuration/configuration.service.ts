@@ -6,6 +6,9 @@ import { StatusActivation } from '@prisma/client';
 
 @Injectable()
 export class ConfigurationService {
+  private configCache: Map<string, { data: any; timestamp: number }> = new Map();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutos en milisegundos
+  
   constructor(private prisma: PrismaService) {}
   async create(createConfigurationDto: CreateConfigurationDto) {
     try {
@@ -34,6 +37,14 @@ export class ConfigurationService {
 
   async findOneByName(name: string): Promise<any> {
     try {
+      // Verificar si existe en caché y si aún es válido
+      const cached = this.configCache.get(name);
+      const now = Date.now();
+      
+      if (cached && (now - cached.timestamp) < this.CACHE_TTL) {
+        return cached.data;
+      }
+
       const response = await this.prisma.configuration.findFirst({
         where: {
           name: {
@@ -42,9 +53,14 @@ export class ConfigurationService {
           },
         },
       });
+      
       if (!response) {
         return { message: 'Configuration not found', status: 404 };
       }
+
+      // Guardar en caché
+      this.configCache.set(name, { data: response, timestamp: now });
+      
       return response;
     } catch (error) {
       console.error('Error fetching configuration by name:', error);
@@ -101,6 +117,10 @@ export class ConfigurationService {
         where: { id },
         data: updateConfigurationDto,
       });
+      
+      // Limpiar caché cuando se actualiza una configuración
+      this.configCache.clear();
+      
       return response;
     } catch (error) {
       console.error('Error updating configuration:', error);

@@ -9,6 +9,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     // ✅ Asegurar que se use la URL del .env sin modificaciones
     super({
       log: ['error', 'warn'], // Reducir logs para debugging
+      // Optimizaciones de conexión pool
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
+      },
+      // Configuración de pool de conexiones
+      // connection_limit=5 para limitar conexiones simultáneas
     });
     
     // ✅ Patrón singleton para evitar múltiples instancias

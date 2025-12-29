@@ -56,7 +56,6 @@ export class UpdatePermissionService {
     const startOfDay = getColombianStartOfDay(now);
     const endOfDay = getColombianEndOfDay(now);
 
-    this.logger.log(`🔍 Checking expired permissions at ${now.toLocaleString('sv-SE')} (currentTime: ${currentTime})`);
 
     // Traer candidatos cuya fecha de fin sea <= fin del día
     const candidates = await this.prisma.permission.findMany({

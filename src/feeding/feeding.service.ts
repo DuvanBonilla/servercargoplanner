@@ -52,7 +52,6 @@ private getAvailableMealTypes(operationDateStart: Date, operationTimeStart: stri
   };
 
   if (todayDate.getTime() === operationStartDate.getTime()) {
-    console.log('🔍 ES PRIMER DÍA - evaluando comidas por horario de trabajo');
     
     const startTotalMinutes = operationStart.getUTCHours() * 60 + operationStart.getUTCMinutes();
     const endTotalMinutes = operationEnd ? (
@@ -648,9 +647,11 @@ const availableMealTypes = this.getAvailableMealTypes(
     const response = await this.prisma.workerFeeding.findMany({
       where: {
         id_operation,
-        worker: {
-          id_site,
-        },
+        ...(id_site && {
+          worker: {
+            id_site,
+          },
+        }),
       },
       include: {
         operation: {

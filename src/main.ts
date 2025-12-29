@@ -13,6 +13,42 @@ async function bootstrap() {
     const app = await NestFactory.create<NestExpressApplication>(AppModule, {
       logger: ['error', 'warn'], // Solo muestra errores y advertencias, oculta logs de inicialización
     });
+    
+    // ⚠️ CRÍTICO: CORS debe ser lo PRIMERO antes de cualquier middleware
+    const allowedOrigins = [
+      'https://cargoban.com.co',
+      'https://www.cargoban.com.co',
+      'http://localhost:3000',
+      'http://localhost:5173',
+    ];
+
+    app.enableCors({
+      origin: (origin, callback) => {
+        // Permitir requests sin origin (como Postman, apps móviles)
+        if (!origin) return callback(null, true);
+        
+        // Permitir orígenes en la lista
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        
+        // Permitir IPs locales en desarrollo (192.168.x.x:5173)
+        if (origin && /^http:\/\/192\.168\.\d+\.\d+:(5173|3000)$/.test(origin)) {
+          return callback(null, true);
+        }
+        
+        console.warn(`⚠️ Origen bloqueado por CORS: ${origin}`);
+        callback(null, false);
+      },
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+      exposedHeaders: ['Authorization'],
+      credentials: true,
+      preflightContinue: false,
+      optionsSuccessStatus: 204,
+      maxAge: 86400, // Cache preflight por 24 horas
+    });
+
     app.set('trust proxy', 'loopback');
     app.use(cookieParser());
     
@@ -20,14 +56,6 @@ async function bootstrap() {
 
     const docsAuthMiddleware = new DocsAuthMiddleware(authService);
     app.use('/docs', docsAuthMiddleware.use.bind(docsAuthMiddleware));
-    
-    app.enableCors({
-      origin: '*',
-      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-      preflightContinue: false,
-      optionsSuccessStatus: 204,
-      credentials: true,
-    });
     app.useGlobalPipes(
       new ValidationPipe({
         transform: true,
@@ -69,6 +97,14 @@ async function bootstrap() {
     // Configuración para archivos públicos (como login.html)
     const publicPath = join(process.cwd(), 'public');
     app.useStaticAssets(publicPath);
+
+    // Middleware para registrar solicitudes OPTIONS (diagnóstico CORS)
+    app.use((req, res, next) => {
+      if (req.method === 'OPTIONS') {
+        console.log(`📩 Solicitud OPTIONS recibida: ${req.path} desde ${req.headers.origin || 'sin origen'}`);
+      }
+      next();
+    });
 
     app.enableShutdownHooks();
 

@@ -16,7 +16,6 @@ export class UpdateInabilityService {
     const startOfDay = getColombianStartOfDay(now);
     const endOfDay = getColombianEndOfDay(now);
 
-    this.logger.log(`🔍 Checking expired inabilities at ${now.toLocaleString('sv-SE')} (currentTime: ${currentTime})`);
 
     // Buscar incapacidades cuya fecha de fin sea <= hoy
     const candidates = await this.prisma.inability.findMany({

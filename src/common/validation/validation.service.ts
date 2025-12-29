@@ -101,7 +101,6 @@ export class ValidationService {
       // 5. Validar código si se proporciona
       if (code_worker !== undefined) {
         const validationId = Math.random().toString(36).substring(7);
-        console.log(`[ValidationService] 🔍 ${validationId} - Validando código: ${code_worker}`);
         
         // Primero, verificar todos los trabajadores con ese código para debugging
         const allWorkersWithCode = await this.prisma.worker.findMany({

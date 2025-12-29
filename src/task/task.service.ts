@@ -41,7 +41,6 @@ export class TaskService {
         },
       });
 
-      console.log('🔍 Respuesta de Prisma:', response);
 
       return response;
     } catch (error) {

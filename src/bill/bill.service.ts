@@ -33,9 +33,9 @@ export class BillService {
     private configurationService: ConfigurationService
   ) {}
   async create(createBillDto: CreateBillDto, userId: number) {
-    console.log('=== [BillService] Iniciando creación de factura ===');
-    console.log('[BillService] userId:', userId);
-    console.log('[BillService] createBillDto:', JSON.stringify(createBillDto, null, 2));
+    // console.log('=== [BillService] Iniciando creación de factura ===');
+    // console.log('[BillService] userId:', userId);
+    // console.log('[BillService] createBillDto:', JSON.stringify(createBillDto, null, 2));
     
     // ✅ VALIDAR QUE EXISTA id_operation
     if (!createBillDto.id_operation) {
@@ -49,7 +49,7 @@ export class BillService {
       throw new ConflictException('La operación debe tener al menos un grupo de trabajadores para facturar');
     }
 
-    console.log(`[BillService] ✅ Validación básica correcta: ${createBillDto.groups.length} grupos a procesar`);
+    // console.log(`[BillService] ✅ Validación básica correcta: ${createBillDto.groups.length} grupos a procesar`);
 
     const validateOperationID = await this.validateOperation(
       createBillDto.id_operation,
@@ -58,7 +58,7 @@ export class BillService {
       return validateOperationID;
     }
 
-    console.log('[BillService] ✅ Operación validada correctamente');
+    // console.log('[BillService] ✅ Operación validada correctamente');
 
     // Procesar todos los tipos de grupos
     await this.processJornalGroups(createBillDto, userId, validateOperationID);
@@ -79,7 +79,7 @@ export class BillService {
       0,
     );
 
-    console.log('[BillService] ✅ Factura creada exitosamente');
+    // console.log('[BillService] ✅ Factura creada exitosamente');
 
     return {
       message: 'Cálculos y guardado de facturación realizados con éxito',
@@ -98,16 +98,16 @@ export class BillService {
   }
 
   // ✅ AGREGAR LOG PARA VERIFICAR QUE op_duration LLEGUE CORRECTAMENTE
-  console.log('=== VALIDATE OPERATION ===');
-  console.log('validateOperationID.op_duration:', validateOperationID.op_duration);
-  console.log('validateOperationID.workerGroups:', validateOperationID.workerGroups?.length);
+  // console.log('=== VALIDATE OPERATION ===');
+  // console.log('validateOperationID.op_duration:', validateOperationID.op_duration);
+  // console.log('validateOperationID.workerGroups:', validateOperationID.workerGroups?.length);
   
-  if (validateOperationID.workerGroups) {
-    validateOperationID.workerGroups.forEach((group, index) => {
-      console.log(`Grupo ${index + 1} - op_duration:`, group.op_duration);
-    });
-  }
-  console.log('=== FIN VALIDATE OPERATION ===');
+  // if (validateOperationID.workerGroups) {
+  //   validateOperationID.workerGroups.forEach((group, index) => {
+  //     console.log(`Grupo ${index + 1} - op_duration:`, group.op_duration);
+  //   });
+  // }
+  // console.log('=== FIN VALIDATE OPERATION ===');
 
   return validateOperationID;
 }
@@ -196,8 +196,8 @@ export class BillService {
   if (simpleHoursGroupsFiltered.length === 0) return;
 
   // ✅ AGREGAR LOG PARA VERIFICAR op_duration DE LA OPERACIÓN
-  console.log('=== OPERACIÓN PRINCIPAL ===');
-  console.log('validateOperationID.op_duration:', validateOperationID.op_duration);
+  // console.log('=== OPERACIÓN PRINCIPAL ===');
+  // console.log('validateOperationID.op_duration:', validateOperationID.op_duration);
 
   for (const matchingGroupSummary of simpleHoursGroupsFiltered) {
     const group = createBillDto.groups.find(
@@ -493,7 +493,7 @@ export class BillService {
     } else {
       const amount = group.amount || 0;
       totalPaysheet = amount * paysheetTariff;
-      console.log('Amount:', amount, 'Paysheet Tariff:', paysheetTariff);
+      // console.log('Amount:', amount, 'Paysheet Tariff:', paysheetTariff);
     }
 
     return { totalFacturation, totalPaysheet };
@@ -694,7 +694,11 @@ export class BillService {
   /**
    * Calcula el valor del compensatorio para una factura
    */
-  private async calculateCompensatoryForBill(billDB: any): Promise<any> {
+  private async calculateCompensatoryForBill(
+    billDB: any,
+    sundayHoursConfig?: any,
+    weekHoursConfig?: any
+  ): Promise<any> {
   try {
     const opDuration = billDB.operation?.op_duration;
     if (typeof opDuration === 'undefined' || opDuration === null) {
@@ -739,12 +743,9 @@ export class BillService {
       };
     }
 
-    // ✅ OBTENER HORAS SEMANALES DINÁMICAMENTE
+    // ✅ USAR CONFIGURACIONES PASADAS COMO PARÁMETRO (optimización)
     let weekHours = 44; // valor por defecto
     if (startDate && endDate) {
-      const sundayHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
-      const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
-      
       if (hasSundayReal && sundayHoursConfig?.value) {
         weekHours = parseInt(sundayHoursConfig.value, 10);
       } else if (!hasSundayReal && weekHoursConfig?.value) {
@@ -1084,7 +1085,7 @@ export class BillService {
     // ✅ CRÍTICO: Si se proporciona groupId, úsalo para diferenciar al mismo worker en diferentes grupos
     if (groupId) {
       whereClause.id_group = groupId;
-      console.log(`🔍 [findOperationWorker] Buscando worker ${workerId} en grupo ${groupId}`);
+      // console.log(`🔍 [findOperationWorker] Buscando worker ${workerId} en grupo ${groupId}`);
     }
     
     const operationWorker = await this.prisma.operation_Worker.findFirst({
@@ -1116,10 +1117,10 @@ export class BillService {
       );
     }
     
-    console.log(`✅ [findOperationWorker] Encontrado worker ${workerId}:`);
-    console.log(`   - Tarifa ID: ${operationWorker.tariff?.id}`);
-    console.log(`   - Subservicio: ${operationWorker.tariff?.subTask?.name} (${operationWorker.tariff?.subTask?.code})`);
-    console.log(`   - Unidad: ${operationWorker.tariff?.unitOfMeasure?.name}`);
+    // console.log(`✅ [findOperationWorker] Encontrado worker ${workerId}:`);
+    // console.log(`   - Tarifa ID: ${operationWorker.tariff?.id}`);
+    // console.log(`   - Subservicio: ${operationWorker.tariff?.subTask?.name} (${operationWorker.tariff?.subTask?.code})`);
+    // console.log(`   - Unidad: ${operationWorker.tariff?.unitOfMeasure?.name}`);
 
     return operationWorker;
   }
@@ -1242,10 +1243,19 @@ export class BillService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    
+    // ✅ OPTIMIZACIÓN: Obtener configuraciones UNA SOLA VEZ
+    const sundayHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
+    const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
+    
     // Calcular compensatorio para cada factura
     const billsWithCompensatory = await Promise.all(
       bills.map(async (bill) => {
-        const compensatory = await this.calculateCompensatoryForBill(bill);
+        const compensatory = await this.calculateCompensatoryForBill(
+          bill,
+          sundayHoursConfig,
+          weekHoursConfig
+        );
         return {
           ...bill,
           op_duration: bill.operation?.op_duration,
@@ -1501,7 +1511,7 @@ export class BillService {
   }
 
   async update(id: number, updateBillDto: UpdateBillDto, userId: number) {
-    console.log('Update Bill DTO:', JSON.stringify(updateBillDto, null, 2));
+    // console.log('Update Bill DTO:', JSON.stringify(updateBillDto, null, 2));
     const existingBill = await this.prisma.bill.findUnique({ where: { id } });
     if (!existingBill) {
       throw new ConflictException(`No se encontró la factura con ID: ${id}`);
@@ -1565,7 +1575,7 @@ export class BillService {
    * Se usa cuando se actualizan fechas de una operación COMPLETED
    */
   async recalculateBillAfterOpDurationChange(billId: number, operationId: number) {
-    console.log(`[BillService] 🔄 Recalculando factura ${billId} por cambio en op_duration de operación ${operationId}`);
+    // console.log(`[BillService] 🔄 Recalculando factura ${billId} por cambio en op_duration de operación ${operationId}`);
     
     try {
       // Obtener la factura actual con sus detalles
@@ -1587,7 +1597,7 @@ export class BillService {
       if (!bill) {
         throw new ConflictException(`No se encontró la factura con ID: ${billId}`);
       }
-      console.log(`[BillService] 📊 Factura actual tiene ${bill.billDetails.length} detalles`);
+      // console.log(`[BillService] 📊 Factura actual tiene ${bill.billDetails.length} detalles`);
 
       // ✅ OBTENER TRABAJADORES ACTUALES DE LA OPERACIÓN (puede incluir nuevos trabajadores)
       const currentOperationWorkers = await this.prisma.operation_Worker.findMany({
@@ -1600,7 +1610,7 @@ export class BillService {
         },
       });
 
-      console.log(`[BillService] 👥 Operación tiene ${currentOperationWorkers.length} trabajadores en el grupo ${bill.id_group}`);
+      // console.log(`[BillService] 👥 Operación tiene ${currentOperationWorkers.length} trabajadores en el grupo ${bill.id_group}`);
 
       // Identificar trabajadores a eliminar de la factura
       const currentWorkerIds = currentOperationWorkers.map(ow => ow.id_worker);
@@ -1609,8 +1619,8 @@ export class BillService {
       const workersToRemove = billWorkerIds.filter(id => !currentWorkerIds.includes(id));
       const workersToAdd = currentWorkerIds.filter(id => !billWorkerIds.includes(id));
 
-      console.log(`[BillService] 🔍 Trabajadores a eliminar: ${workersToRemove.length}`);
-      console.log(`[BillService] 🔍 Trabajadores a agregar: ${workersToAdd.length}`);
+      // console.log(`[BillService] 🔍 Trabajadores a eliminar: ${workersToRemove.length}`);
+      // console.log(`[BillService] 🔍 Trabajadores a agregar: ${workersToAdd.length}`);
 
       // Eliminar detalles de trabajadores que ya no están en la operación
       if (workersToRemove.length > 0) {
@@ -1625,7 +1635,7 @@ export class BillService {
           },
         });
 
-        console.log(`[BillService] 🗑️ Eliminados ${operationWorkerIdsToRemove.length} detalles de factura`);
+        // console.log(`[BillService] 🗑️ Eliminados ${operationWorkerIdsToRemove.length} detalles de factura`);
       }
 
       // Agregar detalles para trabajadores nuevos
@@ -1647,7 +1657,7 @@ export class BillService {
           data: newBillDetails,
         });
 
-        console.log(`[BillService] ➕ Agregados ${newBillDetails.length} nuevos detalles de factura`);
+        // console.log(`[BillService] ➕ Agregados ${newBillDetails.length} nuevos detalles de factura`);
       }
 
       // Obtener información actualizada de la operación con nuevo op_duration
@@ -1657,7 +1667,7 @@ export class BillService {
         throw new ConflictException(`No se encontró la operación con ID: ${operationId}`);
       }
 
-      console.log(`[BillService] ✅ op_duration actualizado: ${validateOperationID.op_duration} horas`);
+      // console.log(`[BillService] ✅ op_duration actualizado: ${validateOperationID.op_duration} horas`);
 
       // // ✅ PREPARAR DTO MÍNIMO CON DISTRIBUCIONES VACÍAS PARA FORZAR RECÁLCULO
       // const updateBillDto: UpdateBillDto = {
@@ -1736,7 +1746,7 @@ export class BillService {
         })),
       };
 
-      console.log(`[BillService] 🔄 Recalculando factura con ${updatedBillDetails.length} trabajadores`);
+      // console.log(`[BillService] 🔄 Recalculando factura con ${updatedBillDetails.length} trabajadores`);
 
 
 
@@ -1760,7 +1770,7 @@ export class BillService {
       // console.log(`[BillService] ✅ Factura ${billId} recalculada con nuevo compensatorio`);
       
       // return { success: true, message: 'Factura recalculada con nuevo compensatorio' };
-      console.log(`[BillService] ✅ Factura ${billId} recalculada con los nuevos trabajadores`);
+      // console.log(`[BillService] ✅ Factura ${billId} recalculada con los nuevos trabajadores`);
       
       return { 
         success: true, 
@@ -1976,11 +1986,11 @@ export class BillService {
     let totalFacturationGroup = 0;
 
     // Agrega logs para depuración
-    console.log('matchingGroupSummary:', matchingGroupSummary);
-    console.log(
-      'matchingGroupSummary.dateRange:',
-      matchingGroupSummary?.dateRange,
-    );
+    // console.log('matchingGroupSummary:', matchingGroupSummary);
+    // console.log(
+    //   'matchingGroupSummary.dateRange:',
+    //   matchingGroupSummary?.dateRange,
+    // );
     //movio
     if (matchingGroupSummary.schedule.unit_of_measure === 'JORNAL') {
       matchingGroupSummary.paysheet_tariff =
@@ -2068,8 +2078,7 @@ export class BillService {
       },
     });
 
-    console.log(`🔍 [updateWorkerDetails] Trabajadores encontrados en BD: ${operationWorkers.length}`);
-    console.log(`🔍 [updateWorkerDetails] Pays recibidos: ${JSON.stringify(group.pays)}`);
+   
 
     // ✅ Construir el array de pays correcto desde la BD y el DTO
     const validPays = operationWorkers.map(ow => {
@@ -2084,7 +2093,6 @@ export class BillService {
       };
     });
 
-    console.log(`✅ [updateWorkerDetails] Pays procesados: ${JSON.stringify(validPays)}`);
 
     // ✅ Iterar sobre los trabajadores reales de la BD
     for (const operationWorker of operationWorkers) {
@@ -2103,7 +2111,6 @@ export class BillService {
       const workerPay = validPays.find(p => p.id_worker === operationWorker.id_worker);
       const payValue = workerPay?.pay ?? 1;
 
-      console.log(`📊 [updateWorkerDetails] Worker ${operationWorker.id_worker} - pay: ${payValue}`);
 
       const totalWorkerPaysheet = this.calculateTotalWorker(
         totalPaysheetGroup,
@@ -2118,9 +2125,7 @@ export class BillService {
         matchingGroupSummary.workers,
       );
 
-      console.log(`💰 [updateWorkerDetails] Worker ${operationWorker.id_worker}:`);
-      console.log(`   - Nómina: ${totalWorkerPaysheet}`);
-      console.log(`   - Facturación: ${totalWorkerFacturation}`);
+   
 
       // USAR la función calculatePayRateForWorker en lugar de lógica manual
       const payRate = this.calculatePayRateForWorker(
@@ -2141,7 +2146,6 @@ export class BillService {
         },
       });
 
-      console.log(`✅ [updateWorkerDetails] BillDetail ${billDetail.id} actualizado`);
     }
   }
   //  {
@@ -2475,7 +2479,7 @@ export class BillService {
    * @param id_group ID del grupo que se modificó (opcional, solo para logs)
    */
   private async recalculateOpDuration(id_operation: number, id_group?: string) {
-    console.log(`[BillService] 🔄 Recalculando op_duration para operación ${id_operation}`);
+    // console.log(`[BillService] 🔄 Recalculando op_duration para operación ${id_operation}`);
     
     try {
       // Obtener todas las bills de la operación con sus group_hours
@@ -2489,16 +2493,16 @@ export class BillService {
         },
       });
 
-      console.log(`[BillService] 📊 Se encontraron ${bills.length} bills para la operación`);
+      // console.log(`[BillService] 📊 Se encontraron ${bills.length} bills para la operación`);
 
       // Sumar todos los group_hours de los grupos
       const totalOpDuration = bills.reduce((sum, bill) => {
         const groupHours = Number(bill.group_hours) || 0;
-        console.log(`[BillService]   - Grupo ${bill.id_group}: ${groupHours} horas`);
+        // console.log(`[BillService]   - Grupo ${bill.id_group}: ${groupHours} horas`);
         return sum + groupHours;
       }, 0);
 
-      console.log(`[BillService] ✅ Nuevo op_duration calculado: ${totalOpDuration} horas`);
+      // console.log(`[BillService] ✅ Nuevo op_duration calculado: ${totalOpDuration} horas`);
 
       // Actualizar el op_duration en la tabla Operation
       await this.prisma.operation.update({
@@ -2508,7 +2512,7 @@ export class BillService {
         },
       });
 
-      console.log(`[BillService] ✅ op_duration actualizado en la operación ${id_operation}`);
+      // console.log(`[BillService] ✅ op_duration actualizado en la operación ${id_operation}`);
 
     } catch (error) {
       console.error(`[BillService] ❌ Error recalculando op_duration:`, error);
@@ -2527,7 +2531,7 @@ export class BillService {
     id_operation: number,
     id_group: string
   ): Promise<number> {
-    console.log(`[BillService] 🔄 Recalculando group_hours para grupo ${id_group} de operación ${id_operation}`);
+    // console.log(`[BillService] 🔄 Recalculando group_hours para grupo ${id_group} de operación ${id_operation}`);
     
     try {
       // Obtener todos los trabajadores del grupo
@@ -2550,7 +2554,7 @@ export class BillService {
         return 0;
       }
 
-      console.log(`[BillService] 📊 Calculando duración promedio de ${workers.length} trabajadores`);
+      // console.log(`[BillService] 📊 Calculando duración promedio de ${workers.length} trabajadores`);
 
       // Calcular la duración promedio de los trabajadores del grupo
       let totalHoras = 0;
@@ -2577,13 +2581,13 @@ export class BillService {
           if (diff > 0) {
             totalHoras += diff;
             count++;
-            console.log(`[BillService]   - Worker ${worker.id}: ${diff.toFixed(2)} horas`);
+            // console.log(`[BillService]   - Worker ${worker.id}: ${diff.toFixed(2)} horas`);
           }
         }
       }
 
       const groupHours = count > 0 ? Math.round((totalHoras / count) * 100) / 100 : 0;
-      console.log(`[BillService] ✅ group_hours calculado: ${groupHours} horas (promedio de ${count} trabajadores)`);
+      // console.log(`[BillService] ✅ group_hours calculado: ${groupHours} horas (promedio de ${count} trabajadores)`);
 
       // Actualizar el bill del grupo con el nuevo group_hours
       const bill = await this.prisma.bill.findFirst({
@@ -2594,7 +2598,7 @@ export class BillService {
       });
 
       if (bill) {
-        console.log(`[BillService] 📝 Actualizando Bill ${bill.id} con group_hours: ${groupHours}`);
+        // console.log(`[BillService] 📝 Actualizando Bill ${bill.id} con group_hours: ${groupHours}`);
         
         const updatedBill = await this.prisma.bill.update({
           where: { id: bill.id },
@@ -2603,7 +2607,7 @@ export class BillService {
           },
         });
         
-        console.log(`[BillService] ✅ Bill ${bill.id} actualizado. Nuevo valor: ${updatedBill.group_hours}`);
+        // console.log(`[BillService] ✅ Bill ${bill.id} actualizado. Nuevo valor: ${updatedBill.group_hours}`);
 
         // Recalcular op_duration de toda la operación
         await this.recalculateOpDuration(id_operation, id_group);

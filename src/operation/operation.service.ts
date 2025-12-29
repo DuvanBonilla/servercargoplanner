@@ -460,13 +460,7 @@ export class OperationService {
     // ✅ RECALCULAR op_duration siempre que haya cambios en fechas u horas
 const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
     
-    console.log('[OperationService] 🔍 Verificando cambios de fecha/hora:');
-    console.log('   - dateStart presente:', !!dateStart);
-    console.log('   - dateEnd presente:', !!dateEnd);
-    console.log('   - timeStrat presente:', !!timeStrat);
-    console.log('   - timeEnd presente:', !!timeEnd);
-    console.log('   - hasDateTimeChanges:', hasDateTimeChanges);
-    
+  
     if (hasDateTimeChanges) {
       console.log('[OperationService] 🔄 Detectados cambios en fechas/horas, recalculando op_duration...');
       
@@ -707,9 +701,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           const currentDate = new Date();
           const currentWeekNumber = getWeekNumber(currentDate);
 
-          console.log(`[OperationService] 🔍 Validando semana para SUPERVISOR:`);
-          console.log(`   - Semana actual: ${currentWeekNumber}`);
-          console.log(`   - Semana de la factura: ${billInGroup.week_number}`);
+         
 
           if (billInGroup.week_number !== currentWeekNumber) {
             console.log(
@@ -1589,11 +1581,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
       const isNewGroup = connectOp.isNewGroup === true;
       const isRealExistingGroup = connectOp.groupId && !isTemporaryGroupId && !isNewGroup;
       
-      console.log(`[OperationService] 🔍 Análisis de grupo:`);
-      console.log(`[OperationService] - connectOp.groupId: ${connectOp.groupId}`);
-      console.log(`[OperationService] - isTemporaryGroupId: ${isTemporaryGroupId}`);
-      console.log(`[OperationService] - connectOp.isNewGroup: ${connectOp.isNewGroup}`);
-      console.log(`[OperationService] - isRealExistingGroup: ${isRealExistingGroup}`);
+  
 
       try {
         if (isTemporaryGroupId && isNewGroup) {
@@ -1634,13 +1622,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
             },
           });
 
-          console.log('[OperationService] 🔍 Worker existente en grupo encontrado:', {
-            id_group: existingGroupWorker?.id_group,
-            dateStart: existingGroupWorker?.dateStart,
-            timeStart: existingGroupWorker?.timeStart,
-            id_task: existingGroupWorker?.id_task,
-            id_tariff: existingGroupWorker?.id_tariff,
-          });
+         
 
           // const assignData = {
           //   id_operation: operationId,

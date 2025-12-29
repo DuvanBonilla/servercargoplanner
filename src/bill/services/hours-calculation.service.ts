@@ -86,7 +86,7 @@ export class HoursCalculationService {
   async calculateCompensatoryHours(hours: number, startDate?: Date, endDate?: Date): Promise<number> {
   // Si se proporcionan fechas, verificar si hay domingo
   if (startDate && endDate && !this.shouldCalculateCompensatory(startDate, endDate)) {
-    console.log('No se calcula compensatorio para operaciones con domingo');
+    // console.log('No se calcula compensatorio para operaciones con domingo');
     return 0;
   }
 
@@ -104,15 +104,15 @@ export class HoursCalculationService {
   const effectiveHours = Math.min(hours, dayHours);
   const compensatoryHours = effectiveHours * compensatoryPerHour;
 
-  console.log('=== CÁLCULO COMPENSATORIO CORREGIDO ===');
-  console.log('weekHours:', weekHours);
-  console.log('dayHours (valor máximo):', dayHours);
-  console.log('compensatoryDay:', compensatoryDay);
-  console.log('compensatoryPerHour:', compensatoryPerHour);
-  console.log('hours (duración operación):', hours);
-  console.log('effectiveHours (limitado):', effectiveHours);
-  console.log('compensatoryHours (resultado):', compensatoryHours);
-  console.log('=== FIN CÁLCULO COMPENSATORIO ===');
+  // console.log('=== CÁLCULO COMPENSATORIO CORREGIDO ===');
+  // console.log('weekHours:', weekHours);
+  // console.log('dayHours (valor máximo):', dayHours);
+  // console.log('compensatoryDay:', compensatoryDay);
+  // console.log('compensatoryPerHour:', compensatoryPerHour);
+  // console.log('hours (duración operación):', hours);
+  // console.log('effectiveHours (limitado):', effectiveHours);
+  // console.log('compensatoryHours (resultado):', compensatoryHours);
+  // console.log('=== FIN CÁLCULO COMPENSATORIO ===');
 
   return compensatoryHours;
 }
@@ -136,14 +136,14 @@ export class HoursCalculationService {
       paysheet_tariff: groupSummary.paysheet_tariff ?? gfmt.tariffDetails?.paysheet_tariff ?? 0,
     };
 
-    // ✅ AGREGAR LOGS PARA VERIFICAR op_duration
-  console.log('=== VERIFICACIÓN OP_DURATION ===');
-  console.log('groupSummary.op_duration:', groupSummary.op_duration);
-  console.log('gfmt.op_duration:', gfmt.op_duration);
-  console.log('combinedGroupData después de merge:', {
-    op_duration: combinedGroupData.op_duration,
-    dateRange: combinedGroupData.dateRange
-  });
+  //   // ✅ AGREGAR LOGS PARA VERIFICAR op_duration
+  // console.log('=== VERIFICACIÓN OP_DURATION ===');
+  // console.log('groupSummary.op_duration:', groupSummary.op_duration);
+  // console.log('gfmt.op_duration:', gfmt.op_duration);
+  // console.log('combinedGroupData después de merge:', {
+  //   op_duration: combinedGroupData.op_duration,
+  //   dateRange: combinedGroupData.dateRange
+  // });
    
     // Obtener fechas para validaciones
   let startDate: Date | null = null;
@@ -153,19 +153,19 @@ export class HoursCalculationService {
     startDate = toLocalDate(groupSummary.dateRange.start);
     endDate = toLocalDate(groupSummary.dateRange.end);
 
-    console.log('=== ANÁLISIS DE FECHAS ===');
-    console.log('startDate:', startDate.toISOString(), 'Día:', startDate.getDay());
-    console.log('endDate:', endDate.toISOString(), 'Día:', endDate.getDay());
+    // console.log('=== ANÁLISIS DE FECHAS ===');
+    // console.log('startDate:', startDate.toISOString(), 'Día:', startDate.getDay());
+    // console.log('endDate:', endDate.toISOString(), 'Día:', endDate.getDay());
 
     const diasSemana = getDayNamesInRange(startDate, endDate);
     const tieneDomingo = hasSundayInRange(startDate, endDate);
     const horasLimite = await this.getWeeklyHoursLimit(startDate, endDate);
     
-    console.log('Días de la semana en la operación:', diasSemana);
-    console.log('¿Tiene domingo?', tieneDomingo);
-    console.log('Horas límite semanales:', horasLimite);
-    console.log('¿Calcular compensatorio?', this.shouldCalculateCompensatory(startDate, endDate));
-    console.log('=== FIN ANÁLISIS FECHAS ===');
+    // console.log('Días de la semana en la operación:', diasSemana);
+    // console.log('¿Tiene domingo?', tieneDomingo);
+    // console.log('Horas límite semanales:', horasLimite);
+    // console.log('¿Calcular compensatorio?', this.shouldCalculateCompensatory(startDate, endDate));
+    // console.log('=== FIN ANÁLISIS FECHAS ===');
   }
 
   const result = await this.calculateHoursGroupResult(combinedGroupData, startDate, endDate);
@@ -188,12 +188,12 @@ export class HoursCalculationService {
     ? operationDuration 
     : (combinedGroupData.paysheetHoursDistribution.HOD + combinedGroupData.paysheetHoursDistribution.HON);
 
-  console.log('Horas para compensatorio:', {
-    operationDuration,
-    totalBillHours,
-    totalPaysheetHours,
-    usingOpDuration: operationDuration > 0
-  });
+  // console.log('Horas para compensatorio:', {
+  //   operationDuration,
+  //   totalBillHours,
+  //   totalPaysheetHours,
+  //   usingOpDuration: operationDuration > 0
+  // });
 
   // Calcular horas compensatorias (pasando las fechas)
   const compBill = await this.calculateCompensatoryHours(
@@ -207,10 +207,10 @@ export class HoursCalculationService {
     endDate || undefined
   );
 
-  console.log('Compensatorio calculado:', {
-    compBill,
-    compPayroll
-  });
+  // console.log('Compensatorio calculado:', {
+  //   compBill,
+  //   compPayroll
+  // });
 
   // Calcular montos de distribución de horas - PASANDO LAS FECHAS
   const factHoursDistributionTotal =
@@ -223,7 +223,7 @@ export class HoursCalculationService {
       endDate || undefined
     );
 
-  console.log("Fact Hours Distribution Total:", JSON.stringify(factHoursDistributionTotal, null, 2));
+  // console.log("Fact Hours Distribution Total:", JSON.stringify(factHoursDistributionTotal, null, 2));
 
   const paysheetHoursDistributionTotal =
     this.baseCalculationService.calculateHoursByDistribution(
@@ -240,12 +240,12 @@ export class HoursCalculationService {
   const paysheetTariff = combinedGroupData.paysheet_tariff || combinedGroupData.tariffDetails?.paysheet_tariff || 0;
   const workerCount = combinedGroupData.workerCount || 1;
 
-  console.log('=== VALIDACIÓN TARIFAS ===');
-  console.log('facturationTariff:', facturationTariff);
-  console.log('paysheetTariff:', paysheetTariff);
-  console.log('workerCount:', workerCount);
-  console.log('compBill:', compBill);
-  console.log('compPayroll:', compPayroll);
+  // console.log('=== VALIDACIÓN TARIFAS ===');
+  // console.log('facturationTariff:', facturationTariff);
+  // console.log('paysheetTariff:', paysheetTariff);
+  // console.log('workerCount:', workerCount);
+  // console.log('compBill:', compBill);
+  // console.log('compPayroll:', compPayroll);
 
   // ✅ CALCULAR MONTOS COMPENSATORIOS CON VALIDACIÓN
   const totalCompBill = (compBill && facturationTariff) 
@@ -256,9 +256,9 @@ export class HoursCalculationService {
     ? compPayroll * workerCount * paysheetTariff
     : 0;
 
-  console.log('=== MONTOS COMPENSATORIOS ===');
-  console.log('totalCompBill:', totalCompBill);
-  console.log('totalCompPayroll:', totalCompPayroll);
+  // console.log('=== MONTOS COMPENSATORIOS ===');
+  // console.log('totalCompBill:', totalCompBill);
+  // console.log('totalCompPayroll:', totalCompPayroll);
 
   // ✅ VALIDAR QUE LOS TOTALES NO SEAN NaN
   let totalFinalFacturation = factHoursDistributionTotal.totalAmount || 0;
@@ -284,9 +284,9 @@ export class HoursCalculationService {
                           combinedGroupData.tariffDetails?.compensatory || 
                           'NO';
 
-  console.log('=== FLAGS DE CONTROL ===');
-  console.log('compensatoryFlag:', compensatoryFlag);
-  console.log('shouldCalculateComp:', shouldCalculateComp);
+  // console.log('=== FLAGS DE CONTROL ===');
+  // console.log('compensatoryFlag:', compensatoryFlag);
+  // console.log('shouldCalculateComp:', shouldCalculateComp);
 
   // ✅ PARA FACTURACIÓN: Solo sumar compensatorio si compensatory = 'YES' y no hay domingo
   if (compensatoryFlag === 'YES' && shouldCalculateComp && !isNaN(totalCompBill)) {
@@ -315,10 +315,10 @@ export class HoursCalculationService {
     totalFinalPayroll = 0;
   }
 
-  console.log('=== TOTALES FINALES ===');
-  console.log('totalFinalFacturation:', totalFinalFacturation);
-  console.log('totalFinalPayroll:', totalFinalPayroll);
-  console.log('=== FIN TOTALES FINALES ===');
+  // console.log('=== TOTALES FINALES ===');
+  // console.log('totalFinalFacturation:', totalFinalFacturation);
+  // console.log('totalFinalPayroll:', totalFinalPayroll);
+  // console.log('=== FIN TOTALES FINALES ===');
 
   if (combinedGroupData.full_tariff === 'YES') {
     const sumHours = (
