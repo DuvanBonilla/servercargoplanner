@@ -511,7 +511,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
             });
 
             if (bill) {
-              console.log(`[OperationService] 📄 Factura encontrada (ID: ${bill.id}), recalculando compensatorio...`);
+              // console.log(`[OperationService] 📄 Factura encontrada (ID: ${bill.id}), recalculando compensatorio...`);
               
               // Importar dinámicamente BillService para evitar dependencia circular
               const { BillService } = await import('../bill/bill.service');
@@ -530,14 +530,15 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
             // No lanzar error para no bloquear la actualización de la operación
           }
         }
-      } else {
-        console.log('[OperationService] ⚠️ No se puede calcular op_duration:');
-        console.log('   - Operación existe:', !!updatedOp);
-        console.log('   - dateStart existe:', !!updatedOp?.dateStart);
-        console.log('   - timeStrat existe:', !!updatedOp?.timeStrat);
-        console.log('   - dateEnd existe:', !!updatedOp?.dateEnd);
-        console.log('   - timeEnd existe:', !!updatedOp?.timeEnd);
-      }
+      } 
+      // else {
+      //   console.log('[OperationService] ⚠️ No se puede calcular op_duration:');
+      //   console.log('   - Operación existe:', !!updatedOp);
+      //   console.log('   - dateStart existe:', !!updatedOp?.dateStart);
+      //   console.log('   - timeStrat existe:', !!updatedOp?.timeStrat);
+      //   console.log('   - dateEnd existe:', !!updatedOp?.dateEnd);
+      //   console.log('   - timeEnd existe:', !!updatedOp?.timeEnd);
+      // }
     } 
     // else {
     //   console.log('[OperationService] ℹ️ No se detectaron cambios en fechas/horas, no se recalcula op_duration');
