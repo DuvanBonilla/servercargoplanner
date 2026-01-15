@@ -119,11 +119,8 @@ for (const operation of pendingOperations) {
     if (minutesDiff >= 1) {
       shouldUpdate = true;
       reason = 'scheduled time passed';
-      // this.logger.debug(`✅ Operation ${operation.id} from today - ${minutesDiff} minutes passed since scheduled time (${operation.timeStrat})`);
     } 
-    // else {
-    //   this.logger.debug(`⏳ Operation ${operation.id} scheduled for ${operation.timeStrat} - needs ${1 - minutesDiff} more minutes`);
-    // }
+   
   }
   else {
     // ✅ CASO 3: Operación de días futuros - no activar
