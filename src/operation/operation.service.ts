@@ -388,7 +388,7 @@ export class OperationService {
 
     // Process workers
     if (workers) {
-      console.log('[OperationService] Procesando workers con nuevo flujo V2');
+      // console.log('[OperationService] Procesando workers con nuevo flujo V2');
       
       // ✅ SI ES OPERACIÓN COMPLETADA Y HAY CAMBIOS EN TRABAJADORES, RECALCULAR FACTURA
       if (isCompletedOperation) {
@@ -411,10 +411,11 @@ export class OperationService {
             // Recalcular la factura por cambios en trabajadores
             await billService.recalculateBillAfterOpDurationChange(bill.id, id);
             
-            console.log(`[OperationService] ✅ Factura ${bill.id} recalculada por cambios en trabajadores`);
-          } else {
-            console.log('[OperationService] ⚠️ No se encontró factura para esta operación completada');
-          }
+            // console.log(`[OperationService] ✅ Factura ${bill.id} recalculada por cambios en trabajadores`);
+          } 
+          // else {
+          //   console.log('[OperationService] ⚠️ No se encontró factura para esta operación completada');
+          // }
         } catch (error) {
           console.error('[OperationService] ❌ Error recalculando factura por cambios en trabajadores:', error.message);
           // No lanzar error para no bloquear la actualización de la operación
@@ -428,7 +429,7 @@ export class OperationService {
 
     // ✅ PROCESAR GRUPOS (FINALIZACIÓN DE GRUPOS)
     if (groups && Array.isArray(groups) && groups.length > 0) {
-      console.log('[OperationService] Procesando finalización de grupos:', groups);
+      // console.log('[OperationService] Procesando finalización de grupos:', groups);
       await this.processGroupsCompletion(id, groups);
     }
 
@@ -519,10 +520,11 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
               // Recalcular la factura completa
               await billService.recalculateBillAfterOpDurationChange(bill.id, id);
               
-              console.log(`[OperationService] ✅ Factura ${bill.id} recalculada con nuevo compensatorio`);
-            } else {
-              console.log('[OperationService] ⚠️ No se encontró factura para esta operación');
-            }
+              // console.log(`[OperationService] ✅ Factura ${bill.id} recalculada con nuevo compensatorio`);
+            } 
+            // else {
+            //   console.log('[OperationService] ⚠️ No se encontró factura para esta operación');
+            // }
           } catch (error) {
             console.error('[OperationService] ❌ Error recalculando factura:', error.message);
             // No lanzar error para no bloquear la actualización de la operación
@@ -536,9 +538,10 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         console.log('   - dateEnd existe:', !!updatedOp?.dateEnd);
         console.log('   - timeEnd existe:', !!updatedOp?.timeEnd);
       }
-    } else {
-      console.log('[OperationService] ℹ️ No se detectaron cambios en fechas/horas, no se recalcula op_duration');
-    }
+    } 
+    // else {
+    //   console.log('[OperationService] ℹ️ No se detectaron cambios en fechas/horas, no se recalcula op_duration');
+    // }
 
     // Handle status change
     if (directFields.status === StatusOperation.COMPLETED) {
@@ -761,19 +764,20 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           });
 
           if (remainingBillDetails === 0) {
-            console.log(
-              `[OperationService] Eliminando factura ${billInGroup.id} del grupo ${id_group} (sin BillDetails restantes)`,
-            );
+            // console.log(
+            //   `[OperationService] Eliminando factura ${billInGroup.id} del grupo ${id_group} (sin BillDetails restantes)`,
+            // );
             await tx.bill.delete({
               where: { id: billInGroup.id },
             });
-            console.log(
-              `[OperationService] ✅ Factura ${billInGroup.id} eliminada`,
-            );
+            // console.log(
+            //   `[OperationService] ✅ Factura ${billInGroup.id} eliminada`,
+            // );
           } else {
-            console.log(
-              `[OperationService] ℹ️ Factura ${billInGroup.id} conservada (tiene ${remainingBillDetails} BillDetails de otros grupos)`,
-            );
+
+            // console.log(
+            //   `[OperationService] ℹ️ Factura ${billInGroup.id} conservada (tiene ${remainingBillDetails} BillDetails de otros grupos)`,
+            // );
           }
         }
 
@@ -1086,7 +1090,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
       // Procesar cada grupo
       for (const id_group of id_groups) {
-        console.log(`[OperationService] Procesando grupo: ${id_group}`);
+        // console.log(`[OperationService] Procesando grupo: ${id_group}`);
         
         try {
           const result = await this.removeGroup(
@@ -1351,14 +1355,14 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
   console.log('[OperationService] Procesando operaciones de trabajadores V2:', JSON.stringify(workersOps, null, 2));
 
   if (isCompleted) {
-    console.log('[OperationService] 🔄 Procesando cambios en operación COMPLETADA');
+    // console.log('[OperationService] 🔄 Procesando cambios en operación COMPLETADA');
   }
   // 1. DESCONECTAR/ELIMINAR TRABAJADORES (mantener igual)
   if (workersOps.disconnect && Array.isArray(workersOps.disconnect) && workersOps.disconnect.length > 0) {
     // console.log('[OperationService] Eliminando trabajadores:', workersOps.disconnect);
     
     for (const disconnectOp of workersOps.disconnect) {
-      console.log('[OperationService] Procesando eliminación individual:', disconnectOp);
+      // console.log('[OperationService] Procesando eliminación individual:', disconnectOp);
       
       if (!disconnectOp.id || isNaN(Number(disconnectOp.id))) {
         console.error('[OperationService] ID de trabajador inválido:', disconnectOp.id);
@@ -1366,11 +1370,11 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
       }
       
       const workerId = Number(disconnectOp.id);
-      console.log('[OperationService] ID de trabajador convertido a número:', workerId);
+      // console.log('[OperationService] ID de trabajador convertido a número:', workerId);
       
       try {
         if (disconnectOp.id_group) {
-          console.log('[OperationService] Eliminando trabajador del grupo específico');
+          // console.log('[OperationService] Eliminando trabajador del grupo específico');
           const removeResult = await this.removeWorkerService.removeWorkerFromGroup(
             operationId,
             workerId,
@@ -1715,8 +1719,8 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
   //------------------------------------- FUNCIONando CORRECTAMENTE DESDE AQUÍ -----------------------------
 
   if (workersOps.update && workersOps.update.length > 0) {
-    console.log('[OperationService] ===== PROCESANDO UPDATE WORKERS =====');
-    console.log('[OperationService] workersOps.update:', JSON.stringify(workersOps.update, null, 2));
+    // console.log('[OperationService] ===== PROCESANDO UPDATE WORKERS =====');
+    // console.log('[OperationService] workersOps.update:', JSON.stringify(workersOps.update, null, 2));
     
     const workersToUpdate = workersOps.update
       .filter(updateOp => updateOp.id_worker && !isNaN(Number(updateOp.id_worker)))
@@ -1733,16 +1737,16 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           timeEnd: updateOp.timeEnd,
         };
 
-        console.log(`[OperationService] Worker ${updateOp.id_worker} mapeado:`, {
-          id_task: mapped.id_task,
-          id_subtask: mapped.id_subtask, // ✅ LOG ESPECÍFICO
-          id_tariff: mapped.id_tariff
-        });
+        // console.log(`[OperationService] Worker ${updateOp.id_worker} mapeado:`, {
+        //   id_task: mapped.id_task,
+        //   id_subtask: mapped.id_subtask, // ✅ LOG ESPECÍFICO
+        //   id_tariff: mapped.id_tariff
+        // });
 
         return mapped;
       });
 
-    console.log('[OperationService] ===== WORKERS PREPARADOS PARA ACTUALIZAR =====');
+    // console.log('[OperationService] ===== WORKERS PREPARADOS PARA ACTUALIZAR =====');
     workersToUpdate.forEach((worker, index) => {
       console.log(`Worker ${index + 1}:`, {
         id_group: worker.id_group,
@@ -1759,7 +1763,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           operationId,
           workersToUpdate
         );
-        console.log('[OperationService] Resultado actualización:', updateResult);
+        // console.log('[OperationService] Resultado actualización:', updateResult);
       } catch (error) {
         console.error('[OperationService] Error actualizando trabajadores:', error);
         throw error;
@@ -1774,7 +1778,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
   // **AGREGAR EL MÉTODO PARA PROCESAR ENCARGADOS**
   private async processInChargedOperations(operationId: number, inChargedOps: any) {
-    console.log('[OperationService] Procesando operaciones de encargados:', inChargedOps);
+    // console.log('[OperationService] Procesando operaciones de encargados:', inChargedOps);
 
     // ✅ SIEMPRE ELIMINAR TODOS LOS ENCARGADOS EXISTENTES PRIMERO
     await this.prisma.inChargeOperation.deleteMany({
@@ -1821,8 +1825,8 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
    * @param groups - Array de grupos con información de finalización
    */
   private async processGroupsCompletion(operationId: number, groups: any[]) {
-    console.log('[OperationService] ===== PROCESANDO FINALIZACIÓN DE GRUPOS =====');
-    console.log('[OperationService] Grupos a procesar:', JSON.stringify(groups, null, 2));
+    // console.log('[OperationService] ===== PROCESANDO FINALIZACIÓN DE GRUPOS =====');
+    // console.log('[OperationService] Grupos a procesar:', JSON.stringify(groups, null, 2));
 
     for (const group of groups) {
       const { groupId, dateEnd, timeEnd } = group;
@@ -1832,8 +1836,8 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         continue;
       }
 
-      console.log(`[OperationService] Procesando finalización de grupo: ${groupId}`);
-      console.log(`[OperationService] Datos de finalización: dateEnd=${dateEnd}, timeEnd=${timeEnd}`);
+      // console.log(`[OperationService] Procesando finalización de grupo: ${groupId}`);
+      // console.log(`[OperationService] Datos de finalización: dateEnd=${dateEnd}, timeEnd=${timeEnd}`);
 
       try {
         // Preparar datos de actualización

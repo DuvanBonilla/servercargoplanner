@@ -515,11 +515,11 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
   }
 
   async removeWorkerFromOperation(operationId: number, workerId: number) {
-    console.log('[RemoveWorkerService] removeWorkerFromOperation - Parámetros:', {
-      operationId,
-      workerId,
-      workerIdType: typeof workerId
-    });
+    // console.log('[RemoveWorkerService] removeWorkerFromOperation - Parámetros:', {
+    //   operationId,
+    //   workerId,
+    //   workerIdType: typeof workerId
+    // });
 
     // Validar parámetros
     if (!operationId || !workerId) {
@@ -527,7 +527,7 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
     }
 
     // Validar que el trabajador existe - QUITAR operationIds
-    console.log('[RemoveWorkerService] Validando trabajador:', workerId);
+    // console.log('[RemoveWorkerService] Validando trabajador:', workerId);
     await this.validationService.validateAllIds({
       workerIds: [workerId],  // Solo validar el trabajador
       // QUITAR: operationIds: [operationId],
@@ -542,7 +542,7 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
       throw new NotFoundException(`Operación ${operationId} no encontrada`);
     }
 
-    console.log('[RemoveWorkerService] Validación completada, eliminando de la operación');
+    // console.log('[RemoveWorkerService] Validación completada, eliminando de la operación');
     
    // ✅ PRIMERO: Buscar todos los operation_workers del trabajador en esta operación
     const operationWorkers = await this.prisma.operation_Worker.findMany({
@@ -556,18 +556,18 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
       throw new NotFoundException(`Trabajador ${workerId} no encontrado en la operación ${operationId}`);
     }
 
-    console.log(`[RemoveWorkerService] Encontrados ${operationWorkers.length} registros Operation_Worker para eliminar`);
+    // console.log(`[RemoveWorkerService] Encontrados ${operationWorkers.length} registros Operation_Worker para eliminar`);
 
     // ✅ SEGUNDO: Eliminar BillDetail y WorkerFeeding para cada operation_worker
     for (const opWorker of operationWorkers) {
-      console.log(`[RemoveWorkerService] Procesando Operation_Worker ID: ${opWorker.id}`);
+      // console.log(`[RemoveWorkerService] Procesando Operation_Worker ID: ${opWorker.id}`);
       // Eliminar BillDetail relacionados
       const billDetailsToDelete = await this.prisma.billDetail.findMany({
         where: { id_operation_worker: opWorker.id },
       });
 
       if (billDetailsToDelete.length > 0) {
-        console.log(`[RemoveWorkerService] Eliminando ${billDetailsToDelete.length} BillDetail(s) para Operation_Worker ${opWorker.id}...`);
+        // console.log(`[RemoveWorkerService] Eliminando ${billDetailsToDelete.length} BillDetail(s) para Operation_Worker ${opWorker.id}...`);
         
         await this.prisma.billDetail.deleteMany({
           where: { id_operation_worker: opWorker.id },

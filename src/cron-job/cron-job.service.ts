@@ -25,14 +25,14 @@ export class OperationsCronService {
    * Actualiza las operaciones en progreso
    * Cambiado de EVERY_MINUTE a cada 2 minutos para reducir carga del servidor
    */
-  @Cron('*/2 * * * *') // Cada 2 minutos
-  async handleUpdateInProgressOperations() {
-    try {
-      await this.updateOperation.updateInProgressOperations();
-    } catch (error) {
-      this.logger.error('Error in cron job:', error);
-    }
-  }
+  // @Cron('*/2 * * * *') // Cada 2 minutos
+  // async handleUpdateInProgressOperations() {
+  //   try {
+  //     await this.updateOperation.updateInProgressOperations();
+  //   } catch (error) {
+  //     this.logger.error('Error in cron job:', error);
+  //   }
+  // }
 
   /**
    * Actualiza los trabajadores con permisos que inician hoy
@@ -47,17 +47,24 @@ export class OperationsCronService {
   }
 
   /**
-   * Actualiza los trabajadores con permisos expirados
+   * 🔄 HÍBRIDO: Verificación reactiva + CronJob de respaldo cada hora
+   * 
+   * Los permisos expirados se verifican automáticamente cuando:
+   * - Se lista trabajadores (GET /workers)
+   * - Se asigna un trabajador a una operación
+   * 
+   * Este CronJob actúa como red de seguridad cada hora para casos donde:
+   * - Nadie consulta trabajadores por períodos largos
+   * - Permisos expiran sin que se dispare verificación reactiva
    */
-
-  @Cron(CronExpression.EVERY_5_MINUTES)
-async handleUpdateWorkersWithExpiredPermissions() {
-  try {
-    await this.updatePermission.updateWorkersWithExpiredPermissions();
-  } catch (error) {
-    this.logger.error('Error updating workers with expired permissions:', error);
+  @Cron(CronExpression.EVERY_HOUR)
+  async handleUpdateWorkersWithExpiredPermissions() {
+    try {
+      await this.updatePermission.updateWorkersWithExpiredPermissions();
+    } catch (error) {
+      this.logger.error('Error updating workers with expired permissions:', error);
+    }
   }
-}
 
 /**
    * Actualiza los trabajadores con incapacidades expiradas
@@ -87,14 +94,14 @@ async handleUpdateWorkersWithExpiredInabilities() {
   /**
    * Actualiza las operaciones completadas
    */
-  @Cron(CronExpression.EVERY_5_MINUTES)
-  async handleUpdateCompletedOperations() {
-    try {
-      await this.updateOperation.updateCompletedOperations();
-    } catch (error) {
-      this.logger.error('Error in cron job:', error);
-    }
-  }
+  // @Cron(CronExpression.EVERY_5_MINUTES)
+  // async handleUpdateCompletedOperations() {
+  //   try {
+  //     await this.updateOperation.updateCompletedOperations();
+  //   } catch (error) {
+  //     this.logger.error('Error in cron job:', error);
+  //   }
+  // }
 
   /**
    * Actulizar trabajadores con fallas

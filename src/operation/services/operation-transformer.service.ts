@@ -5,8 +5,13 @@ import { id } from 'date-fns/locale';
 export class OperationTransformerService {
   transformOperationResponse(operation) {
     if (!operation) return null;
+    
+    // ✅ AGREGAR LOG PARA VERIFICAR op_duration EN EL TRANSFORMADOR
+  
     const { id_area, id_task, workers, inChargeOperation, ...rest } = operation;
-    // ✅ Ordenar workers por id_group y luego por id antes de transformar
+    
+    // ✅ VERIFICAR QUE op_duration ESTÉ EN rest
+   // ✅ Ordenar workers por id_group y luego por id antes de transformar
     const sortedWorkers = workers?.sort((a, b) => {
       // Primero por grupo (null/undefined van al final)
       if (!a.id_group && !b.id_group) return a.id - b.id;
@@ -68,13 +73,16 @@ export class OperationTransformerService {
     const workerGroups =
       this.groupWorkersByScheduleAndGroup(workersWithSchedule);
 
-    return {
+    const result = {
       ...rest,
       workerGroups,
       inCharge, // ✅ USAR LOS ENCARGADOS ÚNICOS
       // Remover la relación intermedia
       inChargeOperation: undefined
     };
+
+    // ✅ VERIFICAR QUE op_duration ESTÉ EN EL RESULTADO FINAL
+    return result;
   }
 
   /**

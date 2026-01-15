@@ -69,10 +69,10 @@ async create(
     const existingRequest = this.recentRequests.get(requestKey);
     if (existingRequest) {
       if (existingRequest.processing) {
-        console.log(`[WorkerController] ${requestId} - ⚠️ PETICIÓN DUPLICADA DETECTADA (procesando), rechazando...`);
+        // console.log(`[WorkerController] ${requestId} - ⚠️ PETICIÓN DUPLICADA DETECTADA (procesando), rechazando...`);
         throw new ConflictException('Duplicate request detected - already processing');
       } else {
-        console.log(`[WorkerController] ${requestId} - ⚠️ PETICIÓN DUPLICADA DETECTADA (reciente), rechazando...`);
+        // console.log(`[WorkerController] ${requestId} - ⚠️ PETICIÓN DUPLICADA DETECTADA (reciente), rechazando...`);
         throw new ConflictException('Duplicate request detected - request processed recently');
       }
     }

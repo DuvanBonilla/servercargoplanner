@@ -661,7 +661,7 @@ async findById(id: number, id_site?: number) {
   // }
 
   async addWorkedHoursOnOperationEnd(operationId: number) {
-    console.log(`[WorkerService] Iniciando cálculo de horas trabajadas para operación ${operationId}`);
+    // console.log(`[WorkerService] Iniciando cálculo de horas trabajadas para operación ${operationId}`);
     
     const operationWorkers = await this.prisma.operation_Worker.findMany({
       where: { 
@@ -671,15 +671,15 @@ async findById(id: number, id_site?: number) {
       select: { id_worker: true, dateStart: true, dateEnd: true, timeStart: true, timeEnd: true },
     });
 
-    console.log(`[WorkerService] Encontrados ${operationWorkers.length} trabajadores en la operación`);
+    // console.log(`[WorkerService] Encontrados ${operationWorkers.length} trabajadores en la operación`);
 
     for (const { id_worker, dateStart, dateEnd, timeStart, timeEnd } of operationWorkers) {
-      console.log(`[WorkerService] Procesando worker ${id_worker}:`, {
-        dateStart: dateStart?.toISOString(),
-        dateEnd: dateEnd?.toISOString(),
-        timeStart,
-        timeEnd
-      });
+      // console.log(`[WorkerService] Procesando worker ${id_worker}:`, {
+      //   dateStart: dateStart?.toISOString(),
+      //   dateEnd: dateEnd?.toISOString(),
+      //   timeStart,
+      //   timeEnd
+      // });
 
       if (!dateStart || !dateEnd || !timeStart || !timeEnd) {
         console.log(`[WorkerService] ❌ Datos incompletos para worker ${id_worker} - saltando`);
@@ -694,19 +694,20 @@ async findById(id: number, id_site?: number) {
       end.setHours(eh, em, 0, 0);
 
       const diffHours = Math.round(((end.getTime() - start.getTime()) / 3_600_000) * 100) / 100;
-      console.log(`[WorkerService] diffHours calculadas para worker ${id_worker}:`, diffHours);
+      // console.log(`[WorkerService] diffHours calculadas para worker ${id_worker}:`, diffHours);
       
       if (diffHours > 0) {
-        console.log(`[WorkerService] ✅ Sumando ${diffHours} horas a worker ${id_worker}`);
+        // console.log(`[WorkerService] ✅ Sumando ${diffHours} horas a worker ${id_worker}`);
         await this.prisma.worker.update({
           where: { id: id_worker },
           data: { hoursWorked: { increment: diffHours } },
         });
-      } else {
-        console.log(`[WorkerService] ⚠️ Horas calculadas no válidas (${diffHours}) para worker ${id_worker}`);
-      }
+      } 
+      // else {
+      //   console.log(`[WorkerService] ⚠️ Horas calculadas no válidas (${diffHours}) para worker ${id_worker}`);
+      // }
     }
     
-    console.log(`[WorkerService] ✅ Finalizado cálculo de horas para operación ${operationId}`);
+    // console.log(`[WorkerService] ✅ Finalizado cálculo de horas para operación ${operationId}`);
   }
 }

@@ -39,7 +39,7 @@ export class UpdatePermissionService {
         where: { id: { in: workerIds } },
         data: { status: 'PERMISSION' },
       });
-      this.logger.log(`Actualizados ${workerIds.length} trabajadores a PERMISSION por permisos que inician hoy`);
+      // this.logger.log(`Actualizados ${workerIds.length} trabajadores a PERMISSION por permisos que inician hoy`);
     }
   }
 
@@ -65,7 +65,7 @@ export class UpdatePermissionService {
       select: { id_worker: true, dateDisableEnd: true, timeEnd: true },
     });
 
-    this.logger.log(`📋 Found ${candidates.length} permission candidates`);
+    // this.logger.log(`📋 Found ${candidates.length} permission candidates`);
 
     const expiredWorkerIds: number[] = [];
     for (const p of candidates) {
@@ -107,7 +107,7 @@ export class UpdatePermissionService {
 
       const startOfDayTime = startOfDay.getTime();
       
-      this.logger.debug(`Worker ${p.id_worker}: dateDisableEnd=${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}, expireDateOnly=${expireDateOnly.toLocaleString('sv-SE')}, startOfDay=${startOfDay.toLocaleString('sv-SE')}`);
+      // this.logger.debug(`Worker ${p.id_worker}: dateDisableEnd=${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}, expireDateOnly=${expireDateOnly.toLocaleString('sv-SE')}, startOfDay=${startOfDay.toLocaleString('sv-SE')}`);
 
       if (expireDateOnly.getTime() < startOfDayTime) {
         expiredWorkerIds.push(p.id_worker);
@@ -130,7 +130,7 @@ export class UpdatePermissionService {
       const expireTime = expireDateTime.getTime();
       const nowTime = now.getTime();
 
-      this.logger.log(`👤 Worker ${p.id_worker}: timeEnd=${p.timeEnd}, expireDateTime=${expireDateTime.toLocaleString('sv-SE')}, now=${now.toLocaleString('sv-SE')}, diff=${expireTime - nowTime}ms`);
+      // this.logger.log(`👤 Worker ${p.id_worker}: timeEnd=${p.timeEnd}, expireDateTime=${expireDateTime.toLocaleString('sv-SE')}, now=${now.toLocaleString('sv-SE')}, diff=${expireTime - nowTime}ms`);
 
       if (expireTime <= nowTime) {
         expiredWorkerIds.push(p.id_worker);
@@ -153,7 +153,7 @@ export class UpdatePermissionService {
       });
       // this.logger.log(`✔️ Updated ${workerIds.length} workers to AVALIABLE`);
     } else {
-      this.logger.log(`ℹ️ No expired permissions found`); 
+      // this.logger.log(`ℹ️ No expired permissions found`); 
     }
   }
 }

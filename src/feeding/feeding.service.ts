@@ -447,10 +447,10 @@ const availableMealTypes = this.getAvailableMealTypes(
     // ✅ COMBINAR: comidas de horario + comidas faltantes
     const allAvailableMeals = [...new Set([...availableMealTypes, ...allMissingMealTypes])];
     
-    console.log(`🍽️ [DEBUG] Op ${operationId}:`);
-    console.log(`   - Por horario: [${availableMealTypes.join(', ')}]`);
-    console.log(`   - Faltantes: [${allMissingMealTypes.join(', ')}]`);
-    console.log(`   - Total disponibles: [${allAvailableMeals.join(', ')}]`);
+    // console.log(`🍽️ [DEBUG] Op ${operationId}:`);
+    // console.log(`   - Por horario: [${availableMealTypes.join(', ')}]`);
+    // console.log(`   - Faltantes: [${allMissingMealTypes.join(', ')}]`);
+    // console.log(`   - Total disponibles: [${allAvailableMeals.join(', ')}]`);
       
       const feedingTypeNames = {
         BREAKFAST: 'desayuno',

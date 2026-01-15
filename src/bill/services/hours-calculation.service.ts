@@ -83,11 +83,20 @@ export class HoursCalculationService {
     return !hasSundayInRange(startDate, endDate);
   }
 
-  async calculateCompensatoryHours(hours: number, startDate?: Date, endDate?: Date): Promise<number> {
+  async calculateCompensatoryHours(hours: number, billStatus?: string, startDate?: Date, endDate?: Date): Promise<number> {
+  
+  
   // Si se proporcionan fechas, verificar si hay domingo
   if (startDate && endDate && !this.shouldCalculateCompensatory(startDate, endDate)) {
-    // console.log('No se calcula compensatorio para operaciones con domingo');
+    // console.log('❌ No se calcula compensatorio para operaciones con domingo');
     return 0;
+  }
+
+  // ✅ LÓGICA BASADA EN ESTADO DE FACTURA
+  // Si la factura NO está completada, mostrar valor por defecto para verificación del usuario
+  if (billStatus !== 'COMPLETED' && hours > 7.3333333) {
+    // console.log(`✅ Factura NO completada - Compensatorio por defecto para verificación: ${hours} > 7.33 → 1.22222 horas`);
+    return 1.22222;
   }
 
   // ✅ OBTENER HORAS SEMANALES DINÁMICAMENTE
@@ -95,7 +104,7 @@ export class HoursCalculationService {
     ? await this.getWeeklyHoursLimit(startDate, endDate)
     : 44; // Fallback a valor por defecto
 
-  // ✅ CÁLCULO CORRECTO DEL COMPENSATORIO
+  // ✅ CÁLCULO CORRECTO DEL COMPENSATORIO (para facturas completadas o <= 7.33 horas)
   const dayHours = weekHours / 6; // 7.333333 para 44 horas, 8 para 48 horas
   const compensatoryDay = dayHours / 6; // 1.222222 para 44 horas, 1.333333 para 48 horas
   const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por cada hora trabajada
@@ -105,6 +114,7 @@ export class HoursCalculationService {
   const compensatoryHours = effectiveHours * compensatoryPerHour;
 
   // console.log('=== CÁLCULO COMPENSATORIO CORREGIDO ===');
+  // console.log('billStatus:', billStatus);
   // console.log('weekHours:', weekHours);
   // console.log('dayHours (valor máximo):', dayHours);
   // console.log('compensatoryDay:', compensatoryDay);
@@ -123,6 +133,7 @@ export class HoursCalculationService {
   async processHoursGroups(
     groupSummary: WorkerGroupSummary,
     group: GroupBillDto,
+    billStatus?: string,
   ): Promise<ProcessHoursGroupsResult> {
     const gfmt = groupSummary as any;
     const combinedGroupData = {
@@ -168,41 +179,52 @@ export class HoursCalculationService {
     // console.log('=== FIN ANÁLISIS FECHAS ===');
   }
 
-  const result = await this.calculateHoursGroupResult(combinedGroupData, startDate, endDate);
+  const result = await this.calculateHoursGroupResult(combinedGroupData, billStatus, startDate, endDate);
   return result;
 }
 
-  private async calculateHoursGroupResult(combinedGroupData: any, startDate?: Date | null, endDate?: Date | null) {
-  // ✅ USAR op_duration EN LUGAR DE HORAS DE DISTRIBUCIÓN
-  console.log('=== CÁLCULO COMPENSATORIO ===');
-  console.log('op_duration disponible:', combinedGroupData.op_duration);
+  private async calculateHoursGroupResult(combinedGroupData: any, billStatus?: string, startDate?: Date | null, endDate?: Date | null) {
+  // console.log('🔍 calculateHoursGroupResult - Parámetros recibidos:', {
+  //   billStatus,
+  //   'combinedGroupData.group_hours': combinedGroupData?.group_hours,
+  //   'combinedGroupData.op_duration': combinedGroupData?.op_duration,
+  //   startDate,
+  //   endDate
+  // });
+  // ✅ USAR group_hours EN LUGAR DE op_duration PARA COMPENSATORIO
+  console.log('=== CÁLCULO COMPENSATORIO CORREGIDO ===');
+  console.log('group_hours disponible:', combinedGroupData.group_hours);
+  console.log('op_duration (solo informativo):', combinedGroupData.op_duration);
   
-  // Usar op_duration si está disponible, sino usar las horas de distribución como fallback
-  const operationDuration = combinedGroupData.op_duration || 0;
+  // ✅ USAR group_hours para el compensatorio (duración específica del grupo)
+  // Si no está disponible group_hours, usar las horas de distribución como fallback
+  const groupDuration = combinedGroupData.group_hours || 0;
   
-  const totalBillHours = operationDuration > 0 
-    ? operationDuration 
+  const totalBillHours = groupDuration > 0 
+    ? groupDuration 
     : (combinedGroupData.billHoursDistribution.HOD + combinedGroupData.billHoursDistribution.HON);
     
-  const totalPaysheetHours = operationDuration > 0 
-    ? operationDuration 
+  const totalPaysheetHours = groupDuration > 0 
+    ? groupDuration 
     : (combinedGroupData.paysheetHoursDistribution.HOD + combinedGroupData.paysheetHoursDistribution.HON);
 
-  // console.log('Horas para compensatorio:', {
-  //   operationDuration,
-  //   totalBillHours,
-  //   totalPaysheetHours,
-  //   usingOpDuration: operationDuration > 0
-  // });
+  console.log('Horas para compensatorio (usando group_hours):', {
+    groupDuration,
+    totalBillHours,
+    totalPaysheetHours,
+    usingGroupHours: groupDuration > 0
+  });
 
-  // Calcular horas compensatorias (pasando las fechas)
+  // Calcular horas compensatorias (pasando billStatus y fechas)
   const compBill = await this.calculateCompensatoryHours(
     totalBillHours, 
+    billStatus,
     startDate || undefined, 
     endDate || undefined
   );
   const compPayroll = await this.calculateCompensatoryHours(
     totalPaysheetHours, 
+    billStatus,
     startDate || undefined, 
     endDate || undefined
   );
@@ -247,19 +269,6 @@ export class HoursCalculationService {
   // console.log('compBill:', compBill);
   // console.log('compPayroll:', compPayroll);
 
-  // ✅ CALCULAR MONTOS COMPENSATORIOS CON VALIDACIÓN
-  const totalCompBill = (compBill && facturationTariff) 
-    ? compBill * workerCount * facturationTariff
-    : 0;
-
-  const totalCompPayroll = (compPayroll && paysheetTariff) 
-    ? compPayroll * workerCount * paysheetTariff
-    : 0;
-
-  // console.log('=== MONTOS COMPENSATORIOS ===');
-  // console.log('totalCompBill:', totalCompBill);
-  // console.log('totalCompPayroll:', totalCompPayroll);
-
   // ✅ VALIDAR QUE LOS TOTALES NO SEAN NaN
   let totalFinalFacturation = factHoursDistributionTotal.totalAmount || 0;
   let totalFinalPayroll = paysheetHoursDistributionTotal.totalAmount || 0;
@@ -280,28 +289,41 @@ export class HoursCalculationService {
     : true;
 
   // ✅ OBTENER compensatory CON FALLBACK
-  const compensatoryFlag = combinedGroupData.compensatory || 
-                          combinedGroupData.tariffDetails?.compensatory || 
-                          'NO';
+  const baseTariffCompensatory = combinedGroupData.compensatory || 
+                                combinedGroupData.tariffDetails?.compensatory || 
+                                'NO';
 
-  // console.log('=== FLAGS DE CONTROL ===');
-  // console.log('compensatoryFlag:', compensatoryFlag);
-  // console.log('shouldCalculateComp:', shouldCalculateComp);
+  console.log('=== LÓGICA DE COMPENSATORIO ===');
+  console.log('groupDuration:', groupDuration);
+  console.log('baseTariffCompensatory:', baseTariffCompensatory);
+  console.log('shouldCalculateComp (sin domingos):', shouldCalculateComp);
 
-  // ✅ PARA FACTURACIÓN: Solo sumar compensatorio si compensatory = 'YES' y no hay domingo
-  if (compensatoryFlag === 'YES' && shouldCalculateComp && !isNaN(totalCompBill)) {
+  // ✅ CALCULAR COMPENSATORIO SIEMPRE (se mostrará en la respuesta)
+  const compensatoryBill = shouldCalculateComp ? compBill : 0;
+  const compensatoryPayroll = shouldCalculateComp ? compPayroll : 0;
+  
+  const totalCompBill = compensatoryBill * workerCount * facturationTariff;
+  const totalCompPayroll = compensatoryPayroll * workerCount * paysheetTariff;
+
+  console.log('Compensatorio calculado:');
+  console.log('- Horas compensatorio facturación:', compensatoryBill);
+  console.log('- Horas compensatorio nómina:', compensatoryPayroll);
+  console.log('- Monto compensatorio facturación:', totalCompBill);
+  console.log('- Monto compensatorio nómina:', totalCompPayroll);
+
+  // ✅ INCLUIR COMPENSATORIO EN TOTALES SOLO SI LA TARIFA DICE "YES"
+  if (baseTariffCompensatory === 'YES' && shouldCalculateComp && !isNaN(totalCompBill)) {
     totalFinalFacturation += totalCompBill;
-    console.log('✅ Compensatorio FACTURACIÓN sumado:', totalCompBill);
+    console.log('✅ Compensatorio INCLUIDO en total facturación (tarifa compensatory: YES)');
   } else {
-    console.log('❌ Compensatorio FACTURACIÓN NO sumado - compensatory:', compensatoryFlag, 'shouldCalculateComp:', shouldCalculateComp);
+    console.log('❌ Compensatorio NO incluido en total facturación (tarifa compensatory:', baseTariffCompensatory, ')');
   }
 
-  // ✅ PARA NÓMINA: SIEMPRE sumar compensatorio en grupos HORAS (sin importar compensatory flag)
-  if (shouldCalculateComp && !isNaN(totalCompPayroll)) {
+  if (baseTariffCompensatory === 'YES' && shouldCalculateComp && !isNaN(totalCompPayroll)) {
     totalFinalPayroll += totalCompPayroll;
-    console.log('✅ Compensatorio NÓMINA SIEMPRE sumado:', totalCompPayroll);
+    console.log('✅ Compensatorio INCLUIDO en total nómina (tarifa compensatory: YES)');
   } else {
-    console.log('❌ Compensatorio NÓMINA NO sumado - shouldCalculateComp:', shouldCalculateComp, 'isNaN:', isNaN(totalCompPayroll));
+    console.log('❌ Compensatorio NO incluido en total nómina (tarifa compensatory:', baseTariffCompensatory, ')');
   }
 
   // ✅ VALIDACIÓN FINAL ANTES DE RETORNAR

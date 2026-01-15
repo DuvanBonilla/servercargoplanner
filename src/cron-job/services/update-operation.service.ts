@@ -25,7 +25,7 @@ export class UpdateOperationService {
    */
   async updateInProgressOperations() {
     try {
-      this.logger.debug('Checking for operations to update to INPROGRESS...');
+      // this.logger.debug('Checking for operations to update to INPROGRESS...');
 
       // Usar hora colombiana en lugar de hora del servidor
       const now = getColombianDateTime();
@@ -36,10 +36,10 @@ export class UpdateOperationService {
       // Crear fecha de fin (mañana a medianoche hora colombiana)
       const endOfDay = getColombianEndOfDay(now);
 
-      this.logger.debug(`Colombian time now: ${now.toISOString()}`);
-      this.logger.debug(
-        `Searching operations for date: ${startOfDay.toISOString()}`,
-      );
+      // this.logger.debug(`Colombian time now: ${now.toISOString()}`);
+      // this.logger.debug(
+      //   `Searching operations for date: ${startOfDay.toISOString()}`,
+      // );
 
       // Buscar todas las operaciones con estado PENDING para hoy
       const pendingOperations = await this.prisma.operation.findMany({
@@ -52,7 +52,7 @@ export class UpdateOperationService {
         },
       });
 
-      this.logger.debug(`Found ${pendingOperations.length} pending operations`);
+      // this.logger.debug(`Found ${pendingOperations.length} pending operations`);
 
       let updatedCount = 0;
 
@@ -112,25 +112,26 @@ for (const operation of pendingOperations) {
     // ✅ CASO 1: Operación de días anteriores - activar inmediatamente
     shouldUpdate = true;
     reason = 'previous day operation';
-    this.logger.debug(`✅ Operation ${operation.id} from previous day (${operation.dateStart.toISOString().split('T')[0]}) - updating immediately`);
+    // this.logger.debug(`✅ Operation ${operation.id} from previous day (${operation.dateStart.toISOString().split('T')[0]}) - updating immediately`);
   } 
   else if (operationDate.getTime() === todayDate.getTime()) {
     // ✅ CASO 2: Operación de hoy - esperar 1 minuto después de la hora programada
     if (minutesDiff >= 1) {
       shouldUpdate = true;
       reason = 'scheduled time passed';
-      this.logger.debug(`✅ Operation ${operation.id} from today - ${minutesDiff} minutes passed since scheduled time (${operation.timeStrat})`);
-    } else {
-      this.logger.debug(`⏳ Operation ${operation.id} scheduled for ${operation.timeStrat} - needs ${1 - minutesDiff} more minutes`);
-    }
+      // this.logger.debug(`✅ Operation ${operation.id} from today - ${minutesDiff} minutes passed since scheduled time (${operation.timeStrat})`);
+    } 
+    // else {
+    //   this.logger.debug(`⏳ Operation ${operation.id} scheduled for ${operation.timeStrat} - needs ${1 - minutesDiff} more minutes`);
+    // }
   }
   else {
     // ✅ CASO 3: Operación de días futuros - no activar
-    this.logger.debug(`📅 Operation ${operation.id} scheduled for future date (${operation.dateStart.toISOString().split('T')[0]}) - keeping PENDING`);
+    // this.logger.debug(`📅 Operation ${operation.id} scheduled for future date (${operation.dateStart.toISOString().split('T')[0]}) - keeping PENDING`);
   }
 
   if (shouldUpdate) {
-    this.logger.debug(`🚀 Updating operation ${operation.id} to INPROGRESS (reason: ${reason})`);
+    // this.logger.debug(`🚀 Updating operation ${operation.id} to INPROGRESS (reason: ${reason})`);
     
     // Actualizar el estado a INPROGRESS
     await this.prisma.operation.update({
@@ -154,11 +155,11 @@ for (const operation of pendingOperations) {
   }
 }
 
-      if (updatedCount > 0) {
-        this.logger.debug(
-          `Updated ${updatedCount} operations to INPROGRESS status`,
-        );
-      }
+      // if (updatedCount > 0) {
+      //   this.logger.debug(
+      //     `Updated ${updatedCount} operations to INPROGRESS status`,
+      //   );
+      // }
 
       return { updatedCount };
     } catch (error) {
@@ -170,7 +171,7 @@ for (const operation of pendingOperations) {
 
   async updateCompletedOperations() {
     try {
-      this.logger.debug('Checking for operations to update to COMPLETED...');
+      // this.logger.debug('Checking for operations to update to COMPLETED...');
 
       // Usar hora colombiana en lugar de hora del servidor
       const now = getColombianDateTime();
@@ -181,10 +182,10 @@ for (const operation of pendingOperations) {
       // Crear fecha de fin (mañana a medianoche hora colombiana)
       const endOfDay = getColombianEndOfDay(now);
 
-      this.logger.debug(`Colombian time now: ${now.toISOString()}`);
-      this.logger.debug(
-        `Searching operations for date: ${startOfDay.toISOString()} to ${endOfDay.toISOString()}`,
-      );
+      // this.logger.debug(`Colombian time now: ${now.toISOString()}`);
+      // this.logger.debug(
+      //   `Searching operations for date: ${startOfDay.toISOString()} to ${endOfDay.toISOString()}`,
+      // );
 
       // Buscar todas las operaciones con estado INPROGRESS para hoy que tengan fecha de finalización
       const inProgressOperations = await this.prisma.operation.findMany({
@@ -200,9 +201,9 @@ for (const operation of pendingOperations) {
         },
       });
 
-      this.logger.debug(
-        `Found ${inProgressOperations.length} in-progress operations with end time`,
-      );
+      // this.logger.debug(
+      //   `Found ${inProgressOperations.length} in-progress operations with end time`,
+      // );
 
       let updatedCount = 0;
       let releasedWorkersCount = 0;
@@ -211,9 +212,9 @@ for (const operation of pendingOperations) {
       for (const operation of inProgressOperations) {
         // Verificar que tenemos todos los datos necesarios
         if (!operation.dateEnd || !operation.timeEnd) {
-          this.logger.warn(
-            `Operation ${operation.id} has missing end date or time`,
-          );
+          // this.logger.warn(
+          //   `Operation ${operation.id} has missing end date or time`,
+          // );
           continue;
         }
 
@@ -227,9 +228,9 @@ endDateTime.setHours(hours, minutes, 0, 0);
 
         // Verificar si han pasado 10 minutos desde la hora de finalización (usando hora colombiana)
         const minutesDiff = differenceInMinutes(now, endDateTime);
-        this.logger.debug(
-          `Operation ${operation.id}: ${minutesDiff} minutes since end time (Colombian time)`,
-        );
+        // this.logger.debug(
+        //   `Operation ${operation.id}: ${minutesDiff} minutes since end time (Colombian time)`,
+        // );
 
         // Si han pasado 1 minutos desde la hora de finalización
         if (minutesDiff >= 1) {
@@ -248,9 +249,9 @@ endDateTime.setHours(hours, minutes, 0, 0);
           });
 
           const workerIds = operationWorkers.map((ow) => ow.id_worker);
-          this.logger.debug(
-            `Found ${workerIds.length} workers for operation ${operation.id}`,
-          );
+          // this.logger.debug(
+          //   `Found ${workerIds.length} workers for operation ${operation.id}`,
+          // );
 
           // Paso 2: Actualizar el estado de los trabajadores a AVALIABLE
           if (workerIds.length > 0) {
@@ -263,9 +264,9 @@ endDateTime.setHours(hours, minutes, 0, 0);
             });
 
             releasedWorkersCount += result.count;
-            this.logger.debug(
-              `Released ${result.count} workers from operation ${operation.id}`,
-            );
+            // this.logger.debug(
+            //   `Released ${result.count} workers from operation ${operation.id}`,
+            // );
           }
 // Paso 3: Calcular op_duration antes de actualizar a COMPLETED
           let opDuration = 0;
@@ -282,9 +283,9 @@ endDateTime.setHours(hours, minutes, 0, 0);
             opDuration = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100; // 2 decimales
             opDuration = opDuration > 0 ? opDuration : 0;
             
-            this.logger.debug(
-              `Calculated op_duration for operation ${operation.id}: ${opDuration} hours`,
-            );
+            // this.logger.debug(
+            //   `Calculated op_duration for operation ${operation.id}: ${opDuration} hours`,
+            // );
           }
 
           // Paso 4: Actualizar el estado de la operación a COMPLETED con op_duration
@@ -309,9 +310,9 @@ endDateTime.setHours(hours, minutes, 0, 0);
               ...new Set(operationWorkers.map((ow) => ow.id_group)),
             ];
 
-            this.logger.debug(
-              `Creando factura para operación ${operation.id} con op_duration: ${opDuration} horas`,
-            );
+            //this.logger.debug(
+            //   `Creando factura para operación ${operation.id} con op_duration: ${opDuration} horas`,
+            // );
 
             // Crear grupos para la factura con op_duration para calcular compensatorio
             const billGroups = uniqueGroups.map((groupId) => {
@@ -353,17 +354,17 @@ endDateTime.setHours(hours, minutes, 0, 0);
               groups: billGroups,
             };
 
-            this.logger.debug(
-             `DTO de factura con op_duration: ${JSON.stringify({ op_duration: opDuration, groupsCount: billGroups.length })}`,
-            );
+            // this.logger.debug(
+            //  `DTO de factura con op_duration: ${JSON.stringify({ op_duration: opDuration, groupsCount: billGroups.length })}`,
+            // );
 
             // Llamar al servicio de facturación (userId 1 para sistema automático)
             await this.billService.create(createBillDto, 1);
 
             billsCreatedCount++;
-            this.logger.debug(
-              `Factura creada automáticamente para operación ${operation.id} con compensatorio calculado`,
-            );
+            // this.logger.debug(
+            //   `Factura creada automáticamente para operación ${operation.id} con compensatorio calculado`,
+            // );
           } catch (billError) {
             this.logger.error(
             `Error creando factura para operación ${operation.id}:`,
@@ -391,20 +392,20 @@ endDateTime.setHours(hours, minutes, 0, 0);
               where: { id: response.id_clientProgramming },
               data: { status: 'COMPLETED' },
             });
-            this.logger.debug(
-              `Updated client programming ${response.id_clientProgramming} to COMPLETED status`,
-            );
+            // this.logger.debug(
+            //   `Updated client programming ${response.id_clientProgramming} to COMPLETED status`,
+            // );
           }
 
           updatedCount++;
         }
       }
 
-      if (updatedCount > 0) {
-        this.logger.debug(
-          `Updated ${updatedCount} operations to COMPLETED status`,
-        );
-      }
+      // if (updatedCount > 0) {
+      //   this.logger.debug(
+      //     `Updated ${updatedCount} operations to COMPLETED status`,
+      //   );
+      // }
 
       return { updatedCount,
         billsCreatedCount,

@@ -234,68 +234,49 @@ export function getDayNamesInRange(startDate: Date | string, endDate: Date | str
 }
 
 export function toLocalDate(date: Date | string): Date {
-  // console.log('[DEBUG] toLocalDate - Input:', date, 'Type:', typeof date);
-  
   if (typeof date === 'string') {
     // Si es tipo 'YYYY-MM-DD'
     if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       const [y, m, d2] = date.split('-').map(Number);
-      const result = new Date(y, m - 1, d2);
-      // console.log('[DEBUG] toLocalDate - String YYYY-MM-DD:', result.toISOString().split('T')[0], 'Day:', result.getDay());
-      return result;
+      return new Date(y, m - 1, d2);
     }
-    // Si es tipo ISO (con T y Z), toma solo la parte de la fecha
+    // ✅ SOLUCIÓN: Para fechas ISO con zona horaria, extraer solo año, mes, día
+    // y crear fecha local sin considerar la zona horaria UTC
     const y = Number(date.slice(0, 4));
     const m = Number(date.slice(5, 7)) - 1;
     const d2 = Number(date.slice(8, 10));
-    const result = new Date(y, m, d2);
-    // console.log('[DEBUG] toLocalDate - String ISO:', result.toISOString().split('T')[0], 'Day:', result.getDay());
-    return result;
+    
+
+    
+    return new Date(y, m, d2);
   }
-  // Si es Date, ignora la hora
-  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  // console.log('[DEBUG] toLocalDate - Date object:', result.toISOString().split('T')[0], 'Day:', result.getDay());
-  return result;
+  
+  // FIX: Si es objeto Date de Prisma, obtener la fecha UTC correcta
+  // sin aplicar conversión de zona horaria
+  if (date instanceof Date) {
+    // Usar fechas UTC para evitar problemas de zona horaria
+    return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  }
+  
+  // Fallback: Si no es Date ni string
+  return new Date();
 }
 /**
  * Retorna true si hay al menos un domingo en el rango de fechas
  */
 export function hasSundayInRange(startDate: Date | string, endDate: Date | string): boolean {
-  // Asegurar que SIEMPRE se usen fechas normalizadas
+  // Asegurar que se usen fechas normalizadas
   const localStart = toLocalDate(startDate);
   const localEnd = toLocalDate(endDate);
-  const currentDate = new Date(localStart);
-
-  // console.log('[DEBUG] hasSundayInRange - Fechas de entrada:', {
-  //   startDate: typeof startDate === 'string' ? startDate : startDate.toISOString(),
-  //   endDate: typeof endDate === 'string' ? endDate : endDate.toISOString()
-  // });
-
-  // console.log('[DEBUG] hasSundayInRange - Fechas normalizadas:', {
-  //   localStart: localStart.toISOString().split('T')[0],
-  //   localEnd: localEnd.toISOString().split('T')[0],
-  //   startDay: localStart.getDay(), // 0=domingo, 1=lunes, 2=martes...
-  //   endDay: localEnd.getDay()
-  // });
-
-  // Declarar el array con tipo explícito
-  const daysChecked: Array<{ date: string; day: number; dayName: string }> = [];
+  const currentDate = new Date(localStart.getFullYear(), localStart.getMonth(), localStart.getDate());
   
   while (currentDate <= localEnd) {
-    const dayOfWeek = getDay(currentDate);
-    const dateStr = currentDate.toISOString().split('T')[0];
-    daysChecked.push({ date: dateStr, day: dayOfWeek, dayName: getDayName(currentDate) });
-    
-    // console.log('[DEBUG] Checking date:', dateStr, 'Day:', dayOfWeek, 'Name:', getDayName(currentDate));
-    
-    if (dayOfWeek === 0) { // 0 = domingo
-      // console.log('[DEBUG] ❌ DOMINGO ENCONTRADO en fecha:', dateStr);
+    if (getDay(currentDate) === 0) { // 0 = domingo
       return true;
     }
     currentDate.setDate(currentDate.getDate() + 1);
   }
   
-  // console.log('[DEBUG] ✅ No hay domingo en el rango. Días revisados:', daysChecked);
   return false;
 }
 

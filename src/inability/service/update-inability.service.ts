@@ -25,7 +25,7 @@ export class UpdateInabilityService {
       select: { id_worker: true, dateDisableEnd: true },
     });
 
-    this.logger.log(`📋 Found ${candidates.length} inability candidates`);
+    // this.logger.log(`📋 Found ${candidates.length} inability candidates`);
 
     const expiredWorkerIds: number[] = [];
     for (const inability of candidates) {
@@ -66,7 +66,7 @@ export class UpdateInabilityService {
       const startOfDayTime = startOfDay.getTime();
       const endDateTime = endDateOnly.getTime();
 
-      this.logger.log(`👤 Worker ${inability.id_worker}: dateDisableEnd=${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}, endDateOnly=${endDateOnly.toLocaleString('sv-SE')}, startOfDay=${startOfDay.toLocaleString('sv-SE')}`);
+      // this.logger.log(`👤 Worker ${inability.id_worker}: dateDisableEnd=${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}, endDateOnly=${endDateOnly.toLocaleString('sv-SE')}, startOfDay=${startOfDay.toLocaleString('sv-SE')}`);
 
       // Si la fecha de fin es anterior a hoy, ya está vencida
       if (endDateTime < startOfDayTime) {
@@ -94,7 +94,7 @@ export class UpdateInabilityService {
       });
       // this.logger.log(`✔️ Updated ${workerIds.length} workers to AVALIABLE due to expired inabilities`);
     } else {
-      this.logger.log(`ℹ️ No expired inabilities found`);
+      // this.logger.log(`ℹ️ No expired inabilities found`);
     }
   }
 }

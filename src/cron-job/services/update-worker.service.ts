@@ -77,9 +77,7 @@ export class UpdateWorkerService {
       const workers = await this.prisma.worker.findMany();
 
       for (const worker of workers) {
-        this.logger.debug(
-          `Updating worker ${worker.id} with failures: ${worker.failures}`,
-        );
+        // this.logger.debug(`Updating worker ${worker.id} with failures: ${worker.failures}`,);
 
         await this.prisma.worker.update({
           where: { dni: worker.dni },

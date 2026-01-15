@@ -162,9 +162,9 @@ export class OperationFinderService {
       const startDate = new Date(start);
       const endDate = new Date(end);
 
-      console.log('[OperationFinderService] Búsqueda por rango de fechas:');
-      console.log('  - Fecha inicio:', startDate.toISOString());
-      console.log('  - Fecha fin:', endDate.toISOString());
+      // console.log('[OperationFinderService] Búsqueda por rango de fechas:');
+      // console.log('  - Fecha inicio:', startDate.toISOString());
+      // console.log('  - Fecha fin:', endDate.toISOString());
 
       const where: any = {
         dateStart: {
@@ -176,7 +176,7 @@ export class OperationFinderService {
       if (typeof id_site === 'number') where.id_site = id_site;
       if (typeof id_subsite === 'number') where.id_subsite = id_subsite;
 
-      console.log('[OperationFinderService] Filtros aplicados:', JSON.stringify(where, null, 2));
+      // console.log('[OperationFinderService] Filtros aplicados:', JSON.stringify(where, null, 2));
 
       const response = await this.prisma.operation.findMany({
         where,
@@ -184,13 +184,13 @@ export class OperationFinderService {
         orderBy: { dateStart: 'desc' },
       });
 
-      console.log(`[OperationFinderService] Operaciones encontradas: ${response.length}`);
+      // console.log(`[OperationFinderService] Operaciones encontradas: ${response.length}`);
       
-      if (response.length > 0) {
-        response.forEach(op => {
-          console.log(`  - ID: ${op.id}, Status: ${op.status}, dateStart: ${op.dateStart}, dateEnd: ${op.dateEnd}`);
-        });
-      }
+      // if (response.length > 0) {
+      //   response.forEach(op => {
+      //     console.log(`  - ID: ${op.id}, Status: ${op.status}, dateStart: ${op.dateStart}, dateEnd: ${op.dateEnd}`);
+      //   });
+      // }
 
       if (response.length === 0) {
         return { message: 'No operations found in this range', status: 404 };
@@ -295,16 +295,16 @@ export class OperationFinderService {
       }
 
       // ✅ AGREGAR LOG PARA VERIFICAR op_duration DE LA OPERACIÓN
-      console.log('=== OPERATION FINDER ===');
-      console.log('operation.op_duration:', operation.op_duration);
+      // console.log('=== OPERATION FINDER ===');
+      // console.log('operation.op_duration:', operation.op_duration);
 
       // Transformar la operación con detalles de tarifa
       const transformedOperation =
         this.transformer.transformOperationResponse(operation);
 
       // ✅ AGREGAR LOG PARA VERIFICAR DESPUÉS DE TRANSFORMACIÓN
-      console.log('transformedOperation.op_duration:', transformedOperation.op_duration);
-      console.log('transformedOperation.workerGroups length:', transformedOperation.workerGroups.length);
+      // console.log('transformedOperation.op_duration:', transformedOperation.op_duration);
+      // console.log('transformedOperation.workerGroups length:', transformedOperation.workerGroups.length);
 
       // Actualizar cada trabajador con detalles completos de tarifa
       transformedOperation.workerGroups.forEach((group, index) => {
@@ -328,7 +328,7 @@ export class OperationFinderService {
         }
 
         const correctTariffId = firstWorkerRecord.tariff?.id;
-        console.log(`[FinderService] Grupo ${index + 1} (${group.groupId}) → Usando tariff ${correctTariffId} del worker ${firstWorkerInGroup.id}`);
+        // console.log(`[FinderService] Grupo ${index + 1} (${group.groupId}) → Usando tariff ${correctTariffId} del worker ${firstWorkerInGroup.id}`);
         const originalWorkers = operation.workers.filter(
           (w) => w.id_group === group.groupId && w.tariff?.id === correctTariffId,
         );
@@ -358,19 +358,20 @@ export class OperationFinderService {
         group.op_duration = operation.op_duration;
 
         // ✅ AGREGAR LOG PARA VERIFICAR PROPAGACIÓN
-        console.log(`=== GRUPO ${index + 1} ===`);
-        console.log(`Grupo ${group.groupId} - paysheet_tariff:`, group.tariffDetails.paysheet_tariff);
-        console.log(`Grupo ${group.groupId} - op_duration:`, group.op_duration);
+        // console.log(`=== GRUPO ${index + 1} ===`);
+        // console.log(`Grupo ${group.groupId} - paysheet_tariff:`, group.tariffDetails.paysheet_tariff);
+        // console.log(`Grupo ${group.groupId} - op_duration:`, group.op_duration);
       });
 
       // ✅ VERIFICAR QUE op_duration ESTÉ EN LA RESPUESTA FINAL
-      console.log('=== RESPUESTA FINAL ===');
-      console.log('transformedOperation.op_duration:', transformedOperation.op_duration);
-      console.log('Grupos con op_duration:', transformedOperation.workerGroups.map(g => ({
-        groupId: g.groupId,
-        op_duration: g.op_duration
-      })));
-      console.log('=== FIN OPERATION FINDER ===');
+    //   console.log('=== RESPUESTA FINAL ===');
+    //   console.log('transformedOperation.op_duration:', transformedOperation.op_duration);
+    //   console.log('Grupos con op_duration:', transformedOperation.workerGroups.map(g => ({
+    //     groupId: g.groupId,
+    //     op_duration: g.op_duration
+    //   })
+    // ));
+      // console.log('=== FIN OPERATION FINDER ===');
 
       return transformedOperation;
     } catch (error) {

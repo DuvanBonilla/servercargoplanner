@@ -22,10 +22,10 @@ export class CancelledOperationsCleanupService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async cleanupCancelledOperations() {
-    this.logger.log('Iniciando limpieza de operaciones canceladas y desactivadas...');
+    // this.logger.log('Iniciando limpieza de operaciones canceladas y desactivadas...');
     
     try {
-      this.logger.log(' Buscando TODAS las operaciones canceladas y desactivadas (sin límite de fecha)');
+      // this.logger.log(' Buscando TODAS las operaciones canceladas y desactivadas (sin límite de fecha)');
 
       // Buscar TODAS las operaciones canceladas Y desactivadas (sin filtro de fecha)
       const operationsToDelete = await this.prisma.operation.findMany({
@@ -43,7 +43,7 @@ export class CancelledOperationsCleanupService {
       });
 
       if (operationsToDelete.length === 0) {
-        this.logger.log(' No hay operaciones canceladas o desactivadas para eliminar');
+        // this.logger.log(' No hay operaciones canceladas o desactivadas para eliminar');
         return;
       }
 
@@ -51,14 +51,14 @@ export class CancelledOperationsCleanupService {
       const cancelledCount = operationsToDelete.filter(op => op.status === StatusOperation.CANCELED).length;
       const deactivatedCount = operationsToDelete.filter(op => op.status === StatusOperation.DEACTIVATED).length;
 
-      this.logger.log(` Encontradas ${operationsToDelete.length} operaciones para eliminar:`);
-      this.logger.log(` ${cancelledCount} CANCELED`);
-      this.logger.log(` ${deactivatedCount} DEACTIVATED`);
+      // this.logger.log(` Encontradas ${operationsToDelete.length} operaciones para eliminar:`);
+      // this.logger.log(` ${cancelledCount} CANCELED`);
+      // this.logger.log(` ${deactivatedCount} DEACTIVATED`);
 
       // Log de algunas operaciones para debugging
-      operationsToDelete.slice(0, 3).forEach(op => {
-        this.logger.log(` ID: ${op.id}, Estado: ${op.status}, Última actualización: ${op.updateAt}`);
-      });
+      // operationsToDelete.slice(0, 3).forEach(op => {
+      //   this.logger.log(` ID: ${op.id}, Estado: ${op.status}, Última actualización: ${op.updateAt}`);
+      // });
 
       // Eliminar cada operación con sus dependencias
       let deletedCount = 0;
@@ -69,7 +69,7 @@ export class CancelledOperationsCleanupService {
         try {
           await this.deleteOperationWithDependencies(operation.id);
           deletedCount++;
-          this.logger.log(` Operación eliminada: ID ${operation.id} (Estado: ${operation.status})`);
+          // this.logger.log(` Operación eliminada: ID ${operation.id} (Estado: ${operation.status})`);
         } catch (error) {
           if (error.message.includes('no se puede eliminar porque tiene')) {
             skippedCount++;
@@ -81,11 +81,11 @@ export class CancelledOperationsCleanupService {
         }
       }
 
-      this.logger.log(` Limpieza completada:`);
-      this.logger.log(`    ${deletedCount} eliminadas`);
-      this.logger.log(`    ${skippedCount} omitidas (tienen datos críticos)`);
-      this.logger.log(`    ${errorCount} errores`);
-      this.logger.log(`    ${operationsToDelete.length} total procesadas`);
+      // this.logger.log(` Limpieza completada:`);
+      // this.logger.log(`    ${deletedCount} eliminadas`);
+      // this.logger.log(`    ${skippedCount} omitidas (tienen datos críticos)`);
+      // this.logger.log(`    ${errorCount} errores`);
+      // this.logger.log(`    ${operationsToDelete.length} total procesadas`);
 
     } catch (error) {
       this.logger.error(' Error durante la limpieza de operaciones:', error.message);
@@ -188,7 +188,7 @@ export class CancelledOperationsCleanupService {
       : [StatusOperation.CANCELED];
 
     const dateFilterText = useDateFilter ? `con filtro de ${daysOld} días` : 'sin filtro de fecha';
-    this.logger.log(`🔧 Ejecutando limpieza manual ${dateFilterText} - Estados: ${statusesToClean.join(', ')}`);
+    // this.logger.log(`🔧 Ejecutando limpieza manual ${dateFilterText} - Estados: ${statusesToClean.join(', ')}`);
     
     const whereCondition: any = {
       status: {
@@ -314,14 +314,14 @@ export class CancelledOperationsCleanupService {
     };
   }
 async resetMonthlyWorkedHours() {
-    this.logger.log('🔄 Iniciando reinicio mensual de horas trabajadas...');
+    // this.logger.log('🔄 Iniciando reinicio mensual de horas trabajadas...');
     
     try {
       const currentDate = new Date();
       const currentMonth = currentDate.getMonth() + 1;
       const currentYear = currentDate.getFullYear();
       
-      this.logger.log(`📅 Reiniciando horas para ${currentMonth}/${currentYear}`);
+      // this.logger.log(`📅 Reiniciando horas para ${currentMonth}/${currentYear}`);
 
       // Obtener todos los workers con horas trabajadas > 0
       const workersWithHours = await this.prisma.worker.findMany({
@@ -338,10 +338,10 @@ async resetMonthlyWorkedHours() {
         }
       });
 
-      this.logger.log(`👥 Encontrados ${workersWithHours.length} workers con horas registradas`);
+      // this.logger.log(`👥 Encontrados ${workersWithHours.length} workers con horas registradas`);
 
       if (workersWithHours.length === 0) {
-        this.logger.log('ℹ️ No hay workers con horas para reiniciar');
+        // this.logger.log('ℹ️ No hay workers con horas para reiniciar');
         return {
           success: true,
           workersReset: 0,
@@ -365,7 +365,7 @@ async resetMonthlyWorkedHours() {
         }
       });
 
-      this.logger.log(`✅ Reinicio completado: ${updateResult.count} workers actualizados`);
+      // this.logger.log(`✅ Reinicio completado: ${updateResult.count} workers actualizados`);
       
       return {
         success: true,
@@ -420,7 +420,7 @@ async resetMonthlyWorkedHours() {
         `;
       }
 
-      this.logger.log(`📋 Reporte histórico guardado para ${workers.length} workers`);
+      // this.logger.log(`📋 Reporte histórico guardado para ${workers.length} workers`);
 
     } catch (error) {
       this.logger.error('❌ Error creando reporte mensual:', error);
@@ -431,7 +431,7 @@ async resetMonthlyWorkedHours() {
    * Ejecutar reinicio manual de horas trabajadas
    */
   async manualReset(dryRun: boolean = false) {
-    this.logger.log(`🔧 Reinicio manual iniciado ${dryRun ? '(SIMULACIÓN)' : '(REAL)'}`);
+    // this.logger.log(`🔧 Reinicio manual iniciado ${dryRun ? '(SIMULACIÓN)' : '(REAL)'}`);
     
     try {
       const workersWithHours = await this.prisma.worker.findMany({
@@ -450,7 +450,7 @@ async resetMonthlyWorkedHours() {
 
       
 
-      this.logger.log(`📊 Workers encontrados con horas: ${workersWithHours.length}`);
+      // this.logger.log(`📊 Workers encontrados con horas: ${workersWithHours.length}`);
       
       const summary = workersWithHours.map(worker => ({
         id: worker.id,
@@ -476,7 +476,7 @@ async resetMonthlyWorkedHours() {
           }
         });
 
-        this.logger.log(`✅ Reinicio manual completado: ${result.count} workers actualizados`);
+        // this.logger.log(`✅ Reinicio manual completado: ${result.count} workers actualizados`);
         
         return {
           success: true,

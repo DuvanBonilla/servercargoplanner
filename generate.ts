@@ -545,7 +545,7 @@ resources.forEach((resource) => {
 });
 
 // Convertir README.md a HTML
-console.log('Procesando README.md...');
+// console.log('Procesando README.md...');
 let readmeHtml = '';
 try {
   const readmePath = './README.md';

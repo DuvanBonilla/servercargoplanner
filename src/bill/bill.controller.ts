@@ -36,7 +36,7 @@ export class BillController {
     @CurrentUser('userId') userId: number,
     @Body() createBillDto: CreateBillDto) {
       // Agrega este console.log para ver lo que llega del frontend
-  console.log('=== Datos recibidos para crear factura ===');
+  console.log('=== Datos recibidos para crear factura ==='); 
   console.log(JSON.stringify(createBillDto, null, 2));
   console.log('==========================================');
     const response = await this.billService.create(createBillDto, userId);
@@ -183,6 +183,8 @@ PATCH /bill/955
     @CurrentUser('userId') userId: number,
     @Body() updateBillDto: UpdateBillDto,
   ) {
+   
+    
     return this.billService.update(id, updateBillDto, userId);
   }
   

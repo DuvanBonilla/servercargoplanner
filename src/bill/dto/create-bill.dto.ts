@@ -39,9 +39,14 @@ export class HoursDistribution {
 }
 
 export class GroupBillDto {
-  @ApiProperty({ example: '1' })
+  @ApiProperty({ 
+    example: '1',
+    description: 'ID del grupo (opcional en actualizaciones)',
+    required: false 
+  })
   @IsString()
-  id: string;
+  @IsOptional()
+  id?: string;
 
   @ApiProperty({ description: 'Distribuccion horaria para facturacion' })
   billHoursDistribution: HoursDistribution;
@@ -66,6 +71,17 @@ export class GroupBillDto {
   @Type(() => Number)
   @IsOptional()
   group_hours: Decimal;
+
+  @ApiProperty({ 
+    example: 1,
+    description: 'Número de horas del grupo (usado para unidades por cantidad). Si no se proporciona, se usa group_hours.',
+    required: false
+  })
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  @IsOptional()
+  number_of_hours?: number;
 
 
   @ApiProperty({ example: 'Observation text' })

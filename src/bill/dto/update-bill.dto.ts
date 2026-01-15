@@ -18,10 +18,12 @@ import { Decimal } from '@prisma/client/runtime/library';
 export class UpdateBillDto {
   @ApiProperty({ 
     example: 'd1de43a7-cfdd-4950-8238-73374038f927',
-    description: 'ID del grupo (id_group) al que pertenece este bill dentro de la operación. Este es el UUID que identifica al grupo de trabajadores, NO es el ID del bill.'
+    description: 'ID del grupo (id_group) al que pertenece este bill dentro de la operación. Este es el UUID que identifica al grupo de trabajadores, NO es el ID del bill.',
+    required: false
   })
+  @IsOptional()
   @IsString()
-  id: string;
+  id?: string;
 
   @ApiProperty({ 
     description: 'Distribución horaria para facturación (opcional)',
@@ -84,6 +86,43 @@ export class UpdateBillDto {
   @IsOptional()
   @Type(() => String)
   observation?: string;
+
+  // ✅ FECHAS DEL GRUPO - para modificar operation_worker específicos
+  @ApiProperty({
+    example: '2026-01-09T00:00:00.000Z',
+    description: 'Fecha de inicio del grupo (opcional). Cuando se proporciona, actualiza las fechas de todos los operation_worker de este grupo.',
+    required: false
+  })
+  @IsOptional()
+  @Type(() => Date)
+  dateStart_group?: Date;
+
+  @ApiProperty({
+    example: '01:00',
+    description: 'Hora de inicio del grupo (opcional). Formato HH:mm',
+    required: false
+  })
+  @IsString()
+  @IsOptional()
+  timeStart_group?: string;
+
+  @ApiProperty({
+    example: '2026-01-09T00:00:00.000Z',
+    description: 'Fecha de fin del grupo (opcional). Cuando se proporciona, actualiza las fechas de todos los operation_worker de este grupo.',
+    required: false
+  })
+  @IsOptional()
+  @Type(() => Date)
+  dateEnd_group?: Date;
+
+  @ApiProperty({
+    example: '15:24',
+    description: 'Hora de fin del grupo (opcional). Formato HH:mm',
+    required: false
+  })
+  @IsString()
+  @IsOptional()
+  timeEnd_group?: string;
 
 
   @ApiProperty({

@@ -13,7 +13,7 @@ export class UpdateOperationWorkerService {
    */
   async updateWorkersScheduleState(): Promise<void> {
     try {
-      this.logger.log('Iniciando actualización de estado de trabajadores según programación');
+      // this.logger.log('Iniciando actualización de estado de trabajadores según programación');
 
       // Obtener fecha y hora actual en zona horaria de Colombia
       const colombiaTime = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Bogota'}));
@@ -43,8 +43,8 @@ export class UpdateOperationWorkerService {
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowString = tomorrow.toISOString().split('T')[0];
       
-      this.logger.debug(`Hora actual Colombia: ${localDateStr} ${localTimeStr}`);
-      this.logger.debug(`Fecha de hoy: ${today}, fecha de mañana: ${tomorrowString}`);
+      // this.logger.debug(`Hora actual Colombia: ${localDateStr} ${localTimeStr}`);
+      // this.logger.debug(`Fecha de hoy: ${today}, fecha de mañana: ${tomorrowString}`);
       
       // IMPORTANTE: Solo traer operaciones en INPROGRESS
       const activeOperations = await this.prisma.operation.findMany({
@@ -75,11 +75,11 @@ export class UpdateOperationWorkerService {
         return (opStartDate === today || opEndDate === today || opEndDate === tomorrowString);
       });
       
-      this.logger.debug(`Encontradas ${todayOperations.length} operaciones activas para hoy/mañana: ${todayOperations.map(op => op.id).join(', ')}`);
+      // this.logger.debug(`Encontradas ${todayOperations.length} operaciones activas para hoy/mañana: ${todayOperations.map(op => op.id).join(', ')}`);
 
       // Si no hay operaciones activas para hoy, no es necesario continuar
       if (todayOperations.length === 0) {
-        this.logger.log('No hay operaciones en progreso para el rango de fechas actual. No se realizarán cambios.');
+        // this.logger.log('No hay operaciones en progreso para el rango de fechas actual. No se realizarán cambios.');
         return;
       }
 
@@ -101,7 +101,7 @@ export class UpdateOperationWorkerService {
         },
       });
 
-      this.logger.debug(`Encontrados ${operationWorkers.length} trabajadores para evaluar en operaciones de hoy/mañana`);
+      // this.logger.debug(`Encontrados ${operationWorkers.length} trabajadores para evaluar en operaciones de hoy/mañana`);
 
       // Listas para trabajadores a actualizar y contadores para omisiones
       const workersToAssign: number[] = [];
@@ -164,7 +164,7 @@ export class UpdateOperationWorkerService {
         if (shouldRelease) {
           workersToRelease.push(ow.id_worker);
           processedWorkers.add(ow.id_worker);
-          this.logger.debug(`Trabajador ${ow.id_worker} será LIBERADO. Fin programado: ${endDateString} ${ow.timeEnd}`);
+          // this.logger.debug(`Trabajador ${ow.id_worker} será LIBERADO. Fin programado: ${endDateString} ${ow.timeEnd}`);
         } else {
           // Agregar a la lista de no liberados sin generar log ahora
           notReleased.push({
@@ -228,7 +228,7 @@ export class UpdateOperationWorkerService {
         if (shouldAssign) {
           workersToAssign.push(ow.id_worker);
           processedWorkers.add(ow.id_worker);
-          this.logger.debug(`Trabajador ${ow.id_worker} será ASIGNADO. Hora: ${ow.timeStart}, minutos transcurridos: ${minutesElapsed}`);
+          // this.logger.debug(`Trabajador ${ow.id_worker} será ASIGNADO. Hora: ${ow.timeStart}, minutos transcurridos: ${minutesElapsed}`);
         } else if (minutesElapsed > 10) {
           // Agregar a la lista de trabajadores fuera de tiempo sin generar log ahora
           outOfTimeWindow.push({
@@ -249,25 +249,25 @@ export class UpdateOperationWorkerService {
         if (omissions.estadoInvalido > 0) omissionDetails.push(`${omissions.estadoInvalido} con estado inválido`);
         if (omissions.yaProcesados > 0) omissionDetails.push(`${omissions.yaProcesados} ya procesados en este ciclo`);
         
-        this.logger.debug(`Trabajadores omitidos: ${omissionDetails.join(', ')}`);
+        // this.logger.debug(`Trabajadores omitidos: ${omissionDetails.join(', ')}`);
       }
       
       // Log resumido de trabajadores fuera de la ventana de tiempo
       if (outOfTimeWindow.length > 0) {
         const sampleSize = Math.min(3, outOfTimeWindow.length);
-        this.logger.debug(
-          `${outOfTimeWindow.length} trabajadores NO asignados por estar fuera de la ventana de 10 minutos. ` +
-          `Ejemplos: ${outOfTimeWindow.slice(0, sampleSize).map(w => `ID ${w.id} (${w.elapsed} min)`).join(', ')}...`
-        );
+        // this.logger.debug(
+        //   `${outOfTimeWindow.length} trabajadores NO asignados por estar fuera de la ventana de 10 minutos. ` +
+        //   `Ejemplos: ${outOfTimeWindow.slice(0, sampleSize).map(w => `ID ${w.id} (${w.elapsed} min)`).join(', ')}...`
+        // );
       }
       
       // Log resumido de trabajadores que no serán liberados
       if (notReleased.length > 0) {
         const sampleSize = Math.min(3, notReleased.length);
-        this.logger.debug(
-          `${notReleased.length} trabajadores NO liberados porque aún no ha pasado su hora de fin. ` +
-          `Ejemplos: ${notReleased.slice(0, sampleSize).map(w => `ID ${w.id} (fin: ${w.endTime})`).join(', ')}...`
-        );
+        // this.logger.debug(
+        //   `${notReleased.length} trabajadores NO liberados porque aún no ha pasado su hora de fin. ` +
+        //   `Ejemplos: ${notReleased.slice(0, sampleSize).map(w => `ID ${w.id} (fin: ${w.endTime})`).join(', ')}...`
+        // );
       }
 
       // Aplicar cambios en la base de datos
@@ -276,26 +276,28 @@ export class UpdateOperationWorkerService {
           where: { id: { in: workersToRelease } },
           data: { status: 'AVALIABLE' },
         });
-        this.logger.log(
-          `${workersToRelease.length} trabajadores actualizados a AVALIABLE: ${workersToRelease.join(', ')}`
-        );
-      } else {
-        this.logger.log('No hay trabajadores para liberar en este ciclo');
+        // this.logger.log(
+        //   `${workersToRelease.length} trabajadores actualizados a AVALIABLE: ${workersToRelease.join(', ')}`
+        // );
       }
+      //  else {
+      //   this.logger.log('No hay trabajadores para liberar en este ciclo');
+      // }
 
       if (workersToAssign.length > 0) {
         await this.prisma.worker.updateMany({
           where: { id: { in: workersToAssign } },
           data: { status: 'ASSIGNED' },
         });
-        this.logger.log(
-          `${workersToAssign.length} trabajadores actualizados a ASSIGNED: ${workersToAssign.join(', ')}`
-        );
-      } else {
-        this.logger.log('No hay trabajadores para asignar en este ciclo');
-      }
+        // this.logger.log(
+        //   `${workersToAssign.length} trabajadores actualizados a ASSIGNED: ${workersToAssign.join(', ')}`
+        // );
+      } 
+      // else {
+      //   this.logger.log('No hay trabajadores para asignar en este ciclo');
+      // }
 
-      this.logger.log('Actualización de estado de trabajadores completada');
+      // this.logger.log('Actualización de estado de trabajadores completada');
     } catch (error) {
       this.logger.error('Error actualizando estado de trabajadores:', error);
       throw new Error(`Error en actualización de programación: ${error.message}`);
