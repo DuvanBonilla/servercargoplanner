@@ -13,6 +13,9 @@ async function bootstrap() {
   app.set('trust proxy', 'loopback');
   app.use(cookieParser());
   
+  // ✅ Agregar prefijo global /api a todas las rutas
+  app.setGlobalPrefix('api');
+  
   const authService = app.get(AuthService);
 
   const docsAuthMiddleware = new DocsAuthMiddleware(authService);
