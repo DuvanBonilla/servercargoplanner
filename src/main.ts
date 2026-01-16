@@ -21,12 +21,15 @@ async function bootstrap() {
   const docsAuthMiddleware = new DocsAuthMiddleware(authService);
   app.use('/docs', docsAuthMiddleware.use.bind(docsAuthMiddleware));
   
+  // Configuración mejorada de CORS
   app.enableCors({
-    origin: '*',
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: true, // Permite cualquier origen
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Content-Range', 'X-Total-Count'],
+    credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204,
-    credentials: true,
   });
   app.useGlobalPipes(
     new ValidationPipe({
