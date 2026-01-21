@@ -24,13 +24,14 @@ async function bootstrap() {
   // Configuración de CORS para producción y desarrollo
   app.enableCors({
     origin: [
+      'https://seal-app-55opl.ondigitalocean.app',
       'https://cargoban.com.co', // Dominio de tu frontend en producción
       'https://www.cargoban.com.co', // Dominio alternativo en producción
        'http://localhost:5176',   // Para desarrollo local
        'http://127.0.0.1:5176',  // Alternativa para desarrollo local
     ],
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'if-none-match','X-Requested-With', 'Accept', 'Origin'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'if-none-match','cache-control','X-Requested-With', 'Accept', 'Origin'],
     exposedHeaders: ['Content-Range', 'X-Total-Count'],
     credentials: true,
     preflightContinue: false,
