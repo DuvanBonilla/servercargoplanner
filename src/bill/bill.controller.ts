@@ -10,18 +10,22 @@ import {
   UseInterceptors,
   NotFoundException,
   ConflictException,
+  Query,
 } from '@nestjs/common';
 import { BillService } from './bill.service';
 import { CreateBillDto } from './dto/create-bill.dto';
-import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { SiteInterceptor } from 'src/common/interceptors/site.interceptor';
 import { Roles } from 'src/auth/decorators/roles.decorator';
-import { Role } from '@prisma/client';
+import { Role, Status } from '@prisma/client';
 import { ParseIntPipe } from 'src/pipes/parse-int/parse-int.pipe';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { UpdateBillDto, UpdateBillStatusDto } from './dto/update-bill.dto';
+import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
+import { FilterBillDto } from './dto/filter-bill.dto';
+import { ValidationPipe } from '@nestjs/common';
 
 @Controller('bill')
 @UseInterceptors(SiteInterceptor)
@@ -50,14 +54,178 @@ export class BillController {
   }
 
   @Get()
-  
+  @ApiOperation({ 
+    summary: 'Obtener Bills con límite opcional',
+    description: 'Obtiene Bills con un límite máximo de 20 registros para evitar sobrecarga'
+  })
+  @ApiQuery({ name: 'limit', required: false, description: 'Límite de registros (máximo 20)', example: 10 })
   async findAll(
-  @CurrentUser('id_site') id_site?: number,
+    @CurrentUser('id_site') id_site?: number,
     @CurrentUser('id_subsite') id_subsite?: number | null,
-
+    @Query('limit') limit?: number,
   ) {
-    const bills = await this.billService.findAll(id_site, id_subsite);
-    return bills;
+    // Si se especifica un límite, usar el método limitado
+    if (limit) {
+      const safeLimit = Math.min(parseInt(limit.toString()) || 20, 20);
+      return await this.billService.findAllLimited(safeLimit, id_site, id_subsite);
+    }
+    
+    // Para evitar problemas de conexión, por defecto limitar a 20
+    return await this.billService.findAllLimited(20, id_site, id_subsite);
+  }
+
+  @Get('limited')
+  @ApiOperation({ 
+    summary: 'Obtener Bills limitadas (sin pool)',
+    description: 'Obtiene un número limitado de Bills para evitar sobrecarga del sistema. Máximo 50 registros.'
+  })
+  @ApiQuery({ name: 'limit', required: false, description: 'Límite de registros (máximo 50)', example: 20 })
+  async findAllLimited(
+    @CurrentUser('id_site') id_site?: number,
+    @CurrentUser('id_subsite') id_subsite?: number | null,
+    @Query('limit') limit?: number,
+  ) {
+    const safeLimit = Math.min(parseInt(limit?.toString() || '20'), 50);
+    return await this.billService.findAllLimited(safeLimit, id_site, id_subsite);
+  }
+
+  @Get('paginated')
+  @ApiOperation({ 
+    summary: 'Obtener Bills paginadas con filtros',
+    description: `
+    Endpoint optimizado para la paginación de Bills con filtros específicos del frontend.
+    
+    **Filtros disponibles:**
+    - Búsqueda por operación, código o subservicio
+    - Filtro por área de trabajo
+    - Estado (Activo o Completo)
+    - Rango de fechas
+    
+    **Nota:** Todos los parámetros son opcionales. El userId se obtiene automáticamente del token de autenticación.
+    `
+  })
+  @ApiQuery({ name: 'search', required: false, description: 'Búsqueda por operación, código o subservicio', example: 'proyecto' })
+  @ApiQuery({ name: 'jobAreaId', required: false, type: Number, description: 'ID del área de trabajo', example: 1 })
+  @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'COMPLETED'], description: 'Estado de la factura', example: 'ACTIVE' })
+  @ApiQuery({ name: 'dateStart', required: false, type: String, description: 'Fecha de inicio (YYYY-MM-DD)', example: '2024-01-01' })
+  @ApiQuery({ name: 'dateEnd', required: false, type: String, description: 'Fecha de fin (YYYY-MM-DD)', example: '2024-12-31' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Elementos por página (máximo: 100)', example: 20 })
+  @ApiResponse({
+    status: 200,
+    description: 'Bills obtenidas exitosamente con filtros aplicados',
+    schema: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          description: 'Lista de Bills para la página actual'
+        },
+        pagination: {
+          type: 'object',
+          properties: {
+            totalItems: { type: 'number', example: 150 },
+            currentPage: { type: 'number', example: 1 },
+            totalPages: { type: 'number', example: 8 },
+            itemsPerPage: { type: 'number', example: 20 },
+            hasNextPage: { type: 'boolean', example: true },
+            hasPreviousPage: { type: 'boolean', example: false }
+          }
+        }
+      }
+    }
+  })
+  async findAllPaginated(
+    @CurrentUser('siteId') siteId: number,
+    @CurrentUser('subsiteId') subsiteId: number,
+    @Query(new ValidationPipe({ transform: true, whitelist: true })) filters: FilterBillDto,
+  ) {
+    // console.log('🔍 [Bill Controller] Parámetros recibidos:', {
+    //   siteId,
+    //   subsiteId,
+    //   filters,
+    //   query_raw: filters
+    // });
+    
+    return await this.billService.findAllPaginatedWithFilters({
+      ...filters,
+      siteId,
+      subsiteId
+    });
+  }
+
+  @Get('search-stats')
+  @ApiOperation({
+    summary: 'Obtener estadísticas de búsqueda',
+    description: 'Devuelve contadores rápidos para filtros de búsqueda sin cargar los datos completos'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estadísticas de búsqueda obtenidas exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        totalCount: {
+          type: 'number',
+          description: 'Total de registros que coinciden con los filtros',
+          example: 1250
+        },
+        queryTime: {
+          type: 'number',
+          description: 'Tiempo en milisegundos que tomó la consulta',
+          example: 45
+        },
+        hasLargeDataset: {
+          type: 'boolean',
+          description: 'Indica si el conjunto de datos es grande (>1000 registros)',
+          example: true
+        },
+        recommendedPageSize: {
+          type: 'number',
+          description: 'Tamaño de página recomendado basado en el tamaño del conjunto',
+          example: 25
+        }
+      }
+    }
+  })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Término de búsqueda' })
+  @ApiQuery({ name: 'jobAreaId', required: false, type: Number, description: 'ID del área de trabajo' })
+  @ApiQuery({ name: 'status', required: false, enum: Status, description: 'Estado de la factura (ACTIVE, COMPLETED)' })
+  @ApiQuery({ name: 'dateStart', required: false, type: String, description: 'Fecha de inicio (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'dateEnd', required: false, type: String, description: 'Fecha de fin (YYYY-MM-DD)' })
+  async getSearchStats(
+    @CurrentUser('id') userId: number,
+    @Query('search') search?: string,
+    @Query('jobAreaId') jobAreaIdStr?: string,
+    @Query('status') status?: Status,
+    @Query('dateStart') dateStart?: string,
+    @Query('dateEnd') dateEnd?: string,
+  ) {
+    const jobAreaId = jobAreaIdStr ? parseInt(jobAreaIdStr) : undefined;
+    const startDate = dateStart ? new Date(dateStart) : undefined;
+    const endDate = dateEnd ? new Date(dateEnd) : undefined;
+
+    return await this.billService.getSearchStats(
+      search,
+      jobAreaId,
+      status,
+      startDate,
+      endDate,
+      userId
+    );
+  }
+
+  @Get('count')
+  @ApiOperation({ 
+    summary: 'Contar total de Bills',
+    description: 'Obtiene el número total de Bills sin cargar la data'
+  })
+  async countAll(
+    @CurrentUser('id_site') id_site?: number,
+    @CurrentUser('id_subsite') id_subsite?: number | null,
+  ) {
+    const count = await this.billService.countAll(id_site, id_subsite);
+    return { totalItems: count };
   }
 
   @Get(':id')

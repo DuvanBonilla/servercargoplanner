@@ -43,9 +43,7 @@ export class OperationFinderService {
 
       const response = await this.prisma.operation.findMany({
         where,
-        include: { ...this.defaultInclude, //traer la bill en el ednpoint de operation find all
-          Bill: true
-        },
+        include: this.defaultInclude,
       });
 
       return response.map((op) =>
@@ -70,19 +68,7 @@ export class OperationFinderService {
 
       const response = await this.prisma.operation.findFirst({
         where,
-        include: {
-          ...this.defaultInclude,
-          Bill: true,
-          // Bill: {
-          //   include: {
-          //     billDetails: {
-          //       include: {
-          //         operationWorker: true,
-          //       },
-          //     },
-          //   },
-          // },
-        },
+        include: this.defaultInclude,
       });
 
       if (!response) {
@@ -225,9 +211,7 @@ export class OperationFinderService {
         limit,
         filters,
         activatePaginated,
-        defaultInclude:{ ...this.defaultInclude,
-          Bill: true,
-        },
+        defaultInclude: this.defaultInclude,
         transformer: this.transformer,
       });
     } catch (error) {

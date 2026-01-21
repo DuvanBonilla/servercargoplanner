@@ -706,6 +706,14 @@ export class CalledAttentionService {
         filters,
         activatePaginated,
       });
+      
+      if (response.items.length === 0) {
+        // console.log(`[CalledAttentionService] ⚠️ No se encontraron registros de faltas para los filtros aplicados`);
+        // if (filters?.id_site) {
+        //   console.log(`[CalledAttentionService] ⚠️ Filtro id_site=${filters.id_site} - Verificar que existan registros para este sitio`);
+        // }
+      }
+      
       return response;
     } catch (error) {
       console.error(

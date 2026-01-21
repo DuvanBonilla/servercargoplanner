@@ -19,7 +19,7 @@ export class PaginationService {
     additionalStats?: Record<string, any>
   ): PaginatedResponse<T> {
     const pageNumber = Math.max(1, page);
-    const itemsPerPage = Math.min(50, Math.max(1, limit));
+    const itemsPerPage = Math.min(100, Math.max(1, limit));
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     
     // Si no hay elementos
@@ -116,6 +116,9 @@ export class PaginationService {
         whereClause = buildWhereClause(filters);
       }
   
+      // console.log(`[PaginationService] Paginando entidad: ${entity}`);
+      // console.log(`[PaginationService] whereClause final:`, JSON.stringify(whereClause, null, 2));
+  
       // Configuración base
       const queryConfig: any = {
         where: whereClause,
@@ -128,57 +131,54 @@ export class PaginationService {
       let additionalStats = {};
   
       try {
+        // console.log(`[PaginationService] Ejecutando count para ${entity}...`);
         totalItems = await prisma[entity].count({ where: whereClause });
+        // console.log(`[PaginationService] Total de registros encontrados para ${entity}:`, totalItems);
+        
+        // Si no hay registros, intentar una consulta simple sin filtros para diagnosticar
+        if (totalItems === 0) {
+          const totalWithoutFilters = await prisma[entity].count();
+          // console.log(`[PaginationService] ⚠️ Total de registros en ${entity} SIN filtros:`, totalWithoutFilters);
+          
+          if (totalWithoutFilters > 0) {
+            // console.log(`[PaginationService] ⚠️ Hay ${totalWithoutFilters} registros en la tabla, pero ninguno coincide con los filtros`);
+            // console.log(`[PaginationService] ⚠️ Verificar que los datos en la tabla tienen los valores esperados para los filtros aplicados`);
+          }
+        }
         
         if (getAdditionalStats) {
           additionalStats = await getAdditionalStats();
         }
       } catch (countError) {
-        console.error(`Error counting ${entity}:`, countError);
+        console.error(`[PaginationService] Error counting ${entity}:`, countError);
       }
   
-      // Caso sin paginación
-      if (activatePaginated === false) {
-        const allItems = await prisma[entity].findMany(queryConfig);
-        const transformedItems = allItems.map(transformFn);
-  
-        return {
-          items: transformedItems,
-          pagination: {
-            totalItems,
-            currentPage: 1,
-            totalPages: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            itemsPerPage: totalItems,
-            ...additionalStats
-          },
-          nextPages: [],
-        };
-      }
-  
-      // Aplicar paginación
+      // Siempre aplicar paginación para evitar saturación del sistema
+      // Para grandes datasets, usar límites razonables
       const pageNumber = Math.max(1, page);
-      const itemsPerPage = Math.min(50, Math.max(1, limit));
+      let itemsPerPage = Math.min(500, Math.max(1, limit));
+      
+      // Para datasets grandes, recomendamos un máximo de 100 registros por página
+      // para optimizar el rendimiento del frontend
+      if (totalItems > 1000 && itemsPerPage > 100) {
+        console.warn(`Dataset grande detectado (${totalItems} registros). Limitando a 100 elementos por página para optimizar rendimiento.`);
+        itemsPerPage = 100;
+      }
       const totalPages = Math.ceil(totalItems / itemsPerPage);
       
-      // CAMBIO CLAVE: Calcular el número total de elementos que necesitamos obtener
-      // para la página actual y el prefetch (máximo 3 páginas en total)
-      const pagesToFetch = Math.min(3, totalPages - pageNumber + 1);
-      const totalItemsToFetch = pagesToFetch * itemsPerPage;
-      
-      // Calcular el índice de inicio para la consulta
+      // Para una implementación más simple y eficiente, obtenemos solo la página solicitada
+      // El prefetch se puede hacer en una segunda consulta si es necesario
       const skip = (pageNumber - 1) * itemsPerPage;
-  
-      // Configurar la consulta para obtener elementos para la página actual y las siguientes
-      const prefetchQueryConfig = {
+      
+      // Configurar la consulta para obtener solo los elementos de la página actual
+      const mainQueryConfig = {
         ...queryConfig,
         skip,
-        take: totalItemsToFetch,
+        take: itemsPerPage,
       };
   
-      // Ejecutar consulta con prefetch
-      const fetchedItems = await prisma[entity].findMany(prefetchQueryConfig);
+      // Ejecutar consulta principal
+      const fetchedItems = await prisma[entity].findMany(mainQueryConfig);
       const transformedItems = fetchedItems.map(transformFn);
   
       // Manejar caso sin resultados
@@ -198,14 +198,29 @@ export class PaginationService {
         };
       }
   
-      // Procesar con el método existente para dividir en páginas
-      return this.processPaginatedResults(
-        transformedItems,
-        pageNumber,
-        itemsPerPage,
-        totalItems,
-        additionalStats
-      );
+      // Procesar resultados con información optimizada para grandes datasets
+      const response = {
+        pagination: {
+          totalItems,
+          itemsPerPage,
+          currentPage: pageNumber,
+          totalPages,
+          hasNextPage: pageNumber < totalPages,
+          hasPreviousPage: pageNumber > 1,
+          isLargeDataset: totalItems > 1000,
+          recommendedPageSize: totalItems > 1000 ? Math.min(100, itemsPerPage) : itemsPerPage,
+          ...additionalStats
+        },
+        items: transformedItems,
+        nextPages: [], // Para grandes datasets, no hacer prefetch para optimizar memoria
+      };
+      
+      // Logging para monitoreo de rendimiento
+      // if (totalItems > 1000) {
+      //   console.log(`[PERFORMANCE] Paginando ${totalItems} registros - Página ${pageNumber}/${totalPages} - ${itemsPerPage} elementos`);
+      // }
+      
+      return response;
     } catch (error) {
       console.error('Error in paginateEntity:', error);
       throw new Error(`Error paginating entity: ${error.message}`);

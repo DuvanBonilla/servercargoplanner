@@ -88,6 +88,25 @@ export interface OperationIncludeConfig {
       };
     };
   };
+  Bill: {
+    include: {
+      billDetails: {
+        include: {
+          operationWorker: {
+            select: {
+              id: boolean;
+              id_worker: boolean;
+              id_operation: boolean;
+              dateStart: boolean;
+              dateEnd: boolean;
+              timeStart: boolean;
+              timeEnd: boolean;
+            };
+          };
+        };
+      };
+    };
+  };
 }
 
 /**
@@ -171,6 +190,25 @@ export function createOperationInclude(): OperationIncludeConfig {
           },
         },
       },
+    },
+    Bill: {
+      include: {
+        billDetails: {
+          include: {
+            operationWorker: {
+              select: {
+                id: true,
+                id_worker: true,
+                id_operation: true,
+                dateStart: true,
+                dateEnd: true,
+                timeStart: true,
+                timeEnd: true,
+              }
+            }
+          }
+        }
+      }
     },
   };
 }

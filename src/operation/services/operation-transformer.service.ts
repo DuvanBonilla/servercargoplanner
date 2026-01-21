@@ -77,6 +77,7 @@ export class OperationTransformerService {
       ...rest,
       workerGroups,
       inCharge, // ✅ USAR LOS ENCARGADOS ÚNICOS
+      Bill: operation.Bill, // ✅ INCLUIR BILLS EN EL RESULTADO FINAL
       // Remover la relación intermedia
       inChargeOperation: undefined
     };

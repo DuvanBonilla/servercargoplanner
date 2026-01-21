@@ -16,11 +16,12 @@ import {
 import { BaseCalculationService } from './services/base-calculation.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { group } from 'console';
-import { BillStatus } from '@prisma/client';
+import { BillStatus, Status } from '@prisma/client';
 import {
   getColombianDateTime,
   getColombianTimeString,
 } from 'src/common/utils/dateColombia';
+import { FilterBillDto } from './dto/filter-bill.dto';
 
 @Injectable()
 export class BillService {
@@ -1601,10 +1602,10 @@ export class BillService {
   }
 
   async update(id: number, updateBillDto: UpdateBillDto, userId: number) {
-    console.log('[BillService] 🔧 Update Bill - Parámetros recibidos:');
-    console.log('- ID Bill:', id);
-    console.log('- Update DTO:', JSON.stringify(updateBillDto, null, 2));
-    console.log('- User ID:', userId);
+    // console.log('[BillService] 🔧 Update Bill - Parámetros recibidos:');
+    // console.log('- ID Bill:', id);
+    // console.log('- Update DTO:', JSON.stringify(updateBillDto, null, 2));
+    // console.log('- User ID:', userId);
 
     const existingBill = await this.prisma.bill.findUnique({ where: { id } });
     if (!existingBill) {
@@ -1635,7 +1636,7 @@ export class BillService {
     }
 
     if (shouldUpdateGroupDates) {
-      console.log(`[BillService] 📅 Actualizando fechas del grupo ${groupId} para Bill ${id}`);
+      // console.log(`[BillService] 📅 Actualizando fechas del grupo ${groupId} para Bill ${id}`);
       
       // Actualizar las fechas de todos los operation_worker de este grupo
       await this.updateOperationWorkerDates(
@@ -2033,8 +2034,8 @@ export class BillService {
         updateData.number_of_hours = finalNumberOfHours;
       }
 
-      console.log('Final number of hours:', finalNumberOfHours);
-      console.log('Update data for bill:', updateData);
+      // console.log('Final number of hours:', finalNumberOfHours);
+      // console.log('Update data for bill:', updateData);
 
       await this.prisma.bill.update({
         where: { id },
@@ -2166,7 +2167,7 @@ export class BillService {
       matchingGroupSummary.workerCount =
         matchingGroupSummary.workers?.length || 0;
       
-      console.log(`🔧 [calculateGroupTotalsForUpdate] HORAS - workerCount: ${matchingGroupSummary.workerCount}`);
+      // console.log(`🔧 [calculateGroupTotalsForUpdate] HORAS - workerCount: ${matchingGroupSummary.workerCount}`);
 
 
 
@@ -2966,7 +2967,7 @@ export class BillService {
         }
 
         const durationHours = (endDateTime.getTime() - startDateTime.getTime()) / 3_600_000;
-        console.log(`[BillService] 📊 Nueva duración calculada: ${durationHours.toFixed(2)} horas`);
+        // console.log(`[BillService] 📊 Nueva duración calculada: ${durationHours.toFixed(2)} horas`);
       }
 
     } catch (error) {
@@ -2993,7 +2994,7 @@ export class BillService {
       const allGroupsCompleted = await this.areAllGroupsCompleted(operationId);
       
       if (!allGroupsCompleted) {
-        console.log(`[BillService] ⏳ Operación ${operationId}: No todos los grupos están completados aún`);
+        // console.log(`[BillService] ⏳ Operación ${operationId}: No todos los grupos están completados aún`);
         return;
       }
 
@@ -3147,5 +3148,765 @@ export class BillService {
 
       // console.log(`[BillService] 🔓 ${workerIds.length} trabajadores liberados de la operación ${operationId}`);
     }
+  }
+
+  // ========================================
+  // MÉTODOS DE PAGINACIÓN SIN POOL
+  // ========================================
+
+  /**
+   * Encuentra todas las bills con límite para evitar sobrecarga
+   * @param limit - Número máximo de registros a retornar (máximo 50)
+   * @param id_site - ID del sitio (opcional)
+   * @param id_subsite - ID del subsitio (opcional)
+   */
+  async findAllLimited(limit: number = 20, id_site?: number, id_subsite?: number | null) {
+    // Limitar el máximo a 50 para evitar sobrecarga
+    const safeLimit = Math.min(limit, 50);
+    
+    const whereClause: any = {};
+
+    if (id_site) {
+      whereClause.operation = {
+        id_site: id_site,
+      };
+    }
+
+    if (typeof id_subsite === 'number' && !isNaN(id_subsite)) {
+      whereClause.operation = {
+        ...(whereClause.operation || {}),
+        id_subsite: id_subsite,
+      };
+    }
+
+    const bills = await this.prisma.bill.findMany({
+      where: whereClause,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        operation: {
+          select: {
+            id: true,
+            dateStart: true,
+            dateEnd: true,
+            timeStrat: true,
+            timeEnd: true,
+            op_duration: true,
+            motorShip: true,
+            client: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            jobArea: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        billDetails: {
+          include: {
+            operationWorker: {
+              select: {
+                id: true,
+                id_operation: true,
+                id_worker: true,
+                id_group: true,
+                dateStart: true,
+                dateEnd: true,
+                timeStart: true,
+                timeEnd: true,
+                id_task: true,
+                id_subtask: true,
+                id_tariff: true,
+                worker: {
+                  select: {
+                    id: true,
+                    name: true,
+                    dni: true,
+                  },
+                },
+                tariff: {
+                  include: {
+                    subTask: {
+                      select: {
+                        id: true,
+                        name: true,
+                        code: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: safeLimit, // Limitar número de resultados
+    });
+
+    // Procesar solo las bills obtenidas (máximo 50)
+    const sundayHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
+    const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
+    
+    const billsWithCompensatory = await Promise.all(
+      bills.map(async (bill) => {
+        const compensatory = await this.calculateCompensatoryForBill(
+          bill,
+          sundayHoursConfig,
+          weekHoursConfig
+        );
+        
+        const groupDates = await this.getGroupDatesFromOperationWorkers(
+          bill.id_operation,
+          bill.id_group,
+        );
+
+        return {
+          ...bill,
+          op_duration: bill.operation?.op_duration,
+          compensatory,
+          dateStart_group: groupDates.dateStart,
+          timeStart_group: groupDates.timeStart,
+          dateEnd_group: groupDates.dateEnd,
+          timeEnd_group: groupDates.timeEnd,
+        };
+      }),
+    );
+
+    return billsWithCompensatory;
+  }
+
+  /**
+   * Encuentra bills con paginación basada en cursor para mejor rendimiento
+   * @param cursor - Cursor para paginación (ID de la última bill)
+   * @param limit - Número de registros por página
+   * @param id_site - ID del sitio (opcional)
+   * @param id_subsite - ID del subsitio (opcional)
+   */
+  async findAllPaginated(cursor?: string, limit: number = 20, id_site?: number, id_subsite?: number | null) {
+    const safeLimit = Math.min(limit, 50);
+    
+    const whereClause: any = {};
+
+    // Aplicar filtros de sitio y subsitio
+    if (id_site) {
+      whereClause.operation = {
+        id_site: id_site,
+      };
+    }
+
+    if (typeof id_subsite === 'number' && !isNaN(id_subsite)) {
+      whereClause.operation = {
+        ...(whereClause.operation || {}),
+        id_subsite: id_subsite,
+      };
+    }
+
+    // Aplicar cursor para paginación
+    if (cursor) {
+      const decodedCursor = parseInt(cursor);
+      if (!isNaN(decodedCursor)) {
+        whereClause.id = {
+          lt: decodedCursor
+        };
+      }
+    }
+
+    const bills = await this.prisma.bill.findMany({
+      where: whereClause,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        operation: {
+          select: {
+            id: true,
+            dateStart: true,
+            dateEnd: true,
+            timeStrat: true,
+            timeEnd: true,
+            op_duration: true,
+            motorShip: true,
+            client: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            jobArea: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        billDetails: {
+          include: {
+            operationWorker: {
+              select: {
+                id: true,
+                id_operation: true,
+                id_worker: true,
+                id_group: true,
+                dateStart: true,
+                dateEnd: true,
+                timeStart: true,
+                timeEnd: true,
+                id_task: true,
+                id_subtask: true,
+                id_tariff: true,
+                worker: {
+                  select: {
+                    id: true,
+                    name: true,
+                    dni: true,
+                  },
+                },
+                tariff: {
+                  include: {
+                    subTask: {
+                      select: {
+                        id: true,
+                        name: true,
+                        code: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { id: 'desc' }, // Ordenar por ID para cursor consistente
+      take: safeLimit + 1, // Tomar uno extra para saber si hay más páginas
+    });
+
+    // Determinar si hay más páginas
+    const hasNextPage = bills.length > safeLimit;
+    const resultBills = hasNextPage ? bills.slice(0, -1) : bills;
+    
+    // Calcular cursor para siguiente página
+    const nextCursor = hasNextPage ? resultBills[resultBills.length - 1]?.id.toString() : null;
+
+    // Procesar bills con compensatory
+    const sundayHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
+    const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
+    
+    const billsWithCompensatory = await Promise.all(
+      resultBills.map(async (bill) => {
+        const compensatory = await this.calculateCompensatoryForBill(
+          bill,
+          sundayHoursConfig,
+          weekHoursConfig
+        );
+        
+        const groupDates = await this.getGroupDatesFromOperationWorkers(
+          bill.id_operation,
+          bill.id_group,
+        );
+
+        return {
+          ...bill,
+          op_duration: bill.operation?.op_duration,
+          compensatory,
+          dateStart_group: groupDates.dateStart,
+          timeStart_group: groupDates.timeStart,
+          dateEnd_group: groupDates.dateEnd,
+          timeEnd_group: groupDates.timeEnd,
+        };
+      }),
+    );
+
+    return {
+      data: billsWithCompensatory,
+      hasNextPage,
+      nextCursor,
+      count: resultBills.length
+    };
+  }
+
+  /**
+   * Cuenta el total de bills sin cargar toda la data
+   */
+  async countAll(id_site?: number, id_subsite?: number | null): Promise<number> {
+    const whereClause: any = {};
+
+    if (id_site) {
+      whereClause.operation = {
+        id_site: id_site,
+      };
+    }
+
+    if (typeof id_subsite === 'number' && !isNaN(id_subsite)) {
+      whereClause.operation = {
+        ...(whereClause.operation || {}),
+        id_subsite: id_subsite,
+      };
+    }
+
+    return await this.prisma.bill.count({
+      where: whereClause
+    });
+  }
+
+  /**
+   * Obtiene Bills paginadas con filtros específicos del frontend
+   * @param filters Filtros de búsqueda, área, estado, fechas y paginación
+   */
+  async findAllPaginatedWithFilters(filters: FilterBillDto & { siteId?: number, subsiteId?: number }) {
+    try {
+      // console.log('🚀 [Bill Service] Parámetros completos recibidos:', {
+      //   filters_completos: filters,
+      //   tipo_search: typeof filters.search,
+      //   valor_search: filters.search,
+      //   search_length: filters.search?.length,
+      //   todas_las_propiedades: Object.keys(filters)
+      // });
+
+      const {
+        search,
+        jobAreaId, 
+        status,
+        dateStart,
+        dateEnd,
+        page = 1,
+        limit = 20,
+        siteId,
+        subsiteId
+      } = filters;
+
+      // Construir cláusula WHERE
+      const whereClause: any = {};
+
+      // Filtros de sitio y subsitio (desde token)
+      if (siteId) {
+        whereClause.operation = {
+          id_site: siteId,
+        };
+      }
+
+      if (typeof subsiteId === 'number' && !isNaN(subsiteId)) {
+        whereClause.operation = {
+          ...(whereClause.operation || {}),
+          id_subsite: subsiteId,
+        };
+      }
+
+      // Filtro por área
+      if (jobAreaId) {
+        whereClause.operation = {
+          ...(whereClause.operation || {}),
+          jobArea: {
+            id: jobAreaId
+          }
+        };
+      }
+
+      // Filtro por estado
+      if (status) {
+        whereClause.status = status;
+      }
+
+      // Filtro por rango de fechas
+      if (dateStart && dateEnd) {
+        whereClause.operation = {
+          ...(whereClause.operation || {}),
+          dateStart: {
+            gte: new Date(dateStart),
+            lte: new Date(dateEnd)
+          }
+        };
+      } else if (dateStart) {
+        whereClause.operation = {
+          ...(whereClause.operation || {}),
+          dateStart: {
+            gte: new Date(dateStart)
+          }
+        };
+      } else if (dateEnd) {
+        whereClause.operation = {
+          ...(whereClause.operation || {}),
+          dateStart: {
+            lte: new Date(dateEnd)
+          }
+        };
+      }
+
+      // Filtro por búsqueda de texto - OPTIMIZADO PARA BUSCAR EN TODOS LOS REGISTROS
+      if (search) {
+        // console.log(`[Bill Search] Iniciando búsqueda en todos los registros por: "${search}"`);
+        
+        const searchAsNumber = parseInt(search);
+        const isNumericSearch = !isNaN(searchAsNumber);
+        
+        const searchConditions: any[] = [];
+
+        if (isNumericSearch) {
+          // Buscar por ID de operación
+          searchConditions.push({
+            operation: {
+              id: searchAsNumber
+            }
+          });
+        } 
+        
+        // Siempre buscar en texto (código, subservicio, cliente)
+        searchConditions.push({
+          operation: {
+            OR: [
+              {
+                client: {
+                  name: { contains: search, mode: 'insensitive' }
+                }
+              },
+              {
+                jobArea: {
+                  name: { contains: search, mode: 'insensitive' }
+                }
+              }
+            ]
+          }
+        });
+
+        // Buscar en billDetails -> operationWorker -> tariff (código y subservicio)
+        searchConditions.push({
+          billDetails: {
+            some: {
+              operationWorker: {
+                tariff: {
+                  OR: [
+                    { code: { contains: search, mode: 'insensitive' } },
+                    { subTask: { name: { contains: search, mode: 'insensitive' } } }
+                  ]
+                }
+              }
+            }
+          }
+        });
+
+        // Combinar condiciones de búsqueda con OR
+        if (Object.keys(whereClause).length > 0) {
+          // Si ya hay otros filtros, agregar la búsqueda como condición adicional
+          whereClause.AND = whereClause.AND || [];
+          whereClause.AND.push({
+            OR: searchConditions
+          });
+        } else {
+          // Si no hay otros filtros, usar solo la búsqueda
+          whereClause.OR = searchConditions;
+        }
+
+        // console.log(`[Bill Search] Configuración de búsqueda establecida para todos los registros`);
+      }
+
+      // Configuración de paginación
+      const pageNumber = Math.max(1, page);
+      const itemsPerPage = Math.min(100, Math.max(1, limit));
+      const skip = (pageNumber - 1) * itemsPerPage;
+
+      // PRIMERO: Aplicar todos los filtros para obtener el total correcto
+      // Esto busca en TODOS los registros disponibles que coincidan con los filtros
+      // console.log(`[Bill Pagination] 🔍 BÚSQUEDA EN TODOS LOS REGISTROS DISPONIBLES`);
+      // console.log(`[Bill Pagination] Aplicando filtros. Búsqueda: "${search || 'sin búsqueda'}"`);
+      
+      // Consultar total de items QUE COINCIDEN con los filtros (no limitado por paginación)
+      const totalItems = await this.prisma.bill.count({ where: whereClause });
+      
+      // console.log(`[Bill Pagination] ✅ ${totalItems} registros coinciden con los filtros aplicados`);
+      // console.log(`[Bill Pagination] 📄 Ahora paginar: mostrar ${limit} por página, página ${pageNumber}`);
+
+      if (totalItems === 0) {
+        // console.log(`[Bill Pagination] ⚠️ No se encontraron registros con los filtros aplicados`);
+        return {
+          items: [],
+          pagination: {
+            totalItems: 0,
+            currentPage: pageNumber,
+            totalPages: 0,
+            itemsPerPage,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            searchApplied: Boolean(search),
+            filtersApplied: Boolean(search || jobAreaId || status || dateStart || dateEnd),
+            searchTerm: search || null,
+            totalRecordsInDatabase: 'no-matches'
+          },
+        };
+      }
+      const bills = await this.prisma.bill.findMany({
+        where: whereClause,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          operation: {
+            select: {
+              id: true,
+              dateStart: true,
+              dateEnd: true,
+              timeStrat: true,
+              timeEnd: true,
+              op_duration: true,
+              motorShip: true,
+              client: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              jobArea: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          billDetails: {
+            include: {
+              operationWorker: {
+                select: {
+                  id: true,
+                  id_operation: true,
+                  id_worker: true,
+                  id_group: true,
+                  dateStart: true,
+                  dateEnd: true,
+                  timeStart: true,
+                  timeEnd: true,
+                  worker: {
+                    select: {
+                      id: true,
+                      name: true,
+                      dni: true,
+                    },
+                  },
+                  tariff: {
+                    include: {
+                      subTask: {
+                        select: {
+                          id: true,
+                          name: true,
+                          code: true,
+                        },
+                      },
+                      unitOfMeasure: {
+                        select: {
+                          id: true,
+                          name: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        skip,
+        take: itemsPerPage,
+        orderBy: { createdAt: 'desc' },
+      });
+
+      // Calcular metadatos de paginación
+      const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+      // console.log(`[Bill Pagination] Resultados finales:`, {
+      //   totalEncontrados: totalItems,
+      //   paginaActual: pageNumber,
+      //   totalPaginas: totalPages,
+      //   elementosPorPagina: itemsPerPage,
+      //   busqueda: search || 'sin filtro',
+      //   area: jobAreaId || 'todas',
+      //   estado: status || 'todos'
+      // });
+
+      return {
+        items: bills,
+        pagination: {
+          totalItems,
+          currentPage: pageNumber,
+          totalPages,
+          itemsPerPage,
+          hasNextPage: pageNumber < totalPages,
+          hasPreviousPage: pageNumber > 1,
+          // Metadatos adicionales para el frontend
+          searchApplied: Boolean(search),
+          filtersApplied: Boolean(search || jobAreaId || status || dateStart || dateEnd),
+          searchTerm: search || null,
+          totalRecordsInDatabase: totalItems > 1000 ? 'large-dataset' : 'normal-dataset'
+        }
+      };
+
+    } catch (error) {
+      console.error('Error en findAllPaginatedWithFilters:', error);
+      throw new Error(`Error obteniendo bills paginadas: ${error.message}`);
+    }
+  }
+
+  /**
+   * Obtiene estadísticas rápidas de búsqueda sin cargar todos los datos
+   * Útil para mostrar contadores en el frontend antes de cargar la página específica
+   */
+  async getSearchStats(
+    search?: string,
+    jobAreaId?: number,
+    status?: Status,
+    dateStart?: Date,
+    dateEnd?: Date,
+    userId?: number
+  ) {
+    const startTime = Date.now();
+
+    // Construir filtros base
+    const baseWhere: any = {};
+
+    // Aplicar filtro de usuario si está presente
+    if (userId) {
+      baseWhere.operation = {
+        operationWorkers: {
+          some: {
+            id_worker: userId
+          }
+        }
+      };
+    }
+
+    // Aplicar filtros adicionales
+    if (jobAreaId) {
+      baseWhere.operation = {
+        ...baseWhere.operation,
+        id_area: jobAreaId
+      };
+    }
+
+    if (status) {
+      baseWhere.operation = {
+        ...baseWhere.operation,
+        status: status
+      };
+    }
+
+    if (dateStart && dateEnd) {
+      baseWhere.operation = {
+        ...baseWhere.operation,
+        date: {
+          gte: dateStart,
+          lte: dateEnd
+        }
+      };
+    }
+
+    // Aplicar búsqueda si existe
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      const searchConditions: any[] = [];
+
+      // Buscar por ID de operación
+      const operationId = parseInt(searchTerm);
+      if (!isNaN(operationId)) {
+        searchConditions.push({
+          operation: {
+            id: operationId
+          }
+        });
+      }
+
+      // Buscar en nombres de clientes, áreas
+      searchConditions.push(
+        {
+          operation: {
+            client: {
+              name: {
+                contains: searchTerm,
+                mode: 'insensitive'
+              }
+            }
+          }
+        },
+        {
+          operation: {
+            area: {
+              name: {
+                contains: searchTerm,
+                mode: 'insensitive'
+              }
+            }
+          }
+        }
+      );
+
+      // Buscar en billDetails -> operationWorker -> tariff codes y subtasks
+      searchConditions.push(
+        {
+          billDetails: {
+            some: {
+              operationWorker: {
+                tariff: {
+                  code: {
+                    contains: searchTerm,
+                    mode: 'insensitive'
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          billDetails: {
+            some: {
+              operationWorker: {
+                SubTask: {
+                  name: {
+                    contains: searchTerm,
+                    mode: 'insensitive'
+                  }
+                }
+              }
+            }
+          }
+        }
+      );
+
+      baseWhere.OR = searchConditions;
+    }
+
+    // Obtener solo el conteo total
+    const totalCount = await this.prisma.bill.count({
+      where: baseWhere
+    });
+
+    const queryTime = Date.now() - startTime;
+
+    // console.log(`[Bill Search Stats] Consulta completada:`, {
+    //   totalEncontrados: totalCount,
+    //   tiempoMs: queryTime,
+    //   busqueda: search || 'sin filtro',
+    //   filtrosAplicados: Boolean(search || jobAreaId || status || dateStart || dateEnd)
+    // });
+
+    return {
+      totalCount,
+      queryTime,
+      hasLargeDataset: totalCount > 1000,
+      recommendedPageSize: totalCount > 10000 ? 50 : totalCount > 1000 ? 25 : 10
+    };
   }
 }

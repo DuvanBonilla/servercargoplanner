@@ -110,10 +110,9 @@ export class PaginationFeedingService {
   private buildWorkerFeedingWhereClause(filters?: FilterWorkerFeedingDto): any {
     const whereClause: any = {};
 
-    if (!filters) return whereClause;
-
-    if (filters.id_site) {
-      whereClause.worker = { id_site: filters.id_site };
+    if (!filters) {
+      // console.log('[PaginationFeedingService] No hay filtros, retornando whereClause vacío');
+      return whereClause;
     }
 
     // Filtro por tipo de alimentación
@@ -137,17 +136,39 @@ export class PaginationFeedingService {
       };
     }
 
-    // Filtro de búsqueda por DNI o nombre del trabajador
+    // Manejar filtro de búsqueda combinado con id_site
     if (filters.search && filters.search.trim() !== '') {
       const searchTerm = filters.search.trim();
 
-      // Buscar tanto en DNI como en nombre del trabajador
-      whereClause.OR = [
-        { worker: { dni: { contains: searchTerm, mode: 'insensitive' } } },
-        { worker: { name: { contains: searchTerm, mode: 'insensitive' } } },
-      ];
+      // Si hay id_site, incluirlo en cada condición del OR
+      if (filters.id_site) {
+        whereClause.OR = [
+          { 
+            worker: { 
+              id_site: filters.id_site,
+              dni: { contains: searchTerm, mode: 'insensitive' } 
+            } 
+          },
+          { 
+            worker: { 
+              id_site: filters.id_site,
+              name: { contains: searchTerm, mode: 'insensitive' } 
+            } 
+          },
+        ];
+      } else {
+        // Sin id_site, solo buscar por DNI o nombre
+        whereClause.OR = [
+          { worker: { dni: { contains: searchTerm, mode: 'insensitive' } } },
+          { worker: { name: { contains: searchTerm, mode: 'insensitive' } } },
+        ];
+      }
+    } else if (filters.id_site) {
+      // Solo filtro por id_site sin búsqueda
+      whereClause.worker = { id_site: filters.id_site };
     }
 
+    // console.log('[PaginationFeedingService] whereClause construido:', JSON.stringify(whereClause, null, 2));
     return whereClause;
   }
 }

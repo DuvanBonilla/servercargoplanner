@@ -9,6 +9,7 @@ import { PaginatedResponse } from '../../interface/paginate-operation';
 @Injectable()
 export class PaginateOperationService {
   private readonly STATS_CACHE_TTL = 300; // 5 minutos en segundos
+  private readonly LARGE_DATASET_CACHE_TTL = 600; // 10 minutos para datasets grandes
   
   constructor(
     private readonly paginationService: PaginationService,
@@ -48,7 +49,9 @@ export class PaginateOperationService {
         limit,
         filters,
         include: defaultInclude,
-        orderBy: [{ status: 'asc' }, { dateStart: 'desc' }],
+        // Optimizar ordenamiento para grandes datasets
+        // Usar ID como campo secundario para consistencia y rendimiento
+        orderBy: [{ status: 'asc' }, { id: 'desc' }],
         activatePaginated,
         transformFn: (item) => transformer.transformOperationResponse(item),
         buildWhereClause: (filters) => this.buildOperationWhereClause(filters),

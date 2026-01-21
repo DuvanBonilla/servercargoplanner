@@ -21,9 +21,13 @@ async function bootstrap() {
   const docsAuthMiddleware = new DocsAuthMiddleware(authService);
   app.use('/docs', docsAuthMiddleware.use.bind(docsAuthMiddleware));
   
-  // Configuración mejorada de CORS
+  // Configuración de CORS para producción y desarrollo
   app.enableCors({
-    origin: true, // Permite cualquier origen
+    origin: [
+      'https://cargoban.com.co', // Dominio de tu frontend en producción
+       'http://localhost:5176',   // Para desarrollo local
+       'http://127.0.0.1:5176',  // Alternativa para desarrollo local
+    ],
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
     exposedHeaders: ['Content-Range', 'X-Total-Count'],

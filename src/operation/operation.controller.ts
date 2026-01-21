@@ -23,7 +23,7 @@ import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { ParseIntPipe } from 'src/pipes/parse-int/parse-int.pipe';
 import { DateTransformPipe } from 'src/pipes/date-transform/date-transform.pipe';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { Role, StatusOperation } from '@prisma/client';
@@ -203,13 +203,198 @@ console.log('Body crudo recibido:', arguments[0]);
   @Get('paginated')
   @ApiOperation({
     summary: 'Obtener operaciones con paginación y filtros opcionales',
+    description: `
+    Endpoint optimizado para manejar grandes volúmenes de datos (1000+ registros).
+    
+    **Características:**
+    - Paginación inteligente que ajusta automáticamente los límites para datasets grandes
+    - Filtros por área, estado, fechas, usuario y búsqueda de texto
+    - Metadatos de rendimiento incluidos en la respuesta
+    - Cache optimizado para mejor performance
+    
+    **Para datasets > 1000 registros:**
+    - Límite máximo automático: 100 registros por página
+    - Recomendación de usar filtros para reducir el conjunto de datos
+    - Información adicional de rendimiento en la respuesta
+    
+    **Ejemplos de uso:**
+    
+    Paginación básica:
+    \`GET /operation/paginated?page=1&limit=50\`
+    
+    Con filtros por estado:
+    \`GET /operation/paginated?page=1&limit=20&status=PENDING,INPROGRESS\`
+    
+    Con filtro por área y fecha:
+    \`GET /operation/paginated?jobAreaId=5&dateStart=2024-01-01&dateEnd=2024-12-31\`
+    
+    Búsqueda de texto:
+    \`GET /operation/paginated?search=proyecto&limit=30\`
+    `,
+    tags: ['Operations', 'Pagination']
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Número de página (por defecto: 1)',
+    example: 1,
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Elementos por página. Máximo: 500, Recomendado para datasets grandes: 100',
+    example: 10,
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    type: [String],
+    description: 'Filtrar por estado(s). Puede ser un array separado por comas',
+    example: 'PENDING,INPROGRESS',
+  })
+  @ApiQuery({
+    name: 'jobAreaId',
+    required: false,
+    type: Number,
+    description: 'ID del área de trabajo para filtrar',
+    example: 1,
+  })
+  @ApiQuery({
+    name: 'dateStart',
+    required: false,
+    type: String,
+    description: 'Fecha de inicio mínima (formato: YYYY-MM-DD)',
+    example: '2024-01-01',
+  })
+  @ApiQuery({
+    name: 'dateEnd',
+    required: false,
+    type: String,
+    description: 'Fecha de fin máxima (formato: YYYY-MM-DD)',
+    example: '2024-12-31',
+  })
+  @ApiQuery({
+    name: 'inChargedId',
+    required: false,
+    type: Number,
+    description: 'ID del usuario encargado',
+    example: 1,
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Búsqueda por operación, código o subservicio',
+    example: 'proyecto',
   })
   @ApiQuery({
     name: 'activatePaginated',
     required: false,
     type: Boolean,
-    description:
-      'Si es false, devuelve todos los registros sin paginación. Por defecto: true',
+    description: 'OBSOLETO: Siempre se aplica paginación para evitar saturación. Por defecto: true',
+    example: true,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Operaciones obtenidas exitosamente con paginación optimizada',
+    schema: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          description: 'Lista de operaciones para la página actual',
+          items: {
+            type: 'object',
+            description: 'Datos completos de la operación con relaciones incluidas'
+          }
+        },
+        pagination: {
+          type: 'object',
+          properties: {
+            totalItems: {
+              type: 'number',
+              description: 'Total de registros en la base de datos',
+              example: 2500
+            },
+            currentPage: {
+              type: 'number',
+              description: 'Página actual',
+              example: 1
+            },
+            totalPages: {
+              type: 'number',
+              description: 'Total de páginas disponibles',
+              example: 25
+            },
+            itemsPerPage: {
+              type: 'number',
+              description: 'Elementos por página',
+              example: 100
+            },
+            hasNextPage: {
+              type: 'boolean',
+              description: 'Indica si hay página siguiente',
+              example: true
+            },
+            hasPreviousPage: {
+              type: 'boolean',
+              description: 'Indica si hay página anterior',
+              example: false
+            },
+            isLargeDataset: {
+              type: 'boolean',
+              description: 'Indica si es un dataset grande (>1000 registros)',
+              example: true
+            },
+            recommendedPageSize: {
+              type: 'number',
+              description: 'Tamaño de página recomendado para óptimo rendimiento',
+              example: 100
+            },
+            performanceHint: {
+              type: 'object',
+              description: 'Sugerencias de optimización (solo para datasets grandes)',
+              properties: {
+                message: {
+                  type: 'string',
+                  example: 'Dataset grande detectado. Considera usar filtros para reducir el conjunto de datos.'
+                },
+                recommendedPageSize: {
+                  type: 'number',
+                  example: 100
+                },
+                totalDataSizeCategory: {
+                  type: 'string',
+                  enum: ['large', 'very-large'],
+                  example: 'large'
+                }
+              }
+            }
+          }
+        },
+        nextPages: {
+          type: 'array',
+          description: 'Páginas adicionales pre-cargadas (optimización deshabilitada para datasets grandes)',
+          items: {
+            type: 'object'
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Parámetros de consulta inválidos'
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Token de autenticación inválido o faltante'
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permisos para acceder a este recurso'
   })
   async findAllPaginated(
     @CurrentUser('siteId') siteId: number,
@@ -257,13 +442,32 @@ console.log('Body crudo recibido:', arguments[0]);
         filters.search = queryParams.search.trim();
       }
 
+      // Validar y ajustar límite para grandes datasets
+      let adjustedLimit = queryParams.limit || 10;
+      
+      // Para evitar sobrecarga, sugerir límites menores en requests grandes
+      if (adjustedLimit > 200) {
+        console.warn(`Límite alto solicitado: ${adjustedLimit}. Considera usar límites menores para mejor rendimiento.`);
+      }
+
       // Obtener los datos paginados con el valor transformado
-      return await this.operationService.findAllPaginated(
+      const result = await this.operationService.findAllPaginated(
         queryParams.page || 1,
-        queryParams.limit || 10,
+        adjustedLimit,
         filters,
         activatePaginated, // Usar el valor transformado por el pipe
       );
+      
+      // Agregar metadatos útiles para el frontend
+      if (result.pagination && result.pagination.totalItems > 1000) {
+        result.pagination['performanceHint'] = {
+          message: 'Dataset grande detectado. Considera usar filtros para reducir el conjunto de datos.',
+          recommendedPageSize: Math.min(100, adjustedLimit),
+          totalDataSizeCategory: result.pagination.totalItems > 5000 ? 'very-large' : 'large'
+        };
+      }
+      
+      return result;
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;

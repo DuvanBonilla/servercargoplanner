@@ -100,69 +100,59 @@ export class ValidationService {
 
       // 5. Validar código si se proporciona
       if (code_worker !== undefined) {
-        const validationId = Math.random().toString(36).substring(7);
-        
-        // Primero, verificar todos los trabajadores con ese código para debugging
-        const allWorkersWithCode = await this.prisma.worker.findMany({
+        // Buscar todos los trabajadores con ese code
+        const workersWithCode = await this.prisma.worker.findMany({
           where: { code: code_worker },
-          select: { id: true, status: true, name: true }
+          select: { id: true, status: true, dni: true, name: true }
         });
-        
-        // console.log(`[ValidationService] ${validationId} - Trabajadores encontrados con código ${code_worker}:`, allWorkersWithCode);
-        
-        // console.log(`[ValidationService] ${validationId} - Ejecutando consulta para trabajadores activos con código ${code_worker}...`);
-        const existingWorkerWithCode = await this.prisma.worker.findFirst({
-          where: { 
-            code: code_worker,
-            status: {
-              not: 'DEACTIVATED' // Solo considerar códigos de trabajadores que NO están DEACTIVATED
-            }
-          },
-        });
-        
-        console.log(`[ValidationService] ${validationId} - Resultado de consulta de trabajadores activos:`, existingWorkerWithCode);
 
-        if (existingWorkerWithCode) {
-          console.log(
-            `[ValidationService] ${validationId} - ❌ ENCONTRADO trabajador activo con código:`,
-            existingWorkerWithCode.id, 'Status:', existingWorkerWithCode.status
-          );
-          console.log(`[ValidationService] ${validationId} - ❌ RETORNANDO ERROR: Code already exists`);
-          return { message: 'Code already exists', status: 409 };
+        // Si existe algún trabajador que NO esté DEACTIVATED, bloquear
+        const activeWorker = workersWithCode.find(w => w.status !== 'DEACTIVATED');
+        if (activeWorker) {
+          // console.log(
+          //   `[ValidationService] ❌ ENCONTRADO trabajador activo con código:`,
+          //   activeWorker.id, 'Status:', activeWorker.status, 'DNI:', activeWorker.dni
+          // );
+          return {
+            message: `Code already exists and is assigned to DNI: ${activeWorker.dni || 'N/A'}`,
+            status: 409
+          };
         }
-        
-        // Log adicional para debugging
-        const deactivatedWorkerWithCode = await this.prisma.worker.findFirst({
-          where: { 
-            code: code_worker,
-            status: 'DEACTIVATED'
-          },
-        });
-        
-        if (deactivatedWorkerWithCode) {
-          console.log(
-            `[ValidationService] ${validationId} - Código ${code_worker} existe pero pertenece a trabajador DEACTIVATED (ID: ${deactivatedWorkerWithCode.id}), permitiendo reutilización`,
-          );
+
+        // Si solo existen trabajadores DEACTIVATED, permitir reutilización y mostrar log
+        if (workersWithCode.length > 0) {
+          const deactivated = workersWithCode.map(w => `${w.dni || 'N/A'} (ID: ${w.id})`).join(', ');
+          // console.log(`[ValidationService] Código ${code_worker} existe pero solo en trabajadores DEACTIVATED: ${deactivated}, permitiendo reutilización`);
         }
-        
-        // console.log(`[ValidationService] ${validationId} - ✅ Código ${code_worker} está disponible para uso`);
-      } 
+
+        // console.log(`[ValidationService] ✅ Código ${code_worker} está disponible para uso`);
+      }
 
       // 6. Validar DNI si se proporciona
       if (dni_worker !== undefined) {
-        const existingWorkerWithDNI = await this.prisma.worker.findUnique({
+        // Buscar todos los trabajadores con ese DNI
+        const workersWithDni = await this.prisma.worker.findMany({
           where: { dni: dni_worker },
+          select: { id: true, status: true, dni: true, name: true }
         });
 
-        if (existingWorkerWithDNI) {
-          console.log(
-            'Found existing worker with DNI:',
-            existingWorkerWithDNI.id,
-          );
+        // Si existe algún trabajador que NO esté DEACTIVATED, bloquear
+        const activeWorker = workersWithDni.find(w => w.status !== 'DEACTIVATED');
+        if (activeWorker) {
+          // console.log(
+          //   'Found existing worker with DNI:',
+          //   activeWorker.id, 'Status:', activeWorker.status, 'DNI:', activeWorker.dni
+          // );
           return {
-            message: 'Worker with this DNI already exists',
-            status: 409,
+            message: `Worker with this DNI already exists and is assigned to worker: ${activeWorker.name || 'N/A'} (ID: ${activeWorker.id})`,
+            status: 409
           };
+        }
+
+        // Si solo existen trabajadores DEACTIVATED, permitir reutilización y mostrar log
+        if (workersWithDni.length > 0) {
+          const deactivated = workersWithDni.map(w => `${w.name || 'N/A'} (ID: ${w.id})`).join(', ');
+          // console.log(`[ValidationService] DNI ${dni_worker} existe pero solo en trabajadores DEACTIVATED: ${deactivated}, permitiendo reutilización`);
         }
       }
 
@@ -173,10 +163,10 @@ export class ValidationService {
         });
 
         if (existingWorkerWithPhone) {
-          console.log(
-            'Found existing worker with phone:',
-            existingWorkerWithPhone.id,
-          );
+          // console.log(
+          //   'Found existing worker with phone:',
+          //   existingWorkerWithPhone.id,
+          // );
           return { message: 'Phone already exists', status: 409 };
         }
       }
@@ -224,7 +214,7 @@ export class ValidationService {
           if (workerIds.length > 0) {
             throw new BadRequestException('No se proporcionaron IDs de trabajadores válidos');
           }
-          console.log('[ValidationService] No hay IDs válidos de trabajadores para validar');
+          // console.log('[ValidationService] No hay IDs válidos de trabajadores para validar');
         }
       }
 
@@ -297,7 +287,7 @@ export class ValidationService {
         );
 
         if (nonExistingTaskIds.length > 0) {
-          console.log('Tasks not found:', nonExistingTaskIds);
+          // console.log('Tasks not found:', nonExistingTaskIds);
           return {
             message: `Tasks not found: ${nonExistingTaskIds.join(', ')}`,
             status: 404,
@@ -360,25 +350,40 @@ export class ValidationService {
       }
 
       //16. validar el codigo de nomina
-       if (payroll_code_worker!== undefined) {
-        // console.log(`[ValidationService] Validando código de nómina: ${payroll_code_worker}`);
-        
-        const existingWorkerWithCode = await this.prisma.worker.findFirst({
-          where: { 
+      if (payroll_code_worker !== undefined && payroll_code_worker !== null && payroll_code_worker !== "") {
+        // Buscar todos los trabajadores con ese payroll_code
+        const workersWithPayrollCode = await this.prisma.worker.findMany({
+          where: {
             payroll_code: payroll_code_worker
-            // El código de nómina debe ser único sin importar el estado del trabajador
           },
+          select: {
+            id: true,
+            status: true,
+            dni: true,
+            name: true
+          }
         });
 
-        if (existingWorkerWithCode) {
-          console.log(
-            'Found existing worker with payroll code:',
-            existingWorkerWithCode.id, 'Status:', existingWorkerWithCode.status
-          );
-          return { message: 'Payroll code already exists', status: 409 };
+        // Si existe algún trabajador que NO esté DEACTIVATED, bloquear
+        const activeWorker = workersWithPayrollCode.find(w => w.status !== 'DEACTIVATED');
+        if (activeWorker) {
+          // console.log(
+          //   'Found existing worker with payroll code:',
+          //   activeWorker.id, 'Status:', activeWorker.status, 'DNI:', activeWorker.dni
+          // );
+          return {
+            message: `Payroll code already exists and is assigned to DNI: ${activeWorker.dni || 'N/A'}`,
+            status: 409
+          };
         }
-        
-        console.log(`[ValidationService] ✅ Código de nómina ${payroll_code_worker} está disponible para uso`);
+
+        // Si solo existen trabajadores DEACTIVATED, permitir reutilización y mostrar log
+        if (workersWithPayrollCode.length > 0) {
+          const deactivated = workersWithPayrollCode.map(w => `${w.dni || 'N/A'} (ID: ${w.id})`).join(', ');
+          // console.log(`[ValidationService] Código de nómina ${payroll_code_worker} existe pero solo en trabajadores DEACTIVATED: ${deactivated}, permitiendo reutilización`);
+        }
+
+        // console.log(`[ValidationService] ✅ Código de nómina ${payroll_code_worker} está disponible para uso`);
       }
 
       // 17. Validar código de tarifa si se proporciona
@@ -509,7 +514,7 @@ export class ValidationService {
    */
   async validateWorkerInOperation(operationId: number, workerId: number) {
     try {
-      console.log('Validating worker in operation:', { operationId, workerId });
+      // console.log('Validating worker in operation:', { operationId, workerId });
 
       // Verificar que la operación existe
       const operation = await this.prisma.operation.findUnique({
@@ -517,7 +522,7 @@ export class ValidationService {
       });
 
       if (!operation) {
-        console.log('Operation not found:', operationId);
+        // console.log('Operation not found:', operationId);
         return { message: 'Operation not found', status: 404 };
       }
 
@@ -527,7 +532,7 @@ export class ValidationService {
       });
 
       if (!worker) {
-        console.log('Worker not found:', workerId);
+        // console.log('Worker not found:', workerId);
         return { message: 'Worker not found', status: 404 };
       }
 
@@ -540,14 +545,14 @@ export class ValidationService {
       });
 
       if (!relation) {
-        console.log('Relation not found between operation and worker');
+        // console.log('Relation not found between operation and worker');
         return {
           message: `Worker ${workerId} is not assigned to operation ${operationId}`,
           status: 404,
         };
       }
 
-      console.log('Worker is assigned to operation');
+      // console.log('Worker is assigned to operation');
       return { success: true };
     } catch (error) {
       console.error('Error validating worker in operation:', error);

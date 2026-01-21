@@ -620,6 +620,10 @@ const availableMealTypes = this.getAvailableMealTypes(
 
       // Si no hay resultados, mantener el formato de respuesta de error
       if (paginatedResponse.items.length === 0) {
+        // console.log(`[FeedingService] ⚠️ No se encontraron registros de alimentación para los filtros aplicados`);
+        // if (filters?.id_site) {
+        //   console.log(`[FeedingService] ⚠️ Filtro id_site=${filters.id_site} - Verificar que existan registros para este sitio`);
+        // }
         return {
           message: 'No worker feeding records found for the requested page',
           status: 404,

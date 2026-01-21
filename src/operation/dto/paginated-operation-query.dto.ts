@@ -22,7 +22,7 @@ export class PaginatedOperationQueryDto {
   page?: number = 1;
 
   @ApiProperty({
-    description: 'Elementos por página (máximo: 50)',
+    description: 'Elementos por página (máximo: 500, recomendado: 100 para grandes datasets)',
     required: false,
     default: 10,
   })

@@ -67,10 +67,12 @@ export class OperationFilterDto {
   search?: string;
 
   @IsOptional()
-  @IsString()
+  @Type(() => Number)
+  @IsNumber()
   id_subsite?: number;
 
   @IsOptional()
-  @IsString()
+  @Type(() => Number)
+  @IsNumber()
   id_site?: number;
 }
