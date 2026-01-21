@@ -25,11 +25,12 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'https://cargoban.com.co', // Dominio de tu frontend en producción
+      'https://www.cargoban.com.co', // Dominio alternativo en producción
        'http://localhost:5176',   // Para desarrollo local
        'http://127.0.0.1:5176',  // Alternativa para desarrollo local
     ],
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'if-none-match','X-Requested-With', 'Accept', 'Origin'],
     exposedHeaders: ['Content-Range', 'X-Total-Count'],
     credentials: true,
     preflightContinue: false,
