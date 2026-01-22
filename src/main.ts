@@ -31,23 +31,23 @@ async function bootstrap() {
        'http://127.0.0.1:5176',  // Alternativa para desarrollo local
     ],
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'if-none-match','cache-control','X-Requested-With', 'Accept', 'Origin'],
-    exposedHeaders: ['Content-Range', 'X-Total-Count'],
-    credentials: true,
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
-  });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
-    }),
-  );
+    allowedHeaders: true as unknown as string[],
+      exposedHeaders: ['Content-Range', 'X-Total-Count'],
+      credentials: true,
+preflightContinue: false,
+optionsSuccessStatus: 204,
+});
+app.useGlobalPipes(
+  new ValidationPipe({
+    transform: true,
+    transformOptions: {
+      enableImplicitConversion: true,
+    },
+  }),
+);
 
-  const config = new DocumentBuilder()
-    .setTitle('Planner API')
+const config = new DocumentBuilder()
+.setTitle('Planner API')
     .setDescription('API app planner operations')
     .setVersion('1.0')
     .addTag('Planner operations')
