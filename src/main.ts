@@ -31,9 +31,19 @@ async function bootstrap() {
        'http://127.0.0.1:5176',  // Alternativa para desarrollo local
     ],
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: true as unknown as string[],
-      exposedHeaders: ['Content-Range', 'X-Total-Count'],
-      credentials: true,
+    allowedHeaders: [
+  'Content-Type',
+  'Authorization',
+  'if-none-match',
+  'cache-control',
+  'pragma',
+  'expires',
+  'X-Requested-With',
+  'Accept',
+  'Origin',
+],
+exposedHeaders: ['Content-Range', 'X-Total-Count'],
+credentials: true,
 preflightContinue: false,
 optionsSuccessStatus: 204,
 });
