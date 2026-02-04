@@ -225,6 +225,7 @@ export class BillService {
       createBillDto.id_operation,
       userId,
       group,
+      matchingGroupSummary, // ✅ Agregar este parámetro
     );
     const billSaved = await this.prisma.bill.create({
       data: {
@@ -488,6 +489,26 @@ export class BillService {
           group,
         );
       totalPaysheet = paysheetResult.totalFinalPayroll;
+      
+      // ✅ AGREGAR COMPENSATORIO AL TOTAL PAYSHEET PARA TARIFA DE HORAS
+      // Siempre se suma al total_paysheet cuando es por HORAS
+      // Obtener datos necesarios para calcular compensatorio
+      const workerCount = matchingGroupSummary.workers?.length || 0;
+      const paysheetTariff = matchingGroupSummary.paysheet_tariff ?? 
+                            matchingGroupSummary.tariffDetails?.paysheet_tariff ?? 0;
+      const groupDuration = Number(group.group_hours) || 0;
+      
+      // Calcular horas de compensatorio
+      const weekHours = 44; // valor por defecto
+      const dayHours = weekHours / 6; // 7.333333 para 44 horas
+      const compensatoryDay = dayHours / 6; // 1.222222 para 44 horas
+      const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por hora
+      const effectiveHours = Math.min(groupDuration, dayHours);
+      const compensatoryHours = effectiveHours * compensatoryPerHour;
+      const compensatoryAmount = compensatoryHours * workerCount * paysheetTariff;
+      
+      // Siempre sumar al total paysheet para servicios por HORAS
+      totalPaysheet += compensatoryAmount;
     } else if (paysheetUnit === 'JORNAL') {
       const paysheetResult = this.payrollCalculationService.processJornalGroups(
         [matchingGroupSummary],
@@ -621,6 +642,7 @@ export class BillService {
     operationId: number,
     userId: number,
     groupDto: GroupBillDto,
+    matchingGroupSummary?: any, // ✅ Nuevo parámetro opcional
   ) {
 
     // ✅ OBTENER FECHAS CORRECTAS DE LA OPERACIÓN
@@ -644,6 +666,30 @@ export class BillService {
 
     realDuration = Math.round(((end.getTime() - start.getTime()) / (1000 * 60 * 60)) * 100) / 100;
   }
+
+    // ✅ CALCULAR COMPENSATORIO PARA TARIFAS DE HORAS
+    let totalFinalPayrollWithCompensatory = result.totalFinalPayroll;
+    if (matchingGroupSummary) {
+      // Siempre calcular compensatorio para servicios por HORAS
+      // Obtener datos necesarios para calcular compensatorio
+      const workerCount = matchingGroupSummary.workers?.length || result.workerCount || 0;
+      const paysheetTariff = matchingGroupSummary.paysheet_tariff ?? 
+                            matchingGroupSummary.tariffDetails?.paysheet_tariff ?? 0;
+      const groupDuration = Number(groupDto.group_hours) || 0;
+      
+      // Calcular horas de compensatorio
+      const weekHours = 44; // valor por defecto
+      const dayHours = weekHours / 6; // 7.333333 para 44 horas
+      const compensatoryDay = dayHours / 6; // 1.222222 para 44 horas
+      const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por hora
+      const effectiveHours = Math.min(groupDuration, dayHours);
+      const compensatoryHours = effectiveHours * compensatoryPerHour;
+      const compensatoryAmount = compensatoryHours * workerCount * paysheetTariff;
+      
+      // Siempre sumar al total paysheet para servicios por HORAS
+      totalFinalPayrollWithCompensatory += compensatoryAmount;
+    }
+
     return {
       week_number: result.week_number,
       id_operation: operationId,
@@ -651,7 +697,7 @@ export class BillService {
       amount: 0,
       number_of_workers: result.workerCount,
       total_bill: result.totalFinalFacturation,
-      total_paysheet: result.totalFinalPayroll,
+      total_paysheet: totalFinalPayrollWithCompensatory, // ✅ Usar el valor con compensatorio
       number_of_hours: result.details.factHoursDistribution.totalHours,
       createdAt: new Date(),
       HED:
@@ -828,7 +874,7 @@ export class BillService {
       compensatoryFlag: compensatoryFlag,
       info: includeInTotal 
         ? 'Compensatorio incluido en total de facturación (tarifa compensatory: YES)'
-        : 'Compensatorio mostrado pero NO incluido en total (tarifa compensatory: NO)',
+        : 'Compensatorio mostrado pero NO incluido en total facturación (tarifa compensatory: NO)',
     };
   } catch (error) {
     console.error('Error en calculateCompensatoryForBill:', error);

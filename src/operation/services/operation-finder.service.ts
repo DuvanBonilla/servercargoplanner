@@ -344,18 +344,21 @@ export class OperationFinderService {
         // ✅ AGREGAR LOG PARA VERIFICAR PROPAGACIÓN
         // console.log(`=== GRUPO ${index + 1} ===`);
         // console.log(`Grupo ${group.groupId} - paysheet_tariff:`, group.tariffDetails.paysheet_tariff);
+        // console.log(`Grupo ${group.groupId} - facturation_tariff:`, group.tariffDetails.facturation_tariff);
         // console.log(`Grupo ${group.groupId} - op_duration:`, group.op_duration);
       });
 
       // ✅ VERIFICAR QUE op_duration ESTÉ EN LA RESPUESTA FINAL
-    //   console.log('=== RESPUESTA FINAL ===');
-    //   console.log('transformedOperation.op_duration:', transformedOperation.op_duration);
-    //   console.log('Grupos con op_duration:', transformedOperation.workerGroups.map(g => ({
-    //     groupId: g.groupId,
-    //     op_duration: g.op_duration
-    //   })
-    // ));
-      // console.log('=== FIN OPERATION FINDER ===');
+      console.log('=== RESPUESTA FINAL ===');
+      console.log('transformedOperation.op_duration:', transformedOperation.op_duration);
+      console.log('Grupos con op_duration:', transformedOperation.workerGroups.map(g => ({
+        groupId: g.groupId,
+        op_duration: g.op_duration,
+        paysheet_tariff: g.tariffDetails?.paysheet_tariff,
+        facturation_tariff: g.tariffDetails?.facturation_tariff
+      })
+    ));
+      console.log('=== FIN OPERATION FINDER ===');
 
       return transformedOperation;
     } catch (error) {

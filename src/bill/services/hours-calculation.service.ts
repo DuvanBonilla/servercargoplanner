@@ -305,13 +305,14 @@ export class HoursCalculationService {
   const totalCompBill = compensatoryBill * workerCount * facturationTariff;
   const totalCompPayroll = compensatoryPayroll * workerCount * paysheetTariff;
 
-  console.log('Compensatorio calculado:');
-  console.log('- Horas compensatorio facturación:', compensatoryBill);
-  console.log('- Horas compensatorio nómina:', compensatoryPayroll);
-  console.log('- Monto compensatorio facturación:', totalCompBill);
-  console.log('- Monto compensatorio nómina:', totalCompPayroll);
+  // console.log('Compensatorio calculado:');
+  // console.log('- Horas compensatorio facturación:', compensatoryBill);
+  // console.log('- Horas compensatorio nómina:', compensatoryPayroll);
+  // console.log('- Monto compensatorio facturación:', totalCompBill);
+  // console.log('- Monto compensatorio nómina:', totalCompPayroll);
 
-  // ✅ INCLUIR COMPENSATORIO EN TOTALES SOLO SI LA TARIFA DICE "YES"
+  // ✅ INCLUIR COMPENSATORIO EN TOTALES
+  // Para facturación: solo si la tarifa dice "YES"
   if (baseTariffCompensatory === 'YES' && shouldCalculateComp && !isNaN(totalCompBill)) {
     totalFinalFacturation += totalCompBill;
     console.log('✅ Compensatorio INCLUIDO en total facturación (tarifa compensatory: YES)');
@@ -319,11 +320,12 @@ export class HoursCalculationService {
     console.log('❌ Compensatorio NO incluido en total facturación (tarifa compensatory:', baseTariffCompensatory, ')');
   }
 
-  if (baseTariffCompensatory === 'YES' && shouldCalculateComp && !isNaN(totalCompPayroll)) {
+  // Para nómina: SIEMPRE incluir para servicios por HORAS
+  if (shouldCalculateComp && !isNaN(totalCompPayroll)) {
     totalFinalPayroll += totalCompPayroll;
-    console.log('✅ Compensatorio INCLUIDO en total nómina (tarifa compensatory: YES)');
+    console.log('✅ Compensatorio INCLUIDO en total nómina (SIEMPRE para servicios HORAS)');
   } else {
-    console.log('❌ Compensatorio NO incluido en total nómina (tarifa compensatory:', baseTariffCompensatory, ')');
+    console.log('❌ Compensatorio NO incluido en total nómina - shouldCalculateComp:', shouldCalculateComp, 'totalCompPayroll:', totalCompPayroll);
   }
 
   // ✅ VALIDACIÓN FINAL ANTES DE RETORNAR
