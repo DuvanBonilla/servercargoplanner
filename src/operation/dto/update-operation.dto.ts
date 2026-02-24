@@ -83,6 +83,11 @@ export class WorkerUpdate {
   @IsOptional()
   @IsString()
   timeEnd?: string;
+
+  @ApiProperty({ example: "Observación del trabajo", required: false })
+  @IsOptional()
+  @IsString()
+  observation?: string;
 }
 
 // Hacemos los campos restantes opcionales
@@ -101,7 +106,8 @@ export class UpdateOperationDto extends PartialType(OperationUpdateBaseDto) {
         dateStart: "2023-11-01",
         dateEnd: "2023-11-15",
         timeStart: "09:00",
-        timeEnd: "18:00"
+        timeEnd: "18:00",
+        observation: "Observación del trabajo"
       }],
       disconnect: [{ id: 5, id_group: "UID-12345" }]
     }
@@ -134,12 +140,13 @@ export class UpdateOperationDto extends PartialType(OperationUpdateBaseDto) {
   @ApiProperty({
     type: Array,
     required: false,
-    description: 'Array de grupos para finalizar con fechas y horas de finalización',
+    description: 'Array de grupos para finalizar con fechas, horas de finalización y observaciones',
     example: [
       {
         groupId: "5ee050fd-85b7-4389-b2e6-cb07e3d56d37",
         dateEnd: "2025-11-06",
         timeEnd: "08:05",
+        observation: "Trabajo completado exitosamente",
         isNewGroup: false
       }
     ]
@@ -150,6 +157,7 @@ export class UpdateOperationDto extends PartialType(OperationUpdateBaseDto) {
     groupId: string;
     dateEnd?: string;
     timeEnd?: string;
+    observation?: string;
     isNewGroup?: boolean;
   }>;
 }

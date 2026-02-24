@@ -78,4 +78,10 @@ export class WorkerScheduleDto {
   @IsOptional()
   @IsNumber()
   id_tariff?: number;
+
+  @ApiProperty({ example: 'Observation text', required: false })
+  @IsString()
+  @IsOptional()
+  observation?: string;
+  
 }

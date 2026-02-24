@@ -127,18 +127,24 @@ export class OperationService {
     id_site?: number,
   ) {
     try {
+      console.log('[OperationService] ==> INICIANDO createWithWorkers');
+      console.log('[OperationService] createOperationDto:', JSON.stringify(createOperationDto, null, 2));
+
       if (createOperationDto.id_subsite) {
         id_subsite = createOperationDto.id_subsite;
       }
 
+      console.log('[OperationService] ==> Buscando usuario:', createOperationDto.id_user);
       // Obtener el usuario y su rol (ajusta según tu modelo)
       const user = await this.prisma.user.findUnique({
         where: { id: createOperationDto.id_user },
         select: { role: true },
       });
+      console.log('[OperationService] ==> Usuario encontrado:', user);
 
       // Validar fecha para SUPERVISOR
       if (user?.role === 'SUPERVISOR' && createOperationDto.dateStart) {
+        console.log('[OperationService] ==> Validando fecha para SUPERVISOR');
         // Si el usuario existe y su rol es 'SUPERVISOR', y además se proporcionó dateStart en el DTO
         const now = new Date(); // Obtener la fecha/hora actual
         const dateStart = new Date(createOperationDto.dateStart); // Convertir la fecha proporcionada a un objeto Date
@@ -146,6 +152,7 @@ export class OperationService {
         const diffHours = diffMs / (1000 * 60 * 60); // Convertir la diferencia de ms a horas: $diffHours = \\frac{diffMs}{1000\\times60\\times60}$
         
         if (diffHours >= 120) {
+          console.log('[OperationService] ==> Error: SUPERVISOR intenta crear operación muy antigua');
           // Si la diferencia es mayor o igual a 120 horas (5 días), devolver un objeto con mensaje y estado 400
           return {
             message:
@@ -155,33 +162,47 @@ export class OperationService {
         }
       }
 
+      console.log('[OperationService] ==> Validando user ID');
       // Validaciones
       if (createOperationDto.id_user === undefined) {
+        console.log('[OperationService] ==> Error: User ID requerido');
         return { message: 'User ID is required', status: 400 };
       }
 
+      console.log('[OperationService] ==> Extrayendo trabajadores e IDs');
       // Extraer y validar IDs de trabajadores
       const { workerIds = [], groups = [] } = createOperationDto;
+      console.log('[OperationService] ==> workerIds:', workerIds);
+      console.log('[OperationService] ==> groups:', JSON.stringify(groups, null, 2));
+      
       const scheduledWorkerIds =
         this.relationService.extractScheduledWorkerIds(groups);
       const allWorkerIds = [...workerIds, ...scheduledWorkerIds];
+      console.log('[OperationService] ==> scheduledWorkerIds:', scheduledWorkerIds);
+      console.log('[OperationService] ==> allWorkerIds:', allWorkerIds);
 
+      console.log('[OperationService] ==> Validando worker IDs');
       const validateWorkerIds = await this.relationService.validateWorkerIds(
         allWorkerIds,
         id_subsite,
         id_site,
       );
+      console.log('[OperationService] ==> validateWorkerIds resultado:', validateWorkerIds);
       if (validateWorkerIds?.status === 403) {
         return validateWorkerIds;
       }
+
+      console.log('[OperationService] ==> Validando programación cliente');
       //validar programacion cliente
       const validateClientProgramming =
         await this.relationService.validateClientProgramming(
           createOperationDto.id_clientProgramming || null,
         );
+      console.log('[OperationService] ==> validateClientProgramming resultado:', validateClientProgramming);
 
       if (validateClientProgramming) return validateClientProgramming;
 
+      console.log('[OperationService] ==> Validando todos los IDs');
       // Validar todos los IDs
       const validationResult = await this.relationService.validateOperationIds(
         {
@@ -194,25 +215,32 @@ export class OperationService {
         groups,
         id_site,
       );
+      console.log('[OperationService] ==> validationResult:', validationResult);
 
       if (
         validationResult &&
         validationResult.status &&
         validationResult.status !== 200
       ) {
+        console.log('[OperationService] ==> Error en validación, retornando:', validationResult);
         return validationResult;
       }
 
+      console.log('[OperationService] ==> Creando operación');
       // Crear la operación
       const operation = await this.createOperation(
         createOperationDto,
         id_subsite,
       );
+      console.log('[OperationService] ==> Operación creada:', operation);
 
       // VERIFICAR SI HAY ERROR ANTES DE ACCEDER A 'id'
       if ('status' in operation && 'message' in operation) {
+        console.log('[OperationService] ==> Error en creación de operación:', operation);
         return operation;
       }
+
+      console.log('[OperationService] ==> Asignando trabajadores y encargados');
       // Asignar trabajadores y encargados
       const response = await this.relationService.assignWorkersAndInCharge(
         operation.id,
@@ -222,12 +250,18 @@ export class OperationService {
         id_subsite,
         id_site,
       );
+      console.log('[OperationService] ==> Resultado asignación:', response);
+      
       if (response && (response.status === 403 || response.status === 400)) {
+        console.log('[OperationService] ==> Error en asignación:', response);
         return response;
       }
+      
+      console.log('[OperationService] ==> SUCCESS: Operación creada con ID:', operation.id);
       return { id: operation.id };
     } catch (error) {
-      console.error('Error creating operation with workers:', error);
+      console.error('[OperationService] ==> ERROR en createWithWorkers:', error);
+      console.error('[OperationService] ==> Stack trace:', error.stack);
       throw new Error(error.message);
     }
   }
@@ -321,6 +355,16 @@ export class OperationService {
       },
     });
 
+    // 🔔 DESPERTAR SISTEMA: Si se crea una operación, despertar el cron job del sueño profundo
+    try {
+      const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
+      const updateOperationService = this.moduleRef.get(UpdateOperationService, { strict: false });
+      updateOperationService.wakeUpFromDeepSleep(`Nueva operación creada (ID: ${newOperation.id})`);
+    } catch (error) {
+      // No lanzar error si falla el wake up, solo loggear
+      console.warn('[OperationService] ⚠️ No se pudo despertar el sistema automático:', error.message);
+    }
+
     if (id_clientProgramming) {
       await this.prisma.clientProgramming.update({
         where: { id: id_clientProgramming },
@@ -367,6 +411,7 @@ export class OperationService {
       dateEnd,
       timeStrat,
       timeEnd,
+      
       ...directFields
     } = updateOperationDto;
 
@@ -392,7 +437,7 @@ export class OperationService {
       
       // ✅ SI ES OPERACIÓN COMPLETADA Y HAY CAMBIOS EN TRABAJADORES, RECALCULAR FACTURA
       if (isCompletedOperation) {
-        console.log('[OperationService] 🔄 Operación COMPLETED detectada, procesando cambios en trabajadores...');
+        // console.log('[OperationService] 🔄 Operación COMPLETED detectada, procesando cambios en trabajadores...');
         await this.processWorkersOperationsV2(id, workers, true); // ✅ Pasar flag isCompleted
         
         // Buscar y recalcular factura
@@ -502,7 +547,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
         // ✅ SI LA OPERACIÓN ESTÁ COMPLETED Y CAMBIÓ op_duration, RECALCULAR FACTURA
         if (updatedOp.status === 'COMPLETED' && oldOpDuration !== newOpDuration) {
-          console.log('[OperationService] 🔄 Operación COMPLETED con cambio de duración, buscando factura...');
+          // console.log('[OperationService] 🔄 Operación COMPLETED con cambio de duración, buscando factura...');
           
           try {
             // Buscar la factura de esta operación
@@ -573,6 +618,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
    * @param dateEnd - Fecha de fin
    * @param timeStrat - Hora de inicio
    * @param timeEnd - Hora de fin
+   * @param observation - Observación del trabajo
    * @returns Objeto con datos preparados para actualizar
    */
   private prepareOperationUpdateData(
@@ -581,6 +627,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
     dateEnd?: string,
     timeStrat?: string,
     timeEnd?: string,
+    observation?: string,
   ) {
     const updateData = { ...directFields };
 
@@ -604,7 +651,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
     console.log('[OperationService] Campos después de limpieza:', Object.keys(updateData));
 
-    
+    if (observation) updateData.observation = observation;
   // ✅ PROCESAR FECHAS Y HORAS RESPETANDO LO QUE ENVÍA EL USUARIO
   if (dateStart) updateData.dateStart = new Date(dateStart);
   
@@ -1604,6 +1651,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
               id_task: connectOp.id_task,
               id_subtask: connectOp.id_subtask,
               id_tariff: connectOp.id_tariff,
+              observation: connectOp.observation, // ✅ AGREGAR OBSERVATION
               // ✅ NO incluir id_group - Se genera automáticamente
             }]
           };
@@ -1657,6 +1705,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
               id_task: connectOp.id_task ?? existingGroupWorker?.id_task,
               id_subtask: connectOp.id_subtask ?? existingGroupWorker?.id_subtask,
               id_tariff: connectOp.id_tariff ?? existingGroupWorker?.id_tariff,
+              observation: connectOp.observation ?? existingGroupWorker?.observation, // ✅ AGREGAR OBSERVATION
             }]
           };
 
@@ -1679,6 +1728,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
               id_task: connectOp.id_task,
               id_subtask: connectOp.id_subtask,
               id_tariff: connectOp.id_tariff,
+              observation: connectOp.observation, // ✅ AGREGAR OBSERVATION
             }]
           };
 
@@ -1736,6 +1786,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           dateEnd: updateOp.dateEnd,
           timeStart: updateOp.timeStart,
           timeEnd: updateOp.timeEnd,
+          observation: updateOp.observation, // ✅ AGREGAR OBSERVATION
         };
 
         // console.log(`[OperationService] Worker ${updateOp.id_worker} mapeado:`, {
@@ -1776,6 +1827,33 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
   //------------------------------------- HASTA AQUÍ FUNCIONANDO CORRECTAMENTE -----------------------------
 }
+
+  /**
+   * Inicializa manualmente las operaciones pendientes que ya deberían estar en progreso
+   * @returns Resultado de la inicialización manual
+   */
+  async initializePendingOperations() {
+    try {
+      console.log('[OperationService] Inicializando operaciones pendientes manualmente...');
+      
+      // Importar dinámicamente UpdateOperationService para evitar dependencia circular
+      const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
+      const updateOperationService = this.moduleRef.get(UpdateOperationService, { strict: false });
+      
+      const result = await updateOperationService.updateInProgressOperations();
+      
+      console.log(`[OperationService] ✅ Resultado de inicialización manual: ${result.updatedCount} operaciones actualizadas`);
+      
+      return {
+        message: `${result.updatedCount} operaciones inicializadas exitosamente`,
+        updatedCount: result.updatedCount,
+        status: 200
+      };
+    } catch (error) {
+      console.error('[OperationService] ❌ Error en inicialización manual:', error);
+      throw new Error(`Error inicializando operaciones: ${error.message}`);
+    }
+  }
 
   // **AGREGAR EL MÉTODO PARA PROCESAR ENCARGADOS**
   private async processInChargedOperations(operationId: number, inChargedOps: any) {
@@ -1830,7 +1908,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
     // console.log('[OperationService] Grupos a procesar:', JSON.stringify(groups, null, 2));
 
     for (const group of groups) {
-      const { groupId, dateEnd, timeEnd } = group;
+      const { groupId, dateEnd, timeEnd, observation } = group;
       
       if (!groupId) {
         console.warn('[OperationService] Grupo sin groupId, saltando:', group);
@@ -1838,7 +1916,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
       }
 
       // console.log(`[OperationService] Procesando finalización de grupo: ${groupId}`);
-      // console.log(`[OperationService] Datos de finalización: dateEnd=${dateEnd}, timeEnd=${timeEnd}`);
+      // console.log(`[OperationService] Datos de finalización: dateEnd=${dateEnd}, timeEnd=${timeEnd}, observation=${observation}`);
 
       try {
         // Preparar datos de actualización
@@ -1852,6 +1930,11 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         if (timeEnd) {
           updateData.timeEnd = timeEnd;
           console.log(`[OperationService] Estableciendo timeEnd: ${timeEnd}`);
+        }
+
+        if (observation !== undefined) {
+          updateData.observation = observation;
+          console.log(`[OperationService] Estableciendo observation: ${observation}`);
         }
 
         // Solo actualizar si hay datos para actualizar

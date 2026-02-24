@@ -8,11 +8,21 @@ import { UpdateInabilityService } from 'src/inability/service/update-inability.s
 
 /**
  * Servicio para gestionar Cron Jobs
+ * 
+ * OPTIMIZACIONES IMPLEMENTADAS:
+ * - ⏱️ Intervalo aumentado a 5 minutos para reducir carga del servidor
+ * - 🚀 Early exit cuando no hay operaciones pendientes
+ * - 📊 Límite de 50 operaciones por ejecución
+ * - 🔄 Transacciones atómicas para consistencia
+ * - 🗂️ Sistema de caché para evitar consultas innecesarias
+ * - 📈 Métricas de rendimiento y monitoreo
+ * 
  * @class OperationsCronService
  */
 @Injectable()
 export class OperationsCronService {
   private readonly logger = new Logger(OperationsCronService.name);
+  private isEnabled: boolean = true; // 🎛️ Control de activación del cron job
 
   constructor(
     private updateOperation: UpdateOperationService,
@@ -21,18 +31,44 @@ export class OperationsCronService {
     private updatePermission: UpdatePermissionService,
     private updateInability:UpdateInabilityService, 
   ) {}
+
+  /**
+   * Habilita o deshabilita el cron job de operaciones
+   * @param enabled - true para habilitar, false para deshabilitar
+   */
+  setOperationsCronEnabled(enabled: boolean) {
+    this.isEnabled = enabled;
+    this.logger.log(`🎛️ Cron job de operaciones ${enabled ? 'HABILITADO' : 'DESHABILITADO'}`);
+  }
   /**
    * Actualiza las operaciones en progreso
-   * Cambiado de EVERY_MINUTE a cada 2 minutos para reducir carga del servidor
+   * Inicializa operaciones PENDING a INPROGRESS cuando llega su fecha y hora programada
+   * Se ejecuta cada 5 minutos, con optimizaciones inteligentes para reducir carga
    */
-  // @Cron('*/2 * * * *') // Cada 2 minutos
-  // async handleUpdateInProgressOperations() {
-  //   try {
-  //     await this.updateOperation.updateInProgressOperations();
-  //   } catch (error) {
-  //     this.logger.error('Error in cron job:', error);
-  //   }
-  // }
+  @Cron('*/5 * * * *') // Cada 5 minutos (optimizado para reducir carga)
+  async handleUpdateInProgressOperations() {
+    // 🎛️ Verificar si el cron job está habilitado
+    if (!this.isEnabled) {
+      return; // Salir silenciosamente si está deshabilitado
+    }
+
+    try {
+      const result = await this.updateOperation.updateInProgressOperations();
+      
+      if (result.updatedCount > 0) {
+        this.logger.log(`✅ ${result.updatedCount} operaciones iniciadas automáticamente`);
+      }
+      
+      // 📊 Log informativo sobre optimizaciones
+      if (result.skipped && result.reason === 'Deep sleep mode') {
+        this.logger.debug(`😴 Modo sueño profundo activo (próxima verificación en ${result.nextCheck} minutos)`);
+      } else if (result.consecutiveEmptyRuns && result.consecutiveEmptyRuns >= 3) {
+        this.logger.debug(`📈 ${result.consecutiveEmptyRuns} ejecuciones consecutivas sin operaciones${result.willEnterDeepSleep ? ' - entrando en modo sueño profundo' : ''}`);
+      }
+    } catch (error) {
+      this.logger.error('Error in cron job updateInProgressOperations:', error);
+    }
+  }
 
   /**
    * Actualiza los trabajadores con permisos que inician hoy

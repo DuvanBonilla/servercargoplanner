@@ -192,9 +192,9 @@ export class HoursCalculationService {
   //   endDate
   // });
   // ✅ USAR group_hours EN LUGAR DE op_duration PARA COMPENSATORIO
-  console.log('=== CÁLCULO COMPENSATORIO CORREGIDO ===');
-  console.log('group_hours disponible:', combinedGroupData.group_hours);
-  console.log('op_duration (solo informativo):', combinedGroupData.op_duration);
+  // console.log('=== CÁLCULO COMPENSATORIO CORREGIDO ===');
+  // console.log('group_hours disponible:', combinedGroupData.group_hours);
+  // console.log('op_duration (solo informativo):', combinedGroupData.op_duration);
   
   // ✅ USAR group_hours para el compensatorio (duración específica del grupo)
   // Si no está disponible group_hours, usar las horas de distribución como fallback
@@ -208,12 +208,12 @@ export class HoursCalculationService {
     ? groupDuration 
     : (combinedGroupData.paysheetHoursDistribution.HOD + combinedGroupData.paysheetHoursDistribution.HON);
 
-  console.log('Horas para compensatorio (usando group_hours):', {
-    groupDuration,
-    totalBillHours,
-    totalPaysheetHours,
-    usingGroupHours: groupDuration > 0
-  });
+  // console.log('Horas para compensatorio (usando group_hours):', {
+  //   groupDuration,
+  //   totalBillHours,
+  //   totalPaysheetHours,
+  //   usingGroupHours: groupDuration > 0
+  // });
 
   // Calcular horas compensatorias (pasando billStatus y fechas)
   const compBill = await this.calculateCompensatoryHours(
@@ -315,7 +315,7 @@ export class HoursCalculationService {
   // Para facturación: solo si la tarifa dice "YES"
   if (baseTariffCompensatory === 'YES' && shouldCalculateComp && !isNaN(totalCompBill)) {
     totalFinalFacturation += totalCompBill;
-    console.log('✅ Compensatorio INCLUIDO en total facturación (tarifa compensatory: YES)');
+    // console.log('✅ Compensatorio INCLUIDO en total facturación (tarifa compensatory: YES)');
   } else {
     console.log('❌ Compensatorio NO incluido en total facturación (tarifa compensatory:', baseTariffCompensatory, ')');
   }
@@ -323,7 +323,7 @@ export class HoursCalculationService {
   // Para nómina: SIEMPRE incluir para servicios por HORAS
   if (shouldCalculateComp && !isNaN(totalCompPayroll)) {
     totalFinalPayroll += totalCompPayroll;
-    console.log('✅ Compensatorio INCLUIDO en total nómina (SIEMPRE para servicios HORAS)');
+    // console.log('✅ Compensatorio INCLUIDO en total nómina (SIEMPRE para servicios HORAS)');
   } else {
     console.log('❌ Compensatorio NO incluido en total nómina - shouldCalculateComp:', shouldCalculateComp, 'totalCompPayroll:', totalCompPayroll);
   }

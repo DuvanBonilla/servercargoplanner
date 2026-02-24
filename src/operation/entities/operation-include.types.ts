@@ -47,6 +47,7 @@ export interface OperationIncludeConfig {
       dateEnd: boolean;
       id_group: boolean;
       id_subtask: boolean;
+      observation: boolean;
       worker: {
         select: {
           id: boolean;
@@ -156,6 +157,7 @@ export function createOperationInclude(): OperationIncludeConfig {
         dateEnd: true,
         id_group: true,
         id_subtask: true,
+        observation: true,
         worker: {
           select: {
             id: true,

@@ -133,6 +133,13 @@ export class BillService {
       createBillDto.groups.some((g) => String(g.id) === String(jg.groupId)),
     );
 
+    // console.log('=== PROCESS JORNAL GROUPS DEBUG ===');
+    // console.log(`Total grupos en la operación: ${jornalGroups.length}`);
+    // console.log(`Grupos a facturar (del frontend): ${createBillDto.groups.length}`);
+    // console.log(`IDs de grupos solicitados:`, createBillDto.groups.map(g => g.id));
+    // console.log(`Grupos filtrados para facturar: ${jornalGroupsFiltered.length}`);
+    // console.log(`IDs de grupos filtrados:`, jornalGroupsFiltered.map(g => g.groupId));
+
     if (jornalGroupsFiltered.length === 0) return;
 
     const operationDate = jornalGroups[0].dateRange.start;
@@ -146,6 +153,9 @@ export class BillService {
     for (const result of calculationResults.groupResults) {
       const groupDto = this.getGroupDto(createBillDto.groups, result.groupId);
 
+      console.log(`\n--- Procesando grupo: ${result.groupId} ---`);
+      console.log(`Workers en este grupo: ${result.workers?.length || 0}`);
+      console.log(`Worker IDs:`, result.workers?.map(w => w.id) || []);
          
     // ✅ AGREGAR INFORMACIÓN DE LA OPERACIÓN AL RESULTADO
     result.operation = {
@@ -162,6 +172,8 @@ export class BillService {
         groupDto,
       );
       const billSaved = await this.prisma.bill.create({ data: billData });
+      
+      console.log(`Bill creada con ID: ${billSaved.id} para grupo: ${result.groupId}`);
 
       await this.processBillDetails(
         result.workers,
@@ -987,25 +999,47 @@ export class BillService {
     groupDto: GroupBillDto,
     result: any,
   ) {
-    for (const worker of workers || []) {
+    // ✅ FILTRAR WORKERS ÚNICOS POR ID PARA EVITAR DUPLICACIÓN
+    const uniqueWorkers = workers?.filter((worker, index, self) => 
+      index === self.findIndex(w => w.id === worker.id)
+    ) || [];
+
+    console.log(`\n[processBillDetails] Bill ID: ${billId}, Grupo: ${groupDto.id}`);
+    console.log(`Workers recibidos: ${workers?.length || 0}`);
+    console.log(`Workers únicos: ${uniqueWorkers.length}`);
+
+    if (workers?.length !== uniqueWorkers.length) {
+      console.warn(
+        `⚠️ [processBillDetails] Se encontraron ${workers.length - uniqueWorkers.length} workers duplicados. ` +
+        `Total original: ${workers.length}, Únicos: ${uniqueWorkers.length}`
+      );
+      console.log('Workers originales:', workers?.map(w => w.id));
+      console.log('Workers únicos:', uniqueWorkers.map(w => w.id));
+    }
+
+    let billDetailsCreated = 0;
+
+    for (const worker of uniqueWorkers) {
       const operationWorker = await this.findOperationWorker(
         worker.id,
         operationId,
         groupDto.id,
       );
 
+      console.log(`  → Creando billDetail para worker ${worker.id}, operation_worker: ${operationWorker.id}`);
+
       const totalPaysheetWorker = this.calculateTotalWorker(
         result.payroll.totalAmount,
         groupDto,
         worker,
-        workers,
+        uniqueWorkers,
       );
 
       const totalFacturactionWorker = this.calculateTotalWorker(
         result.billing.totalAmount,
         groupDto,
         worker,
-        workers,
+        uniqueWorkers,
       );
 
       const payWorker = groupDto.pays.find((p) => p.id_worker === worker.id);
@@ -1018,7 +1052,11 @@ export class BillService {
         total_bill: totalFacturactionWorker,
         total_paysheet: totalPaysheetWorker,
       });
+
+      billDetailsCreated++;
     }
+
+    console.log(`[processBillDetails] Total billDetails creados: ${billDetailsCreated}\n`);
   }
 
   // Procesar detalles para grupos HORAS
@@ -1029,7 +1067,19 @@ export class BillService {
     group: GroupBillDto,
     result: any,
   ) {
-    for (const worker of workers) {
+    // ✅ FILTRAR WORKERS ÚNICOS POR ID PARA EVITAR DUPLICACIÓN
+    const uniqueWorkers = workers?.filter((worker, index, self) => 
+      index === self.findIndex(w => w.id === worker.id)
+    ) || [];
+
+    if (workers?.length !== uniqueWorkers.length) {
+      console.warn(
+        `⚠️ [processHoursBillDetails] Se encontraron ${workers.length - uniqueWorkers.length} workers duplicados. ` +
+        `Total original: ${workers.length}, Únicos: ${uniqueWorkers.length}`
+      );
+    }
+
+    for (const worker of uniqueWorkers) {
       const operationWorker = await this.findOperationWorker(
         worker.id,
         operationId,
@@ -1041,14 +1091,14 @@ export class BillService {
         result.totalFinalPayroll,
         groupDto,
         worker,
-        workers,
+        uniqueWorkers,
       );
 
       const totalFacturactionWorker = this.calculateTotalWorker(
         result.totalFinalFacturation,
         groupDto,
         worker,
-        workers,
+        uniqueWorkers,
       );
 
       const payWorker = groupDto.pays.find((p) => p.id_worker === worker.id);
@@ -1074,11 +1124,23 @@ export class BillService {
     totalPaysheet: number,
     matchingGroupSummary: any,
   ) {
+    // ✅ FILTRAR WORKERS ÚNICOS POR ID PARA EVITAR DUPLICACIÓN
+    const uniqueWorkers = workers?.filter((worker, index, self) => 
+      index === self.findIndex(w => w.id === worker.id)
+    ) || [];
+
+    if (workers?.length !== uniqueWorkers.length) {
+      console.warn(
+        `⚠️ [processAlternativeServiceBillDetails] Se encontraron ${workers.length - uniqueWorkers.length} workers duplicados. ` +
+        `Total original: ${workers.length}, Únicos: ${uniqueWorkers.length}`
+      );
+    }
+
     const facturationUnit =
       matchingGroupSummary.facturation_unit ||
       matchingGroupSummary.unit_of_measure;
 
-    for (const worker of workers) {
+    for (const worker of uniqueWorkers) {
       const operationWorker = await this.findOperationWorker(
         worker.id,
         operationId,
@@ -1089,14 +1151,14 @@ export class BillService {
         totalPaysheet,
         group,
         worker,
-        workers,
+        uniqueWorkers,
       );
 
       const totalFacturactionWorker = this.calculateTotalWorker(
         totalFacturation,
         group,
         worker,
-        workers,
+        uniqueWorkers,
       );
 
       const payWorker = group.pays?.find((p) => p.id_worker === worker.id);
@@ -1131,7 +1193,19 @@ export class BillService {
     totalFacturation: number,
     matchingGroupSummary: any,
   ) {
-    for (const worker of workers) {
+    // ✅ FILTRAR WORKERS ÚNICOS POR ID PARA EVITAR DUPLICACIÓN
+    const uniqueWorkers = workers?.filter((worker, index, self) => 
+      index === self.findIndex(w => w.id === worker.id)
+    ) || [];
+
+    if (workers?.length !== uniqueWorkers.length) {
+      console.warn(
+        `⚠️ [processQuantityBillDetails] Se encontraron ${workers.length - uniqueWorkers.length} workers duplicados. ` +
+        `Total original: ${workers.length}, Únicos: ${uniqueWorkers.length}`
+      );
+    }
+
+    for (const worker of uniqueWorkers) {
       const operationWorker = await this.findOperationWorker(
         worker.id,
         operationId,
@@ -1156,14 +1230,14 @@ export class BillService {
         totalPaysheet,
         group,
         worker,
-        workers,
+        uniqueWorkers,
       );
 
       const totalWorkerFacturation = this.calculateTotalWorker(
         totalFacturation,
         group,
         worker,
-        workers,
+        uniqueWorkers,
       );
 
       await this.createBillDetail({
@@ -1189,6 +1263,28 @@ export class BillService {
     if (groupId) {
       whereClause.id_group = groupId;
       // console.log(`🔍 [findOperationWorker] Buscando worker ${workerId} en grupo ${groupId}`);
+    } 
+    // else {
+    //   // console.warn(`⚠️ [findOperationWorker] ADVERTENCIA: Buscando worker ${workerId} SIN especificar grupo - puede devolver el worker incorrecto`);
+    // }
+    
+    // ✅ Verificar si hay múltiples operation_workers para este worker
+    const allMatches = await this.prisma.operation_Worker.findMany({
+      where: {
+        id_worker: workerId,
+        id_operation: operationId,
+      },
+      select: {
+        id: true,
+        id_group: true,
+      },
+    });
+
+    if (allMatches.length > 1) {
+      console.log(`📊 [findOperationWorker] Worker ${workerId} existe en ${allMatches.length} grupos:`);
+      allMatches.forEach(match => {
+        console.log(`   - operation_worker ${match.id} en grupo ${match.id_group}${match.id_group === groupId ? ' ← SELECCIONADO' : ''}`);
+      });
     }
     
     const operationWorker = await this.prisma.operation_Worker.findFirst({
@@ -1215,15 +1311,13 @@ export class BillService {
     });
 
     if (!operationWorker) {
+      console.error(`❌ [findOperationWorker] No se encontró operation_worker para worker ${workerId} en operación ${operationId}${groupId ? ` y grupo ${groupId}` : ''}`);
       throw new ConflictException(
         `No se encontró el trabajador con ID: ${workerId} en operación ${operationId}${groupId ? ` y grupo ${groupId}` : ''}`,
       );
     }
     
-    // console.log(`✅ [findOperationWorker] Encontrado worker ${workerId}:`);
-    // console.log(`   - Tarifa ID: ${operationWorker.tariff?.id}`);
-    // console.log(`   - Subservicio: ${operationWorker.tariff?.subTask?.name} (${operationWorker.tariff?.subTask?.code})`);
-    // console.log(`   - Unidad: ${operationWorker.tariff?.unitOfMeasure?.name}`);
+    console.log(`✅ [findOperationWorker] Encontrado operation_worker ${operationWorker.id} para worker ${workerId} en grupo ${operationWorker.id_group}`);
 
     return operationWorker;
   }
@@ -2289,21 +2383,16 @@ export class BillService {
 
     // ✅ Iterar sobre los trabajadores reales de la BD
     for (const operationWorker of operationWorkers) {
-      const billDetail = await this.prisma.billDetail.findFirst({
+      let billDetail = await this.prisma.billDetail.findFirst({
         where: {
           id_bill: billId,
           id_operation_worker: operationWorker.id,
         },
       });
-      if (!billDetail) {
-        console.warn(`⚠️ No se encontró billDetail para operation_worker ${operationWorker.id}`);
-        continue;
-      }
 
       // Obtener el pay de este trabajador desde el array procesado
       const workerPay = validPays.find(p => p.id_worker === operationWorker.id_worker);
       const payValue = workerPay?.pay ?? 1;
-
 
       const totalWorkerPaysheet = this.calculateTotalWorker(
         totalPaysheetGroup,
@@ -2318,8 +2407,6 @@ export class BillService {
         matchingGroupSummary.workers,
       );
 
-   
-
       // USAR la función calculatePayRateForWorker en lugar de lógica manual
       const payRate = this.calculatePayRateForWorker(
         matchingGroupSummary,
@@ -2329,15 +2416,31 @@ export class BillService {
         { amount: group.amount || 0 }, // existingBill simulado
       );
 
-      await this.prisma.billDetail.update({
-        where: { id: billDetail.id },
-        data: {
-          pay_rate: payRate,
-          pay_unit: payValue,
-          total_bill: totalWorkerFacturation,
-          total_paysheet: totalWorkerPaysheet,
-        },
-      });
+      // ✅ Si no existe el billDetail, crearlo
+      if (!billDetail) {
+        console.log(`✅ Creando billDetail para nuevo operation_worker ${operationWorker.id}`);
+        billDetail = await this.prisma.billDetail.create({
+          data: {
+            id_bill: billId,
+            id_operation_worker: operationWorker.id,
+            pay_rate: payRate,
+            pay_unit: payValue,
+            total_bill: totalWorkerFacturation,
+            total_paysheet: totalWorkerPaysheet,
+          },
+        });
+      } else {
+        // Actualizar el billDetail existente
+        await this.prisma.billDetail.update({
+          where: { id: billDetail.id },
+          data: {
+            pay_rate: payRate,
+            pay_unit: payValue,
+            total_bill: totalWorkerFacturation,
+            total_paysheet: totalWorkerPaysheet,
+          },
+        });
+      }
 
     }
   }

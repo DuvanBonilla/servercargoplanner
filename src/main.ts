@@ -27,8 +27,8 @@ async function bootstrap() {
       'https://seal-app-55opl.ondigitalocean.app',
       'https://cargoban.com.co', // Dominio de tu frontend en producción
       'https://www.cargoban.com.co', // Dominio alternativo en producción
-       'http://localhost:3001',   // Para desarrollo local
-       'http://127.0.0.1:3001',  // Alternativa para desarrollo local
+      //  'http://localhost:3001',   // Para desarrollo local
+      //  'http://127.0.0.1:3001',  // Alternativa para desarrollo local
     ],
     ///-------------------------------HABILITAR EN DESARROLLO LOCAL CON CUALQUIER PUERTO---------------------------
     // origin: (origin, callback) => {
@@ -36,7 +36,7 @@ async function bootstrap() {
     //     'https://seal-app-55opl.ondigitalocean.app',
     //     'https://cargoban.com.co',
     //     'https://www.cargoban.com.co',
-    //     'http://localhost:3001'
+    //     // 'http://localhost:3001'
     //   ];
     //   // Permitir cualquier puerto en localhost, 127.0.0.1 y redes privadas
     //   const localhostRegex = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;

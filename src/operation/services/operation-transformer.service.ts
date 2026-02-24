@@ -33,6 +33,7 @@ export class OperationTransformerService {
         dni: w.worker.dni,
         groupId: w.id_group, // Incluir el ID del grupo
         operationWorkerId: w.id, // Incluir el ID de la relación Operation_Worker
+        observation: w.observation || null, // Incluir observación del registro Operation_Worker
         schedule: {
           dateStart: w.dateStart
             ? new Date(w.dateStart).toISOString().split('T')[0]
@@ -131,6 +132,7 @@ groupWorkersByScheduleAndGroup(workers) {
           groupId: groupId, // ✅ Mantener el groupId original para el frontend
           schedule: worker.schedule, // ✅ Schedule específico de esta combinación
           subTask: worker.subTask,   // ✅ SubTask específico de esta combinación
+          observation: worker.observation || null, // ✅ Observación del grupo
           workers: [],
           minOperationWorkerId: operationWorkerId, // ✅ ID mínimo para ordenamiento
         };
@@ -152,7 +154,9 @@ groupWorkersByScheduleAndGroup(workers) {
     const sortedGroups = Object.values(groupedByGroupId)
       .sort((a: any, b: any) => a.minOperationWorkerId - b.minOperationWorkerId);
 
+    // ✅ FILTRAR GRUPOS VACÍOS (sin workers) antes de retornar
     return sortedGroups
+      .filter((group: any) => group.workers && group.workers.length > 0)
       .map((group: any) => {
         // Eliminar campo auxiliar antes de retornar
         const { minOperationWorkerId, ...cleanGroup } = group;

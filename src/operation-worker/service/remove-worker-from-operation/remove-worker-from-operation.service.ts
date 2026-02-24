@@ -119,6 +119,8 @@ export class RemoveWorkerFromOperationService {
             });
 
             if (operationWorkerToDelete) {
+              console.log(`[RemoveWorkerService] 🗑️ Eliminando worker ${workerId} del grupo ${id_group}`);
+              
               // Eliminar BillDetail relacionados
               await this.prisma.billDetail.deleteMany({
                 where: { id_operation_worker: operationWorkerToDelete.id },
@@ -136,6 +138,8 @@ export class RemoveWorkerFromOperationService {
               const deleteResult = await this.prisma.operation_Worker.delete({
                 where: { id: operationWorkerToDelete.id },
               });
+              
+              console.log(`[RemoveWorkerService] ✅ Worker ${workerId} eliminado del grupo ${id_group}`);
 
               if (deleteResult) {
                 results.push({
@@ -144,6 +148,16 @@ export class RemoveWorkerFromOperationService {
                   action: 'removed_from_group',
                   success: true,
                 });
+
+                // ✅ Verificar cuántos workers quedan en este grupo
+                const remainingInGroup = await this.prisma.operation_Worker.count({
+                  where: {
+                    id_operation,
+                    id_group: id_group,
+                  },
+                });
+                
+                console.log(`[RemoveWorkerService] 📊 Workers restantes en grupo ${id_group}: ${remainingInGroup}`);
 
                 // Verificar si el trabajador aún está en otros grupos de esta operación
                 const remainingInOperation =
@@ -156,6 +170,8 @@ export class RemoveWorkerFromOperationService {
 
                 // Solo liberar si no está en otros grupos de esta operación
                 if (!remainingInOperation) {
+                  console.log(`[RemoveWorkerService] 🔄 Worker ${workerId} ya no está en operación ${id_operation}, verificando otras operaciones...`);
+                  
                   // Verificar si está en otras operaciones activas
                   const inOtherActiveOps =
                     await this.prisma.operation_Worker.findFirst({
@@ -173,16 +189,21 @@ export class RemoveWorkerFromOperationService {
                       where: { id: workerId },
                       data: { status: 'AVALIABLE' },
                     });
+                    console.log(`[RemoveWorkerService] ✅ Worker ${workerId} liberado (status: AVALIABLE)`);
                     results[results.length - 1].workerReleased = true;
                   }
                 }
               }
             } else {
+              // Worker no encontrado en el grupo específico
+              // Esto puede ocurrir si Flutter tiene datos en caché
+              console.log(`[RemoveWorkerService] ⚠️ Worker ${workerId} no encontrado en grupo ${id_group} (posible caché de Flutter)`);
+              
               results.push({
                 workerId,
                 groupId: id_group,
-                action: 'not_found_in_group',
-                success: false,
+                action: 'already_removed_from_group',
+                success: true, // ✅ Marcar como exitoso porque el objetivo se cumplió (no está en el grupo)
               });
             }
           } else {
@@ -249,10 +270,14 @@ export class RemoveWorkerFromOperationService {
                 }
               }
             } else {
+              // Worker no encontrado en la operación
+              // Esto puede ocurrir si Flutter tiene datos en caché
+              console.log(`[RemoveWorkerService] ⚠️ Worker ${workerId} no encontrado en operación ${id_operation} (posible caché de Flutter)`);
+              
               results.push({
                 workerId,
-                action: 'not_found_in_operation',
-                success: false,
+                action: 'already_removed_from_operation',
+                success: true, // ✅ Marcar como exitoso porque el objetivo se cumplió (no está en la operación)
               });
             }
           }

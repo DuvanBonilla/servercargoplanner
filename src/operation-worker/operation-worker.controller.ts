@@ -48,6 +48,19 @@ export class OperationWorkerController {
   })
   @UsePipes(new DateTransformPipe())
   assignWorkers(@Body() assignWorkersDto: AssignWorkersDto) {
+    const timestamp = new Date().toISOString();
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[${timestamp}] 📥 PETICIÓN RECIBIDA: POST /operation-worker/assign`);
+    console.log(`[OperationWorkerController] Operación ID: ${assignWorkersDto.id_operation}`);
+    console.log(`[OperationWorkerController] Workers simples: ${assignWorkersDto.workerIds?.length || 0}`);
+    console.log(`[OperationWorkerController] Grupos programados: ${assignWorkersDto.workersWithSchedule?.length || 0}`);
+    if (assignWorkersDto.workersWithSchedule?.length) {
+      assignWorkersDto.workersWithSchedule.forEach((group, i) => {
+        console.log(`  - Grupo ${i + 1}: ${group.workerIds?.length || 0} workers, id_group: ${group.id_group || 'nuevo'}`);
+      });
+    }
+    console.log(`${'='.repeat(80)}\n`);
+    
     return this.operationWorkerService.assignWorkersToOperation(
       assignWorkersDto,
     );

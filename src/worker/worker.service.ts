@@ -710,4 +710,80 @@ async findById(id: number, id_site?: number) {
     
     // console.log(`[WorkerService] ✅ Finalizado cálculo de horas para operación ${operationId}`);
   }
+
+  /**
+   * Verifica y corrige el estado de workers que están ASSIGNED pero no tienen operaciones activas
+   * Este método es útil para corregir inconsistencias cuando una operación se marca como COMPLETED
+   * directamente en la BD sin pasar por el flujo normal
+   */
+  async fixWorkerStatusForCompletedOperations() {
+    try {
+      console.log('[WorkerService] 🔍 Verificando workers ASSIGNED sin operaciones activas...');
+
+      // 1. Obtener todos los workers con status ASSIGNED
+      const assignedWorkers = await this.prisma.worker.findMany({
+        where: { status: 'ASSIGNED' },
+        select: { id: true, dni: true, name: true },
+      });
+
+      console.log(`[WorkerService] Encontrados ${assignedWorkers.length} workers con status ASSIGNED`);
+
+      let fixedCount = 0;
+      const workersFixed: Array<{ id: number; name: string; dni: string }> = [];
+
+      for (const worker of assignedWorkers) {
+        // 2. Verificar si el worker tiene operaciones activas (PENDING o INPROGRESS)
+        const activeOperations = await this.prisma.operation_Worker.findMany({
+          where: {
+            id_worker: worker.id,
+            operation: {
+              status: { in: ['PENDING', 'INPROGRESS'] },
+            },
+          },
+          include: {
+            operation: {
+              select: { id: true, status: true },
+            },
+          },
+        });
+
+        // 3. Si NO tiene operaciones activas, marcarlo como AVAILABLE
+        if (activeOperations.length === 0) {
+          console.log(
+            `[WorkerService] ✅ Worker ${worker.id} (${worker.name}) no tiene operaciones activas. Marcando como AVAILABLE...`,
+          );
+
+          await this.prisma.worker.update({
+            where: { id: worker.id },
+            data: { status: 'AVALIABLE' },
+          });
+
+          fixedCount++;
+          workersFixed.push({
+            id: worker.id,
+            name: worker.name,
+            dni: worker.dni,
+          });
+        } else {
+          console.log(
+            `[WorkerService] ℹ️ Worker ${worker.id} (${worker.name}) tiene ${activeOperations.length} operación(es) activa(s):`,
+            activeOperations.map((op) => `Op ${op.operation.id} (${op.operation.status})`).join(', '),
+          );
+        }
+      }
+
+      const summary = {
+        totalAssigned: assignedWorkers.length,
+        fixedToAvailable: fixedCount,
+        stillAssigned: assignedWorkers.length - fixedCount,
+        workersFixed,
+      };
+
+      console.log('[WorkerService] 📊 Resumen de corrección:', summary);
+      return summary;
+    } catch (error) {
+      console.error('[WorkerService] ❌ Error verificando estado de workers:', error);
+      throw error;
+    }
+  }
 }

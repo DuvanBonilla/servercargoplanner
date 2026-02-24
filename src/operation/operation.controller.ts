@@ -121,6 +121,189 @@ console.log('Body crudo recibido:', arguments[0]);
   return response;
 }
 
+  /**
+   * Inicializa manualmente las operaciones pendientes que ya deberían estar en progreso
+   */
+  @Post('initialize-pending')
+  @ApiOperation({
+    summary: 'Inicializar operaciones pendientes',
+    description: 'Inicializa manualmente todas las operaciones que están en estado PENDING y ya deberían estar en INPROGRESS según su fecha y hora programada'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Operaciones inicializadas exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        updatedCount: { type: 'number' },
+        status: { type: 'number' }
+      }
+    }
+  })
+  async initializePendingOperations() {
+    try {
+      const result = await this.operationService.initializePendingOperations();
+      return result;
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
+   * Despierta manualmente el sistema del modo sueño profundo
+   */
+  @Post('wake-up')
+  @ApiOperation({
+    summary: 'Despertar sistema automático',
+    description: 'Despierta manualmente el sistema del modo sueño profundo para que verifique operaciones inmediatamente'
+  })
+  async wakeUpSystem() {
+    try {
+      const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
+      const updateService = this.operationService['moduleRef'].get(UpdateOperationService, { strict: false });
+      
+      const statusBefore = updateService.getSystemStatus();
+      updateService.wakeUpFromDeepSleep('Despertar manual solicitado por usuario');
+      
+      return {
+        message: 'Sistema despertado exitosamente',
+        statusBefore: {
+          wasInDeepSleep: statusBefore.isInDeepSleep,
+          consecutiveEmptyRuns: statusBefore.consecutiveEmptyRuns
+        },
+        recommendation: 'El sistema verificará operaciones en la próxima ejecución del cron job (máximo 5 minutos)',
+        status: 200
+      };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
+   * Controla la activación del sistema automático de operaciones
+   */
+  @Post('cron-control')
+  @ApiOperation({
+    summary: 'Controlar sistema automático',
+    description: 'Habilita o deshabilita el sistema automático de inicialización de operaciones'
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        enabled: { type: 'boolean', description: 'true para habilitar, false para deshabilitar' }
+      },
+      required: ['enabled']
+    }
+  })
+  async controlCronJob(@Body() body: { enabled: boolean }) {
+    try {
+      // Importar dinámicamente para evitar dependencia circular
+      const { OperationsCronService } = await import('../cron-job/cron-job.service');
+      const cronService = this.operationService['moduleRef'].get(OperationsCronService, { strict: false });
+      
+      cronService.setOperationsCronEnabled(body.enabled);
+      
+      return {
+        message: `Sistema automático ${body.enabled ? 'habilitado' : 'deshabilitado'} exitosamente`,
+        enabled: body.enabled,
+        status: 200,
+        recommendation: body.enabled 
+          ? 'El sistema verificará operaciones automáticamente cada 5 minutos'
+          : 'Usa POST /operation/initialize-pending para inicializar operaciones manualmente'
+      };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+  @Get('pending-status')
+  @ApiOperation({
+    summary: 'Estado de operaciones pendientes',
+    description: 'Obtiene información sobre operaciones pendientes y métricas del sistema de inicialización automática'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estado de operaciones pendientes',
+  })
+  async getPendingOperationsStatus() {
+    try {
+      const now = new Date();
+      const threeMinutesAgo = new Date(now.getTime() - 3 * 60 * 1000);
+      
+      // Importar dinámicamente para evitar dependencia circular
+      const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
+      const updateService = this.operationService['moduleRef'].get(UpdateOperationService, { strict: false });
+      const systemStatus = updateService.getSystemStatus();
+      
+      // Obtener conteo de operaciones pendientes
+      const totalPending = await this.operationService['prisma'].operation.count({
+        where: {
+          status: 'PENDING',
+          dateStart: {
+            lte: new Date(), // Operaciones que ya deberían haber iniciado
+          }
+        }
+      });
+
+      const todayPending = await this.operationService['prisma'].operation.count({
+        where: {
+          status: 'PENDING',
+          dateStart: {
+            gte: new Date(new Date().setHours(0, 0, 0, 0)),
+            lt: new Date(new Date().setHours(23, 59, 59, 999))
+          }
+        }
+      });
+
+      // 🛡️ Operaciones en período de gracia (creadas hace menos de 3 minutos)
+      const gracePeriodOperations = await this.operationService['prisma'].operation.count({
+        where: {
+          status: 'PENDING',
+          createAt: {
+            gte: threeMinutesAgo
+          }
+        }
+      });
+
+      return {
+        message: 'Estado del sistema de operaciones',
+        data: {
+          totalPendingOverdue: totalPending,
+          todayPending: todayPending,
+          gracePeriodOperations: gracePeriodOperations,
+          systemOptimization: {
+            isInDeepSleep: systemStatus.isInDeepSleep,
+            consecutiveEmptyRuns: systemStatus.consecutiveEmptyRuns,
+            lastProcessedTime: systemStatus.lastProcessedTime,
+            status: systemStatus.isInDeepSleep ? 'deep_sleep' : 'active'
+          },
+          systemStatus: totalPending > gracePeriodOperations ? 'needs_attention' : 'healthy',
+          lastChecked: new Date().toISOString(),
+          gracePeriodInfo: {
+            description: 'Operaciones creadas en los últimos 3 minutos que no se activarán automáticamente',
+            purpose: 'Permite editar fechas/horas en operaciones duplicadas sin interferencia del sistema automático'
+          },
+          recommendation: this.getSystemRecommendation(totalPending, gracePeriodOperations, systemStatus.isInDeepSleep)
+        },
+        status: 200
+      };
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  private getSystemRecommendation(totalPending: number, gracePeriodOperations: number, isInDeepSleep: boolean): string {
+    if (totalPending > gracePeriodOperations) {
+      if (isInDeepSleep) {
+        return 'Hay operaciones pendientes y el sistema está en sueño profundo. Usa POST /operation/wake-up para despertar el sistema o POST /operation/initialize-pending para procesamiento inmediato.';
+      } else {
+        return 'Hay operaciones pendientes que deberían haberse iniciado. Considera ejecutar la inicialización manual.';
+      }
+    }
+    return 'Sistema funcionando correctamente.';
+  }
+
   @Get()
   @ApiQuery({
     name: 'format',

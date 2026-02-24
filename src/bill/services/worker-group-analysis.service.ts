@@ -69,10 +69,10 @@ export class WorkerGroupAnalysisService {
       ? new Date(group.schedule.dateEnd)
       : null;
 
-    // ✅ AGREGAR LOG PARA VERIFICAR op_duration
-    console.log('=== SUMMARY WORKER GROUP ===');
-    console.log('group.op_duration:', group.op_duration);
-    console.log('group structure keys:', Object.keys(group));
+    // // ✅ AGREGAR LOG PARA VERIFICAR op_duration
+    // console.log('=== SUMMARY WORKER GROUP ===');
+    // console.log('group.op_duration:', group.op_duration);
+    // console.log('group structure keys:', Object.keys(group));
 
     return {
       groupId: group.groupId,

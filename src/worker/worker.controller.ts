@@ -266,4 +266,17 @@ async remove(
   const response = await this.workerService.remove(id);
   return response;
 }
+
+ /**
+  * Endpoint utilitario para verificar y corregir workers ASSIGNED sin operaciones activas
+  * Útil para solucionar inconsistencias cuando operaciones se marcan como COMPLETED sin liberar workers
+  */
+ @Post('fix-status')
+ @ApiOperation({
+   summary: 'Corrige workers ASSIGNED sin operaciones activas',
+   description: 'Verifica todos los workers con status ASSIGNED y los marca como AVAILABLE si no tienen operaciones PENDING o INPROGRESS'
+ })
+ async fixWorkerStatus() {
+   return await this.workerService.fixWorkerStatusForCompletedOperations();
+ }
 }

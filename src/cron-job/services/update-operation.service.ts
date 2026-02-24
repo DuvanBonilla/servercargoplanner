@@ -13,6 +13,10 @@ import { Decimal } from '@prisma/client/runtime/library';
 @Injectable()
 export class UpdateOperationService {
   private readonly logger = new Logger(UpdateOperationService.name);
+  private lastProcessedTime: Date | null = null; // 🗂️ CACHÉ: Última vez que se procesaron operaciones
+  private lastPendingCount: number = 0; // 📊 CACHÉ: Último conteo de operaciones pendientes
+  private consecutiveEmptyRuns: number = 0; // 📈 CONTADOR: Ejecuciones consecutivas sin operaciones
+  private isInDeepSleep: boolean = false; // 😴 ESTADO: Modo de sueño profundo
 
   constructor(
     private prisma: PrismaService,
@@ -20,15 +24,90 @@ export class UpdateOperationService {
   ) {}
 
   /**
-   * Actualiza las operaciones de estado PENDING a INPROGRESS cuando hayan pasado 5 minutos
-   * desde la hora de inicio programada.
+   * 🔔 Despierta el sistema del modo sueño profundo
+   * Se llama cuando se crea una nueva operación
+   */
+  wakeUpFromDeepSleep(reason: string = 'Nueva operación creada') {
+    if (this.isInDeepSleep) {
+      this.logger.log(`🔔 DESPERTANDO del sueño profundo: ${reason}`);
+      this.isInDeepSleep = false;
+      this.consecutiveEmptyRuns = 0;
+      this.lastPendingCount = 1; // Indicar que hay operaciones pendientes
+    }
+  }
+
+  /**
+   * 📊 Obtiene el estado actual del sistema de optimización
+   */
+  getSystemStatus() {
+    return {
+      isInDeepSleep: this.isInDeepSleep,
+      consecutiveEmptyRuns: this.consecutiveEmptyRuns,
+      lastProcessedTime: this.lastProcessedTime,
+      lastPendingCount: this.lastPendingCount
+    };
+  }
+
+  /**
+   * Actualiza las operaciones de estado PENDING a INPROGRESS cuando hayan pasado las condiciones necesarias.
+   * 
+   * LÓGICA IMPLEMENTADA:
+   * - 🛡️ PERÍODO DE GRACIA: Operaciones creadas hace menos de 3 minutos no se procesan automáticamente
+   * - ⏰ OPERACIONES PASADAS: Se activan inmediatamente (respetando período de gracia)
+   * - 📅 OPERACIONES DE HOY: Se activan 1 minuto después de la hora programada
+   * - 🔮 OPERACIONES FUTURAS: Se mantienen en PENDING
+   * 
+   * El período de gracia es especialmente útil para:
+   * - Operaciones duplicadas que necesitan edición de fechas/horas
+   * - Operaciones creadas manualmente que requieren ajustes
+   * - Evitar activación prematura durante el proceso de edición
    */
   async updateInProgressOperations() {
     try {
-      // this.logger.debug('Checking for operations to update to INPROGRESS...');
-
-      // Usar hora colombiana en lugar de hora del servidor
       const now = getColombianDateTime();
+
+      // 😴 OPTIMIZACIÓN AVANZADA: Sueño profundo después de 6 ejecuciones sin operaciones
+      if (this.consecutiveEmptyRuns >= 6) {
+        if (!this.isInDeepSleep) {
+          this.logger.log('😴 Activando modo sueño profundo - sin operaciones en los últimos 30 minutos');
+          this.isInDeepSleep = true;
+        }
+        
+        // En sueño profundo, solo verificar cada 30 minutos (6 ejecuciones * 5 min = 30 min)
+        const timeSinceLastCheck = this.lastProcessedTime 
+          ? differenceInMinutes(now, this.lastProcessedTime) 
+          : 999;
+          
+        if (timeSinceLastCheck < 30) {
+          this.logger.debug('😴 En modo sueño profundo, saltando verificación (próxima en ' + (30 - timeSinceLastCheck) + ' minutos)');
+          return { 
+            updatedCount: 0, 
+            skipped: true, 
+            reason: 'Deep sleep mode', 
+            nextCheck: 30 - timeSinceLastCheck,
+            consecutiveEmptyRuns: this.consecutiveEmptyRuns,
+            willEnterDeepSleep: false
+          };
+        }
+      }
+
+      this.logger.debug('🔍 Verificando operaciones para actualizar a INPROGRESS...');
+
+      // 📊 OPTIMIZACIÓN: Verificar si es necesario procesar basado en tiempo
+      const timeSinceLastProcess = this.lastProcessedTime 
+        ? differenceInMinutes(now, this.lastProcessedTime) 
+        : 999;
+
+      if (timeSinceLastProcess < 3 && this.lastPendingCount === 0 && !this.isInDeepSleep) {
+        this.logger.debug('⏭️ Saltando procesamiento: no hay operaciones pendientes recientes');
+        return { 
+          updatedCount: 0, 
+          skipped: true, 
+          reason: 'No pending operations recently',
+          consecutiveEmptyRuns: this.consecutiveEmptyRuns,
+          willEnterDeepSleep: false
+        };
+      }
 
       // Crear fecha de inicio (hoy a medianoche hora colombiana)
       const startOfDay = getColombianStartOfDay(now);
@@ -36,25 +115,65 @@ export class UpdateOperationService {
       // Crear fecha de fin (mañana a medianoche hora colombiana)
       const endOfDay = getColombianEndOfDay(now);
 
-      // this.logger.debug(`Colombian time now: ${now.toISOString()}`);
-      // this.logger.debug(
-      //   `Searching operations for date: ${startOfDay.toISOString()}`,
-      // );
+      this.logger.debug(`⏰ Hora colombiana actual: ${now.toISOString()}`);
+      this.logger.debug(`📅 Buscando operaciones para fecha: ${startOfDay.toISOString()}`);
 
-      // Buscar todas las operaciones con estado PENDING para hoy
-      const pendingOperations = await this.prisma.operation.findMany({
+      // 🚀 OPTIMIZACIÓN: Verificar si hay operaciones pendientes antes de procesarlas
+      const pendingCount = await this.prisma.operation.count({
         where: {
           dateStart: {
-            //gte: startOfDay,  Mayor o igual que hoy a medianoche (hora colombiana)
             lt: endOfDay, // Menor que mañana a medianoche (hora colombiana)
           },
           status: 'PENDING',
         },
       });
 
-      // this.logger.debug(`Found ${pendingOperations.length} pending operations`);
+      // ⚡ EARLY EXIT: Si no hay operaciones pendientes, salir inmediatamente
+      if (pendingCount === 0) {
+        this.consecutiveEmptyRuns++; // 📈 Incrementar contador de ejecuciones vacías
+        this.lastProcessedTime = now; // 🗂️ Actualizar caché
+        this.lastPendingCount = 0;
+        
+        this.logger.debug(`🆕 No hay operaciones PENDING (${this.consecutiveEmptyRuns} ejecuciones consecutivas sin operaciones)`);
+        
+        return { 
+          updatedCount: 0, 
+          consecutiveEmptyRuns: this.consecutiveEmptyRuns,
+          willEnterDeepSleep: this.consecutiveEmptyRuns >= 5
+        };
+      }
+
+      // 🔄 RESETEAR contadores cuando encontramos operaciones
+      if (this.consecutiveEmptyRuns > 0) {
+        this.logger.log(`🔄 Encontradas operaciones PENDING, saliendo del modo optimizado (${this.consecutiveEmptyRuns} ejecuciones previas sin operaciones)`);
+        this.consecutiveEmptyRuns = 0;
+        this.isInDeepSleep = false;
+      }
+
+      this.logger.debug(`📋 Encontradas ${pendingCount} operaciones PENDING, procesando...`);
+
+      // Buscar operaciones pendientes con límite para evitar sobrecarga
+      const pendingOperations = await this.prisma.operation.findMany({
+        where: {
+          dateStart: {
+            lt: endOfDay, // Menor que mañana a medianoche (hora colombiana)
+          },
+          status: 'PENDING',
+        },
+        take: 50, // 🛡️ LÍMITE: Procesar máximo 50 operaciones por ejecución
+        orderBy: {
+          dateStart: 'asc', // Priorizar operaciones más antiguas
+        },
+        select: {
+          id: true,
+          dateStart: true,
+          timeStrat: true,
+          createAt: true, // 🕐 IMPORTANTE: Necesario para verificar período de gracia
+        },
+      });
 
       let updatedCount = 0;
+      let gracePeriodCount = 0; // 📊 Contador de operaciones en período de gracia
 
 //       for (const operation of pendingOperations) {
 //         // Crear la fecha de inicio completa combinando dateStart y timeStrat
@@ -100,6 +219,16 @@ for (const operation of pendingOperations) {
 
   const minutesDiff = differenceInMinutes(now, startDateTime);
   
+  // 🛡️ PERÍODO DE GRACIA: Verificar si la operación fue creada hace menos de 3 minutos
+  const minutesSinceCreation = differenceInMinutes(now, operation.createAt);
+  const isInGracePeriod = minutesSinceCreation < 3;
+  
+  if (isInGracePeriod) {
+    this.logger.debug(`⏳ Operación ${operation.id} en período de gracia (creada hace ${minutesSinceCreation} minutos), saltando activación automática`);
+    gracePeriodCount++; // 📊 Incrementar contador
+    continue; // Saltar esta operación y continuar con la siguiente
+  }
+  
   // ✅ NUEVA LÓGICA: Determinar si debe cambiar a INPROGRESS
   let shouldUpdate = false;
   let reason = '';
@@ -109,10 +238,9 @@ for (const operation of pendingOperations) {
   const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   
   if (operationDate.getTime() < todayDate.getTime()) {
-    // ✅ CASO 1: Operación de días anteriores - activar inmediatamente
+    // ✅ CASO 1: Operación de días anteriores - activar inmediatamente (pero respetando período de gracia)
     shouldUpdate = true;
     reason = 'previous day operation';
-    // this.logger.debug(`✅ Operation ${operation.id} from previous day (${operation.dateStart.toISOString().split('T')[0]}) - updating immediately`);
   } 
   else if (operationDate.getTime() === todayDate.getTime()) {
     // ✅ CASO 2: Operación de hoy - esperar 1 minuto después de la hora programada
@@ -128,41 +256,70 @@ for (const operation of pendingOperations) {
   }
 
   if (shouldUpdate) {
-    // this.logger.debug(`🚀 Updating operation ${operation.id} to INPROGRESS (reason: ${reason})`);
+    this.logger.debug(`🚀 Actualizando operación ${operation.id} a INPROGRESS (razón: ${reason})`);
     
-    // Actualizar el estado a INPROGRESS
-    await this.prisma.operation.update({
-      where: { id: operation.id },
-      data: { status: 'INPROGRESS' },
-    });
+    // 🔄 OPTIMIZACIÓN: Usar transacción para operaciones atómicas
+    await this.prisma.$transaction(async (tx) => {
+      // Actualizar el estado a INPROGRESS
+      await tx.operation.update({
+        where: { id: operation.id },
+        data: { status: 'INPROGRESS' },
+      });
 
-    // Actualizar la fecha y hora de inicio en la tabla intermedia
-    await this.prisma.operation_Worker.updateMany({
-      where: {
-        id_operation: operation.id,
-        dateEnd: null,
-        timeEnd: null,
-      },
-      data: {
-        dateStart: operation.dateStart,
-        timeStart: operation.timeStrat,
-      },
+      // Actualizar la fecha y hora de inicio en la tabla intermedia
+      await tx.operation_Worker.updateMany({
+        where: {
+          id_operation: operation.id,
+          dateEnd: null,
+          timeEnd: null,
+        },
+        data: {
+          dateStart: operation.dateStart,
+          timeStart: operation.timeStrat,
+        },
+      });
     });
+    
     updatedCount++;
   }
 }
 
-      // if (updatedCount > 0) {
-      //   this.logger.debug(
-      //     `Updated ${updatedCount} operations to INPROGRESS status`,
-      //   );
-      // }
+      if (updatedCount > 0) {
+        this.logger.log(`✅ ${updatedCount} operaciones actualizadas a estado INPROGRESS`);
+      }
 
-      return { updatedCount };
+      // � Log informativo sobre período de gracia
+      if (gracePeriodCount > 0) {
+        this.logger.debug(`⏳ ${gracePeriodCount} operaciones saltadas por período de gracia (< 3 minutos)`);
+      }
+
+      // 🗂️ Actualizar caché después del procesamiento
+      this.lastProcessedTime = now;
+      this.lastPendingCount = pendingCount - updatedCount;
+
+      return { 
+        updatedCount, 
+        processed: pendingOperations.length,
+        totalPending: pendingCount,
+        gracePeriodOperations: gracePeriodCount,
+        consecutiveEmptyRuns: this.consecutiveEmptyRuns,
+        willEnterDeepSleep: false,
+        hasMore: pendingCount > pendingOperations.length 
+      };
     } catch (error) {
       this.logger.error('❌ Error crítico updating operations:', error);
+      
+      // 📊 MONITOREO: Reportar estadísticas de error
+      const errorStats = {
+        error: error.message,
+        timestamp: new Date().toISOString(),
+        pendingCount: 0,
+        consecutiveEmptyRuns: this.consecutiveEmptyRuns,
+        willEnterDeepSleep: false
+      };
+      
       // No lanzar el error, solo loggearlo para evitar que el servidor se caiga
-      return { updatedCount: 0, error: error.message };
+      return { updatedCount: 0, ...errorStats };
     }
   }
 

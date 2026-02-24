@@ -51,6 +51,10 @@ export class SiteInterceptor implements NestInterceptor {
           
           getSubSiteFilter: () => {
             if (userRole === 'SUPERADMIN') return {};
+            if (userRole === 'ADMIN') {
+              // ADMIN puede ver todas las subsites de su site asignada
+              return { id_site: userSite };
+            }
             if (userRole === 'SUPERVISOR' && userSubSite) {
               return { id_site: userSite, id_subsite: userSubSite };
             }
@@ -62,7 +66,7 @@ export class SiteInterceptor implements NestInterceptor {
           canAccessSite: (siteId: number) => userRole === 'SUPERADMIN' || userSite === siteId,
           canAccessSubSite: (siteId: number, subsiteId: number) => {
             if (userRole === 'SUPERADMIN') return true;
-            if (userRole === 'ADMIN' && userSite === siteId) return true;
+            if (userRole === 'ADMIN' && userSite === siteId) return true; // ADMIN puede acceder a cualquier subsite de su site
             if (userRole === 'SUPERVISOR' && userSite === siteId && userSubSite === subsiteId) return true;
             return false;
           }

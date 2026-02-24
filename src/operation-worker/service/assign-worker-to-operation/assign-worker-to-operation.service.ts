@@ -113,18 +113,32 @@ export class AssignWorkerToOperationService {
 
       // Asignar grupos de trabajadores con la misma programación
       if (scheduledGroupsToProcess.length > 0) {
+        console.log(`[AssignWorkerService] 📋 Procesando ${scheduledGroupsToProcess.length} grupos`);
+        
         // Para cada grupo de trabajadores con programación
         scheduledGroupsToProcess.forEach((group) => {
-          const groupId = group.id_group || uuidv4(); // Generar un ID único si no se proporciona
+          const isNewGroup = !group.id_group;
+          const isExistingGroup = !!group.id_group;
+          
+          // Generar UUID para grupos nuevos (1 o más workers), usar id_group si existe
+          const groupId = isNewGroup ? uuidv4() : group.id_group;
+          
+          if (isNewGroup) {
+            console.log(`[AssignWorkerService] 🆕 Creando nuevo grupo: ${groupId} (${group.workerIds.length} workers)`);
+          } else if (isExistingGroup) {
+            console.log(`[AssignWorkerService] ♻️ Agregando a grupo existente: ${groupId} (${group.workerIds.length} workers)`);
+          }
+          
           const groupSchedule = {
             dateStart: group.dateStart ? parseDate(group.dateStart) : null,
             dateEnd: group.dateEnd ? parseDate(group.dateEnd) : null,
             timeStart: group.timeStart || null,
             timeEnd: group.timeEnd || null,
-            id_group: groupId,
+            ...(groupId && { id_group: groupId }), // Solo incluir si hay groupId
             id_task: group.id_task || null,
             id_tariff: group.id_tariff || null,
             id_subtask: group.id_subtask || null,
+            observation: group.observation || null,
           };
 
           // Crear una promesa de creación para cada trabajador en el grupo

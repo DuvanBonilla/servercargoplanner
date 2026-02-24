@@ -108,6 +108,7 @@ export class UpdateWorkerSheduleService {
           id_task,
           id_subtask, 
           id_tariff,
+          observation,
         } = group;
 
         // console.log(`[UpdateWorkerSheduleService] ===== PROCESANDO GRUPO ${id_group} =====`);
@@ -141,10 +142,53 @@ export class UpdateWorkerSheduleService {
           continue;
         }
 
-        // ✅ CAMBIAR la validación de grupo no encontrado:
+        // ✅ SI NO HAY WORKERS EN EL GRUPO PERO SE PROPORCIONARON NUEVOS, CREARLOS
+        if (existingGroupRecords.length === 0 && workerIds && workerIds.length > 0) {
+          console.log(`[UpdateWorkerSheduleService] ✨ Grupo ${id_group} vacío, agregando ${workerIds.length} worker(s) nuevo(s)`);
+          
+          // Validar que los trabajadores existen
+          const validation = await this.validationService.validateAllIds({
+            workerIds: workerIds,
+          });
+          if (validation && 'status' in validation && validation.status === 404) {
+            return validation;
+          }
+
+          // Crear registros para los nuevos trabajadores con los datos del grupo
+          const newWorkerRecords = workerIds.map((workerId) => ({
+            id_operation,
+            id_worker: workerId,
+            id_group: id_group,
+            dateStart: dateStart ? new Date(dateStart) : null,
+            dateEnd: dateEnd ? new Date(dateEnd) : null,
+            timeStart: timeStart || null,
+            timeEnd: timeEnd || null,
+            id_task: id_task || null,
+            id_tariff: id_tariff || null,
+            id_subtask: id_subtask || null,
+            observation: observation || null,
+          }));
+
+          await this.prisma.operation_Worker.createMany({
+            data: newWorkerRecords,
+          });
+
+          // Actualizar estado de trabajadores a ASSIGNED
+          await this.prisma.worker.updateMany({
+            where: { id: { in: workerIds } },
+            data: { status: 'ASSIGNED' },
+          });
+
+          groupsUpdated++;
+          totalWorkersUpdated += workerIds.length;
+          console.log(`[UpdateWorkerSheduleService] ✅ ${workerIds.length} worker(s) agregado(s) al grupo vacío ${id_group}`);
+          continue; // Continuar con el siguiente grupo
+        }
+
+        // Si el grupo está vacío y NO se proporcionaron nuevos workers, saltar
         if (existingGroupRecords.length === 0) {
-          // console.log(`[UpdateWorkerSheduleService] ⚠️ Grupo ${id_group} no encontrado, saltando...`);
-          continue; // ✅ CAMBIAR return por continue
+          console.log(`[UpdateWorkerSheduleService] ⚠️ Grupo ${id_group} vacío sin workers para agregar, saltando...`);
+          continue;
         }
 
         // NUEVO: Agregar trabajadores si se proporcionaron workerIds
@@ -243,6 +287,10 @@ export class UpdateWorkerSheduleService {
           // console.log(`[UpdateWorkerSheduleService] Asignando id_tariff: ${id_tariff}`);
         }
 
+        if (observation !== undefined) {
+          updateData.observation = observation || null;
+        }
+
         // console.log(`[UpdateWorkerSheduleService] ===== updateData FINAL =====`);
         // console.log(JSON.stringify(updateData, null, 2));
 
@@ -269,6 +317,7 @@ export class UpdateWorkerSheduleService {
             id_subtask: true,
             id_tariff: true,
             timeStart: true,
+            observation: true,
           },
         });
 
