@@ -1817,7 +1817,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         );
         // console.log('[OperationService] Resultado actualización:', updateResult);
       } catch (error) {
-        console.error('[OperationService] Error actualizando trabajadores:', error);
+        console.error('[OperationService] Error actualizando trabajadores en la operación:', error);
         throw error;
       }
     }
