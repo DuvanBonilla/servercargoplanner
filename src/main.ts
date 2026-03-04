@@ -36,7 +36,7 @@ async function bootstrap() {
     //     'https://seal-app-55opl.ondigitalocean.app',
     //     'https://cargoban.com.co',
     //     'https://www.cargoban.com.co',
-    //     // 'http://localhost:3001'
+    //     'http://localhost:3001'
     //   ];
     //   // Permitir cualquier puerto en localhost, 127.0.0.1 y redes privadas
     //   const localhostRegex = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;

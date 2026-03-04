@@ -236,11 +236,11 @@ async update(
     );
   }
 
-  if (isSupervisor && 'id_subsite' in validateId && validateId.id_subsite !== subsiteId) {
-    throw new ForbiddenException(
-      `You can only update workers in your subsite (${subsiteId})`,
-    );
-  }
+  // if (isSupervisor && 'id_subsite' in validateId && validateId.id_subsite !== subsiteId) {
+  //   throw new ForbiddenException(
+  //     `You can only update workers in your subsite (${subsiteId})`,
+  //   );
+  // }
 
   const response = await this.workerService.update(
     id,

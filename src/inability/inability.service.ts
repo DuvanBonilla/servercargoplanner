@@ -106,6 +106,42 @@ export class InabilityService {
     }
   }
 
+  async findByDni(dni: string, id_site?: number) {
+    try {
+      const response = await this.prisma.inability.findMany({
+        where: {
+          worker: {
+            dni: dni,
+            ...(id_site && { id_site })
+          }
+        },
+        include: {
+          worker: {
+            select: {
+              name: true,
+              dni: true,
+            },
+          },
+          user: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: {
+          dateDisableStart: 'desc',
+        },
+      });
+
+      if (!response || response.length === 0) {
+        return { status: 404, message: `No inabilities found for DNI ${dni}` };
+      }
+      return response;
+    } catch (error) {
+      throw new Error(`Error finding inabilities by DNI ${dni}: ${error}`);
+    }
+  }
+
   async findByFilters(filters: FilterInabilityDto) {
     try {
       const validation = await this.validate.validateAllIds({
@@ -122,6 +158,12 @@ export class InabilityService {
         }
         if (filters.id_site) {
           where.worker = { id_site: filters.id_site };
+        }
+        if (filters.dni) {
+          where.worker = {
+            ...where.worker,
+            dni: filters.dni
+          };
         }
         if (filters.type) {
           where.type = filters.type;

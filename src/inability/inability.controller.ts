@@ -20,7 +20,7 @@ import { UpdateInabilityDto } from './dto/update-inability.dto';
 import { DateTransformPipe } from 'src/pipes/date-transform/date-transform.pipe';
 import { ParseIntPipe } from 'src/pipes/parse-int/parse-int.pipe';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { FilterInabilityDto } from './dto/filter-inability';
 import { Response } from 'express';
 import { ExcelExportService } from 'src/common/validation/services/excel-export.service';
@@ -72,17 +72,24 @@ export class InabilityController {
     return response;
   }
 
-  @Get(':id')
-  async findOne(
-    @Param('id', ParseIntPipe) id: number,
+  @Get('search/dni/:dni')
+  @ApiParam({
+    name: 'dni',
+    required: true,
+    description: 'DNI del trabajador para buscar sus incapacidades',
+    example: '12345678'
+  })
+  async findByDni(
+    @Param('dni') dni: string,
     @CurrentUser('siteId') siteId: number,
   ) {
-    const response = await this.inabilityService.findOne(id, siteId);
+    const response = await this.inabilityService.findByDni(dni, siteId);
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
     }
     return response;
   }
+  
   @Get('search/filters')
   @ApiQuery({
     name: 'format',
@@ -125,6 +132,18 @@ export class InabilityController {
         'Reporte de Incapacidades',
         'base64',
       );
+    }
+    return response;
+  }
+
+  @Get(':id')
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('siteId') siteId: number,
+  ) {
+    const response = await this.inabilityService.findOne(id, siteId);
+    if (response['status'] === 404) {
+      throw new NotFoundException(response['message']);
     }
     return response;
   }

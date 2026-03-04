@@ -40,6 +40,33 @@ export class OperationsCronService {
     this.isEnabled = enabled;
     this.logger.log(`🎛️ Cron job de operaciones ${enabled ? 'HABILITADO' : 'DESHABILITADO'}`);
   }
+
+  // /**
+  //  * 🔔 Despierta el sistema del modo sueño profundo y ejecuta verificación inmediata
+  //  * Útil cuando se detecta una nueva operación desde la app
+  //  */
+  // async wakeUpAndProcess(reason: string = 'Despertar manual desde API') {
+  //   this.logger.log(`🔔 DESPERTAR FORZADO: ${reason}`);
+  //   this.updateOperation.wakeUpFromDeepSleep(reason);
+    
+  //   // Ejecutar verificación inmediata
+  //   try {
+  //     await this.handleUpdateInProgressOperations();
+  //     this.logger.log(`✅ Verificación inmediata completada después de despertar`);
+  //   } catch (error) {
+  //     this.logger.error('Error en verificación inmediata después de despertar:', error);
+  //   }
+  // }
+
+  // /**
+  //  * 📊 Obtiene el estado actual del sistema de cron jobs
+  //  */
+  // getSystemStatus() {
+  //   return {
+  //     isEnabled: this.isEnabled,
+  //     updateOperationStatus: this.updateOperation.getSystemStatus()
+  //   };
+  // }
   /**
    * Actualiza las operaciones en progreso
    * Inicializa operaciones PENDING a INPROGRESS cuando llega su fecha y hora programada

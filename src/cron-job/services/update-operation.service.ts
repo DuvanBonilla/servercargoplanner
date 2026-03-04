@@ -48,6 +48,71 @@ export class UpdateOperationService {
     };
   }
 
+  // /**
+  //  * 🚨 Fuerza la activación de operaciones atascadas (ignora período de gracia)
+  //  * Útil para operaciones que quedaron atoradas en PENDING por bugs de tiempo
+  //  */
+  // async forceActivateStuckOperations() {
+  //   const now = getColombianDateTime();
+  //   this.logger.log(`🚨 FORZANDO activación de operaciones atascadas...`);
+    
+  //   // Buscar operaciones PENDING que deberían estar activas
+  //   const stuckOperations = await this.prisma.operation.findMany({
+  //     where: {
+  //       status: 'PENDING',
+  //       dateStart: {
+  //         lte: now, // Operaciones de hoy o anteriores
+  //       },
+  //     },
+  //     select: {
+  //       id: true,
+  //       dateStart: true,
+  //       timeStrat: true,
+  //       createAt: true,
+  //     },
+  //   });
+
+  //   let forceUpdatedCount = 0;
+    
+  //   for (const operation of stuckOperations) {
+  //     const [hours, minutes] = operation.timeStrat.split(':').map(Number);
+  //     const startDateTime = new Date(operation.dateStart);
+  //     startDateTime.setHours(hours, minutes, 0, 0);
+
+  //     const minutesDiff = differenceInMinutes(now, startDateTime);
+  //     const minutesSinceCreation = differenceInMinutes(now, operation.createAt);
+      
+  //     // Solo activar si la hora programada ya pasó
+  //     if (minutesDiff >= 0) {
+  //       this.logger.log(`🚨 FORZANDO operación ${operation.id} - creada hace ${minutesSinceCreation} minutos, debería haber iniciado hace ${minutesDiff} minutos`);
+        
+  //       await this.prisma.$transaction(async (tx) => {
+  //         await tx.operation.update({
+  //           where: { id: operation.id },
+  //           data: { status: 'INPROGRESS' },
+  //         });
+
+  //         await tx.operation_Worker.updateMany({
+  //           where: {
+  //             id_operation: operation.id,
+  //             dateEnd: null,
+  //             timeEnd: null,
+  //           },
+  //           data: {
+  //             dateStart: operation.dateStart,
+  //             timeStart: operation.timeStrat,
+  //           },
+  //         });
+  //       });
+        
+  //       forceUpdatedCount++;
+  //     }
+  //   }
+
+  //   this.logger.log(`🚨 FORZADO completado: ${forceUpdatedCount} operaciones activadas`);
+  //   return { forceUpdatedCount };
+  // }
+
   /**
    * Actualiza las operaciones de estado PENDING a INPROGRESS cuando hayan pasado las condiciones necesarias.
    * 
@@ -220,13 +285,19 @@ for (const operation of pendingOperations) {
   const minutesDiff = differenceInMinutes(now, startDateTime);
   
   // 🛡️ PERÍODO DE GRACIA: Verificar si la operación fue creada hace menos de 3 minutos
+  // ✅ CORREGIDO: Parámetros en orden correcto (fecha_reciente - fecha_antigua)
   const minutesSinceCreation = differenceInMinutes(now, operation.createAt);
-  const isInGracePeriod = minutesSinceCreation < 3;
+  const isInGracePeriod = minutesSinceCreation >= 0 && minutesSinceCreation < 3;
   
   if (isInGracePeriod) {
     this.logger.debug(`⏳ Operación ${operation.id} en período de gracia (creada hace ${minutesSinceCreation} minutos), saltando activación automática`);
     gracePeriodCount++; // 📊 Incrementar contador
     continue; // Saltar esta operación y continuar con la siguiente
+  }
+  
+  // ⚠️ DEBUG: Log operaciones con tiempo negativo para detectar problemas de zona horaria
+  if (minutesSinceCreation < 0) {
+    this.logger.warn(`🚨 Operación ${operation.id} con tiempo de creación incorrecto: ${minutesSinceCreation} minutos. createAt: ${operation.createAt.toISOString()}, now: ${now.toISOString()}`);
   }
   
   // ✅ NUEVA LÓGICA: Determinar si debe cambiar a INPROGRESS

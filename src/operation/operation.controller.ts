@@ -38,6 +38,7 @@ import { Roles } from 'src/auth/decorators/roles.decorator';
 import { WorkerDistributionQueryDto } from './dto/worker-distribution-query.dto';
 import { getColombianDateTime } from 'src/common/utils/dateColombia';
 import { WorkerHoursReportQueryDto } from './dto/worker-hours-report-query.dto';
+// import { OperationsCronService } from 'src/cron-job/cron-job.service';
 @Controller('operation')
 @UseInterceptors(SiteInterceptor)
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -48,6 +49,7 @@ export class OperationController {
     private readonly operationService: OperationService,
     private readonly excelExportService: ExcelExportService,
     private readonly workerAnalyticsService: WorkerAnalyticsService,
+    // private readonly cronService: OperationsCronService,
   ) {}
 
   // @Post()
@@ -179,6 +181,64 @@ console.log('Body crudo recibido:', arguments[0]);
       throw new BadRequestException(error.message);
     }
   }
+
+  // /**
+  //  * 🚀 Despierta y procesa inmediatamente - SOLUCIÓN PARA FLUTTER
+  //  */
+  // @Post('wake-up-immediate')
+  // @ApiOperation({
+  //   summary: 'Despertar y procesar inmediatamente',
+  //   description: 'Despierta el sistema del modo sueño profundo y ejecuta verificación inmediata. Ideal para apps móviles que necesitan respuesta rápida.'
+  // })
+  // async wakeUpAndProcessImmediate() {
+  //   try {
+  //     await this.cronService.wakeUpAndProcess('Despertar inmediato solicitado desde Flutter/App');
+      
+  //     const systemStatus = this.cronService.getSystemStatus();
+      
+  //     return {
+  //       message: '🚀 Sistema despertado y operaciones verificadas inmediatamente',
+  //       timestamp: new Date().toISOString(),
+  //       systemStatus: {
+  //         cronEnabled: systemStatus.isEnabled,
+  //         operationStatus: systemStatus.updateOperationStatus
+  //       },
+  //       recommendation: 'Las operaciones pendientes han sido verificadas al instante',
+  //       status: 200
+  //     };
+  //   } catch (error) {
+  //     throw new BadRequestException(`Error al despertar y procesar: ${error.message}`);
+  //   }
+  // }
+
+  // /**
+  //  * 🚨 Fuerza la activación de operaciones atascadas
+  //  */
+  // @Post('force-activate-stuck')
+  // @ApiOperation({
+  //   summary: 'Forzar activación de operaciones atascadas',
+  //   description: 'Fuerza la activación de operaciones que quedaron atoradas en PENDING por problemas de tiempo o período de gracia. Ignora completamente el período de gracia de 3 minutos.'
+  // })
+  // async forceActivateStuckOperations() {
+  //   try {
+  //     const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
+  //     const updateService = this.operationService['moduleRef'].get(UpdateOperationService, { strict: false });
+      
+  //     const result = await updateService.forceActivateStuckOperations();
+      
+  //     return {
+  //       message: '🚨 Operaciones atascadas procesadas forzadamente',
+  //       timestamp: new Date().toISOString(),
+  //       result: {
+  //         forceActivatedCount: result.forceUpdatedCount
+  //       },
+  //       warning: 'Este endpoint ignora el período de gracia y debe usarse solo para resolver problemas',
+  //       status: 200
+  //     };
+  //   } catch (error) {
+  //     throw new BadRequestException(`Error al forzar activación: ${error.message}`);
+  //   }
+  // }
 
   /**
    * Controla la activación del sistema automático de operaciones

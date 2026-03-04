@@ -360,6 +360,15 @@ export class OperationService {
       const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
       const updateOperationService = this.moduleRef.get(UpdateOperationService, { strict: false });
       updateOperationService.wakeUpFromDeepSleep(`Nueva operación creada (ID: ${newOperation.id})`);
+      
+      // // 🚀 PROCESAMIENTO INMEDIATO: También despertar el cron service para verificación inmediata
+      // try {
+      //   const { OperationsCronService } = await import('../cron-job/cron-job.service');
+      //   const cronService = this.moduleRef.get(OperationsCronService, { strict: false });
+      //   await cronService.wakeUpAndProcess(`Nueva operación creada desde Flutter/App (ID: ${newOperation.id})`);
+      // } catch (cronError) {
+      //   console.warn('[OperationService] ⚠️ Wake up exitoso, pero procesamiento inmediato falló:', cronError.message);
+      // }
     } catch (error) {
       // No lanzar error si falla el wake up, solo loggear
       console.warn('[OperationService] ⚠️ No se pudo despertar el sistema automático:', error.message);

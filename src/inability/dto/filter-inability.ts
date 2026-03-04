@@ -46,6 +46,11 @@ export class FilterInabilityDto {
   })
   cause?: CauseDisability;
 
+  @ApiProperty({ required: false, example: '12345678' })
+  @IsOptional()
+  @IsString()
+  dni?: string;
+
   @IsNumber()
   @IsOptional()
   id_site?: number;
