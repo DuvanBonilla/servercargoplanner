@@ -1,6 +1,7 @@
 import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import {
+  IsDate,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -10,11 +11,13 @@ import {
 
 export class CreatePermissionDto {
   @ApiProperty({ example: '2021-09-01' })
-  @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'dateDisableStart debe tener formato YYYY-MM-DD',
+  @Transform(({ value }) => {
+    if (value instanceof Date) return value;
+    if (typeof value === 'string') return new Date(value);
+    return value;
   })
-  dateDisableStart: string;
+  @IsDate()
+  dateDisableStart: Date;
 
   @ApiProperty({ example: '08:00' })
   @IsString()
@@ -24,11 +27,13 @@ export class CreatePermissionDto {
   timeStart: string;
 
   @ApiProperty({ example: '2021-10-01' })
-  @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'dateDisableEnd debe tener formato YYYY-MM-DD',
+  @Transform(({ value }) => {
+    if (value instanceof Date) return value;
+    if (typeof value === 'string') return new Date(value);
+    return value;
   })
-  dateDisableEnd: string;
+  @IsDate()
+  dateDisableEnd: Date;
 
   @ApiProperty({ example: '17:00' })
   @IsString()

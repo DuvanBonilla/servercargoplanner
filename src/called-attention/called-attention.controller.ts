@@ -23,7 +23,7 @@ import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { ParseIntPipe } from 'src/pipes/parse-int/parse-int.pipe';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiParam } from '@nestjs/swagger';
-import { ExcelExportService } from 'src/common/validation/services/excel-export.service';
+// import { ExcelExportService } from 'src/common/validation/services/excel-export.service';
 import { FilterCalledAttentionDto } from './dto/filter-called-attention';
 import { PaginatedCalledAttentionQueryDto } from './dto/paginate-called-attention.dto';
 import { BooleanTransformPipe } from 'src/pipes/boolean-transform/boolean-transform.pipe';
@@ -37,7 +37,7 @@ import { Site } from 'src/site/entities/site.entity';
 export class CalledAttentionController {
   constructor(
     private readonly calledAttentionService: CalledAttentionService,
-    private readonly excelExportService: ExcelExportService,
+    // private readonly excelExportService: ExcelExportService,
   ) {}
 
   @Post()
@@ -166,24 +166,24 @@ export class CalledAttentionController {
 
     if (format === 'excel') {
       // Para Excel necesitamos control total de la respuesta (passthrough: false)
-      return this.excelExportService.exportToExcel(
-        res,
-        response,
-        'llamados_atencion',
-        'Llamados de Atención',
-        'binary',
-      );
+      // return this.excelExportService.exportToExcel(
+      //   res,
+      //   response,
+      //   'llamados_atencion',
+      //   'Llamados de Atención',
+      //   'binary',
+      // );
     }
 
     if (format === 'base64') {
       // Generar Excel en Base64
-      return this.excelExportService.exportToExcel(
-        null,
-        response,
-        'llamados_atencion',
-        'Llamados de Atención',
-        'base64',
-      );
+      // return this.excelExportService.exportToExcel(
+      //   null,
+      //   response,
+      //   'llamados_atencion',
+      //   'Llamados de Atención',
+      //   'base64',
+      // );
     }
 
     if (response['status'] === 404) {

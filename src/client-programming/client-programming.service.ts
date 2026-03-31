@@ -78,6 +78,13 @@ export class ClientProgrammingService {
           message: 'Not Found Client Programming',
         };
       }
+      // Validar que pertenezca al site del usuario si se proporciona
+      if (id_site !== null && id_site !== undefined && response.id_site !== id_site) {
+        return {
+          status: 403,
+          message: 'No tienes permiso para acceder a esta programación',
+        };
+      }
       return response;
     } catch (error) {
       throw new Error('Failed to fetch client programming');
@@ -166,7 +173,8 @@ export class ClientProgrammingService {
       if (validateId && 'status' in validateId && validateId.status === 404) {
         return validateId;
       }
-      if (id_site !== undefined) {
+      // Validar que el usuario tenga permiso en ese site
+      if (id_site !== null && id_site !== undefined) {
         const validateSite = validateId['id_site'];
         if (validateSite !== id_site) {
           return {

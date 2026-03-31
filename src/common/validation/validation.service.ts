@@ -7,6 +7,17 @@ export class ValidationService {
   constructor(private prisma: PrismaService) {}
 
   /**
+   * Helper para obtener la razón por la cual un ID fue filtrado como inválido
+   */
+  private getInvalidReason(id: any): string {
+    if (id === undefined) return 'es undefined';
+    if (id === null) return 'es null';
+    if (isNaN(Number(id))) return `no es un número (${typeof id})`;
+    if (Number(id) <= 0) return `es menor o igual a 0 (valor: ${id})`;
+    return 'razón desconocida';
+  }
+
+  /**
    * Valida que todos los IDs proporcionados existan en la base de datos
    * @param params - Objeto con los IDs y valores a validar
    * @returns Objeto con resultado de la validación (success: true) o mensaje de error
@@ -173,20 +184,28 @@ export class ValidationService {
 
       // 8. Validar que todos los trabajadores existan si se proporcionan IDs
       if (workerIds && workerIds.length > 0) {
-        // console.log('[ValidationService] IDs recibidos para validar:', workerIds);
+        console.log('[ValidationService] ===== WORKER VALIDATION START =====');
+        console.log('[ValidationService] IDs recibidos (raw):', {
+          array: workerIds,
+          values: workerIds.map((id, i) => ({ index: i, value: id, type: typeof id, isNumber: Number.isInteger(id) }))
+        });
         
         // FILTRAR valores undefined, null o inválidos antes de la consulta
         const validWorkerIds = workerIds
           .filter(id => {
             const isValid = id !== undefined && id !== null && !isNaN(Number(id)) && Number(id) > 0;
             if (!isValid) {
-              console.warn('[ValidationService] ID inválido filtrado:', id);
+              console.warn('[ValidationService] ❌ ID inválido filtrado:', { id, type: typeof id, reason: this.getInvalidReason(id) });
             }
             return isValid;
           })
           .map(id => Number(id)); // Convertir a número
         
-        // console.log('[ValidationService] IDs válidos para validar:', validWorkerIds);
+        console.log('[ValidationService] IDs válidos después del filtro:', {
+          original_count: workerIds.length,
+          valid_count: validWorkerIds.length,
+          validIds: validWorkerIds,
+        });
         
         if (validWorkerIds.length > 0) {
           const existingWorkers = await this.prisma.worker.findMany({
@@ -198,24 +217,38 @@ export class ValidationService {
             select: {
               id: true,
               id_site: true,
-              id_subsite: true
+              id_subsite: true,
+              name: true,
             }
+          });
+
+          console.log('[ValidationService] Workers encontrados en BD:', {
+            total: existingWorkers.length,
+            workers: existingWorkers,
           });
 
           const existingWorkerIds = existingWorkers.map(w => w.id);
           const missingWorkerIds = validWorkerIds.filter(id => !existingWorkerIds.includes(id));
 
           if (missingWorkerIds.length > 0) {
+            console.error('[ValidationService] ❌ Workers NO ENCONTRADOS:', missingWorkerIds);
             throw new NotFoundException(`Trabajadores no encontrados con IDs: ${missingWorkerIds.join(', ')}`);
           }
 
-          // console.log('[ValidationService] Todos los trabajadores válidos existen');
+          console.log('[ValidationService] ✅ Todos los trabajadores válidos existen');
+          response.existingWorkers = existingWorkers;
         } else {
           if (workerIds.length > 0) {
+            console.error('[ValidationService] ❌ ERROR: No hay IDs válidos después del filtro');
+            console.error('[ValidationService] Razones por las que fueron filtrados:');
+            workerIds.forEach((id, idx) => {
+              console.error(`  [${idx}]: ${id} (tipo: ${typeof id}, ${this.getInvalidReason(id)})`);
+            });
             throw new BadRequestException('No se proporcionaron IDs de trabajadores válidos');
           }
-          // console.log('[ValidationService] No hay IDs válidos de trabajadores para validar');
+          console.log('[ValidationService] No hay IDs de trabajadores para validar');
         }
+        console.log('[ValidationService] ===== WORKER VALIDATION END =====');
       }
 
       // 9. Validar que todos los encargados existan si se proporcionan IDs

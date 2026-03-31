@@ -28,8 +28,8 @@ export class OperationsCronService {
     private updateOperation: UpdateOperationService,
     private updateWorker: UpdateWorkerService,
     private updateOperationWorker: UpdateOperationWorkerService,
-    private updatePermission: UpdatePermissionService,
-    private updateInability:UpdateInabilityService, 
+    // private updatePermission: UpdatePermissionService,
+    // private updateInability:UpdateInabilityService, 
   ) {}
 
   /**
@@ -70,9 +70,9 @@ export class OperationsCronService {
   /**
    * Actualiza las operaciones en progreso
    * Inicializa operaciones PENDING a INPROGRESS cuando llega su fecha y hora programada
-   * Se ejecuta cada 5 minutos, con optimizaciones inteligentes para reducir carga
+   * Se ejecuta cada 15 minutos para reducir carga en servidor DigitalOcean
    */
-  @Cron('*/5 * * * *') // Cada 5 minutos (optimizado para reducir carga)
+  @Cron('*/15 * * * *') // Cada 15 minutos (reducida de 5 para evitar desconexión)
   async handleUpdateInProgressOperations() {
     // 🎛️ Verificar si el cron job está habilitado
     if (!this.isEnabled) {
@@ -100,14 +100,14 @@ export class OperationsCronService {
   /**
    * Actualiza los trabajadores con permisos que inician hoy
    */
-  @Cron(CronExpression.EVERY_10_MINUTES)
-  async handleUpdateWorkersWithStartingPermissions() {
-    try {
-      await this.updatePermission.updateWorkersWithStartingPermissions();
-    } catch (error) {
-      this.logger.error('Error updating workers with starting permissions:', error);
-    }
-  }
+  // @Cron(CronExpression.EVERY_10_MINUTES)
+  // async handleUpdateWorkersWithStartingPermissions() {
+  //   try {
+  //     await this.updatePermission.updateWorkersWithStartingPermissions();
+  //   } catch (error) {
+  //     this.logger.error('Error updating workers with starting permissions:', error);
+  //   }
+  // }
 
   /**
    * 🔄 HÍBRIDO: Verificación reactiva + CronJob de respaldo cada hora
@@ -120,27 +120,27 @@ export class OperationsCronService {
    * - Nadie consulta trabajadores por períodos largos
    * - Permisos expiran sin que se dispare verificación reactiva
    */
-  @Cron(CronExpression.EVERY_HOUR)
-  async handleUpdateWorkersWithExpiredPermissions() {
-    try {
-      await this.updatePermission.updateWorkersWithExpiredPermissions();
-    } catch (error) {
-      this.logger.error('Error updating workers with expired permissions:', error);
-    }
-  }
+  // @Cron(CronExpression.EVERY_HOUR)
+  // async handleUpdateWorkersWithExpiredPermissions() {
+  //   try {
+  //     await this.updatePermission.updateWorkersWithExpiredPermissions();
+  //   } catch (error) {
+  //     this.logger.error('Error updating workers with expired permissions:', error);
+  //   }
+  // }
 
 /**
    * Actualiza los trabajadores con incapacidades expiradas
    */
 
-@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-async handleUpdateWorkersWithExpiredInabilities() {
-  try {
-    await this.updateInability.updateWorkersWithExpiredInabilities();
-  } catch (error) {
-    this.logger.error('Error updating workers with expired inabilities:', error);
-  }
-}
+// @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+// async handleUpdateWorkersWithExpiredInabilities() {
+//   try {
+//     await this.updateInability.updateWorkersWithExpiredInabilities();
+//   } catch (error) {
+//     this.logger.error('Error updating workers with expired inabilities:', error);
+//   }
+// }
 
 
   /**
@@ -181,7 +181,7 @@ async handleUpdateWorkersWithExpiredInabilities() {
   /**
    * Actualizar trabajadores según su programación
    */
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  @Cron(CronExpression.EVERY_10_MINUTES) // Aumentado de 5 para evitar sobrecarga
   async handleUpdateWorkersScheduleState() {
     try {
       await this.updateOperationWorker.updateWorkersScheduleState();

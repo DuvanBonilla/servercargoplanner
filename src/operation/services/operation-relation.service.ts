@@ -312,8 +312,8 @@ console.log('Trabajadores actuales en BD:', currentWorkers);
     const toRemove = currentWorkerIds.filter(id => !newWorkerIds.includes(id));
     const toAdd = newWorkerIds.filter(id => !currentWorkerIds.includes(id));
 
-    console.log('A eliminar:', toRemove);
-    console.log('A agregar:', toAdd);
+    // console.log('A eliminar:', toRemove);
+    // console.log('A agregar:', toAdd);
 
     if (toRemove.length > 0) {
       results.disconnected = await this.operationWorkerService.removeWorkersFromOperation({

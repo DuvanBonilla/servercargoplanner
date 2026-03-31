@@ -5,9 +5,12 @@ import { PrismaClient } from '@prisma/client';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     super({
-      log: ['error'],
+      log: ['error', 'warn'],
       datasources: {
-        db: { url: process.env.DATABASE_URL },
+        db: { 
+          url: process.env.DATABASE_URL + (process.env.DATABASE_URL?.includes('?') ? '&' : '?') + 
+               'connection_limit=10&statement_cache_size=250&schema=public'
+        },
       },
       // 🚀 OPTIMIZACIÓN: Configuración del connection pool para mejor rendimiento
       transactionOptions: {

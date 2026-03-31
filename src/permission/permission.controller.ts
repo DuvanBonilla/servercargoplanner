@@ -19,7 +19,7 @@ import { UpdatePermissionDto } from './dto/update-permission.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { SiteInterceptor } from 'src/common/interceptors/site.interceptor';
 import { ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { ExcelExportService } from 'src/common/validation/services/excel-export.service';
+// import { ExcelExportService } from 'src/common/validation/services/excel-export.service';
 import { DateTransformPipe } from 'src/pipes/date-transform/date-transform.pipe';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { FilterPermissionDto } from './dto/filter-permission.dto';
@@ -34,21 +34,22 @@ import { UpdatePermissionService } from './services/update-permission.service';
 export class PermissionController {
 
   constructor(private readonly permissionService: PermissionService,
-    private readonly excelExportService: ExcelExportService,
+    // private readonly excelExportService: ExcelExportService,
     private readonly updatePermissionService: UpdatePermissionService,
   ) {}
 
   @Post()
-  @UsePipes(DateTransformPipe)
   async create(
     @Body() createPermissionDto: CreatePermissionDto,
     @CurrentUser('userId') userId: number,
     @CurrentUser('siteId') siteId: number,
+    @CurrentUser('role') role: string,
   ){
     createPermissionDto.id_user  = userId;
     const response = await this.permissionService.create(
       createPermissionDto, 
-      siteId
+      siteId,
+      role
     );
   
   if (response['status'] === 404) {
@@ -62,8 +63,9 @@ export class PermissionController {
   @Get()
   async findAll(
     @CurrentUser('siteId') siteId: number,
+    @CurrentUser('role') role: string,
   ) {
-    const response = await this.permissionService.findAll(siteId);
+    const response = await this.permissionService.findAll(siteId, role);
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
     } else if (response['status'] === 409) {
@@ -76,8 +78,9 @@ export class PermissionController {
   async findOne(
      @Param('id', ParseIntPipe) id: number,
      @CurrentUser('siteId') siteId: number,
+     @CurrentUser('role') role: string,
   ){
-    const response = await this.permissionService.findOne(id, siteId);
+    const response = await this.permissionService.findOne(id, siteId, role);
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
     } else if (response['status'] === 409) {
@@ -110,25 +113,25 @@ export class PermissionController {
     if (!Array.isArray(response)) {
       return response;
     }
-    if (format === 'excel') {
-      return this.excelExportService.exportToExcel(
-        res,
-        response,
-        'Permisos',
-        'Reporte de Permisos',
-        'binary',
-      );
-    }
+    // if (format === 'excel') {
+    //   return this.excelExportService.exportToExcel(
+    //     res,
+    //     response,
+    //     'Permisos',
+    //     'Reporte de Permisos',
+    //     'binary',
+    //   );
+    // }
 
-    if (format === 'base64') {
-      return this.excelExportService.exportToExcel(
-        null,
-        response,
-        'Permisos',
-        'Reporte de Permisos',
-        'base64',
-      );
-    }
+    // if (format === 'base64') {
+    //   return this.excelExportService.exportToExcel(
+    //     null,
+    //     response,
+    //     'Permisos',
+    //     'Reporte de Permisos',
+    //     'base64',
+    //   );
+    // }
     return response;
   }
   
@@ -137,11 +140,13 @@ export class PermissionController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() UpdatePermissionDto: UpdatePermissionDto,
-    @CurrentUser('siteId') siteId: number
+    @CurrentUser('siteId') siteId: number,
+    @CurrentUser('role') role: string,
   ) {
     const response = await this.permissionService.update(
       id, UpdatePermissionDto, 
-      siteId);
+      siteId,
+      role);
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
     } else if (response['status'] === 409) {
@@ -154,8 +159,9 @@ export class PermissionController {
   async remove(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('siteId') siteId: number,
+    @CurrentUser('role') role: string,
   ) {
-    const response = await this.permissionService.remove(id, siteId);
+    const response = await this.permissionService.remove(id, siteId, role);
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
     } else if (response['status'] === 409) {

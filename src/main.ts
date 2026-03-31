@@ -7,10 +7,22 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import * as cookieParser from 'cookie-parser';
 import { AuthService } from './auth/auth.service';
 import { DocsAuthMiddleware } from './common/middleware/docs-auth.middleware';
+import { PrismaService } from './prisma/prisma.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.set('trust proxy', 'loopback');
+  
+  // ✅ Validar conexión a BD antes de iniciar servidor
+  try {
+    const prisma = app.get(PrismaService);
+    await prisma.$queryRaw`SELECT 1`;
+    console.log('✅ Base de datos conectada correctamente');
+  } catch (error) {
+    console.error('❌ Error conectando a base de datos:', error.message);
+    process.exit(1);
+  }
+  
   app.use(cookieParser());
   
   // ✅ Agregar prefijo global /api a todas las rutas
@@ -109,6 +121,12 @@ const config = new DocumentBuilder()
   app.useStaticAssets(publicPath);
 
   app.enableShutdownHooks();
+
+  // ⏱️ Timeout global de 30 segundos para solicitudes
+  app.use((req, res, next) => {
+    req.setTimeout(30000); // 30 segundos máximo por solicitud
+    next();
+  });
 
   await app.listen(process.env.PORT ?? 3001, '0.0.0.0');
 }

@@ -13,6 +13,8 @@ import { AuthModule } from 'src/auth/auth.module';
 import { OperationWorkerModule } from 'src/operation-worker/operation-worker.module';
 import { TariffModule } from 'src/tariff/tariff.module';
 import { WorkerModule } from 'src/worker/worker.module';
+import { BillModule } from 'src/bill/bill.module';
+import { OperationExportService } from './services/operation-export.service';
 
 @Module({
   imports: [
@@ -22,6 +24,7 @@ import { WorkerModule } from 'src/worker/worker.module';
     OperationWorkerModule,
     TariffModule,
     forwardRef(() => WorkerModule),
+    forwardRef(() => BillModule),
   ],
   controllers: [OperationController],
   providers: [
@@ -32,6 +35,7 @@ import { WorkerModule } from 'src/worker/worker.module';
     OperationTransformerService,
     OperationRelationService,
     WorkerAnalyticsService,
+    OperationExportService,
   ],
   exports: [OperationFinderService]
 })

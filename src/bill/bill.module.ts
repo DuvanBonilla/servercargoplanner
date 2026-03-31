@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { BillService } from './bill.service';
 import { BillController } from './bill.controller';
 
@@ -11,7 +11,7 @@ import { HoursCalculationService } from './services/hours-calculation.service';
 import { BaseCalculationService } from './services/base-calculation.service';
 
 @Module({
-  imports: [AuthModule, OperationModule, ConfigurationModule],
+  imports: [AuthModule, forwardRef(() => OperationModule), ConfigurationModule],
   controllers: [BillController],
   providers: [
     BillService,

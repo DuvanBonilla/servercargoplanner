@@ -47,14 +47,21 @@ export class ClientProgrammingController {
     @CurrentUser('subsiteId') subsiteId: number,
   ) {
     createClientProgrammingDto.id_user = userId;
+    // Usar los valores del usuario si no se proporciona explícitamente
     if (
-      !createClientProgrammingDto.id_site ||
-      !createClientProgrammingDto.id_subsite
+      createClientProgrammingDto.id_site === null ||
+      createClientProgrammingDto.id_site === undefined
     ) {
       createClientProgrammingDto.id_site = siteId;
+    }
+    if (
+      createClientProgrammingDto.id_subsite === null ||
+      createClientProgrammingDto.id_subsite === undefined
+    ) {
       createClientProgrammingDto.id_subsite = subsiteId;
     }
-    if (siteId && createClientProgrammingDto.id_site !== siteId) {
+    // Validar que el usuario tenga permiso en ese site
+    if (siteId !== null && siteId !== undefined && createClientProgrammingDto.id_site !== siteId) {
       throw new ForbiddenException(
         'No tienes permiso para crear una programación en este sitio',
       );
@@ -104,6 +111,8 @@ export class ClientProgrammingController {
     const response = await this.clientProgrammingService.findOne(id, siteId);
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
+    } else if (response['status'] === 403) {
+      throw new ForbiddenException(response['message']);
     }
     return response;
   }
@@ -116,10 +125,17 @@ async update(
   @CurrentUser('siteId') siteId: number,
   @CurrentUser('role') role: string,
 ) {
-  if (role !== 'SUPERADMIN' && siteId && updateClientProgrammingDto.id_site !== siteId) {
-    throw new ForbiddenException(
-      'No tienes permiso para actualizar una programación en este sitio',
-    );
+  // Validar que el usuario tenga permiso en ese site (solo ADMIN/SUPERVISOR)
+  if (role !== 'SUPERADMIN' && siteId !== null && siteId !== undefined) {
+    if (
+      updateClientProgrammingDto.id_site !== null &&
+      updateClientProgrammingDto.id_site !== undefined &&
+      updateClientProgrammingDto.id_site !== siteId
+    ) {
+      throw new ForbiddenException(
+        'No tienes permiso para actualizar una programación en este sitio',
+      );
+    }
   }
   const response = await this.clientProgrammingService.update(
     id,

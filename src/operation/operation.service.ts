@@ -1968,4 +1968,15 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
     
     console.log('[OperationService] ===== FINALIZACIÓN DE GRUPOS COMPLETADA =====');
   }
+
+  //   // Método para obtener operaciones por trabajador (trabajadores asignados a una operación específica)
+async findByWorker(
+  idWorker: number,
+  idSite?: number,
+  page = 1,
+  limit?: number, // <- opcional (sin límite cuando viene undefined)
+  statuses: string[] = [ 'INPROGRESS'],
+) {
+  return this.finderService.findByWorker(idWorker, idSite, page, limit, statuses);
+}
 }

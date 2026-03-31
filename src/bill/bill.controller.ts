@@ -11,7 +11,9 @@ import {
   NotFoundException,
   ConflictException,
   Query,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { BillService } from './bill.service';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
@@ -25,7 +27,9 @@ import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { UpdateBillDto, UpdateBillStatusDto } from './dto/update-bill.dto';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import { FilterBillDto } from './dto/filter-bill.dto';
+import { ExportBillDto } from './dto/export-bill.dto';
 import { ValidationPipe } from '@nestjs/common';
+import { ApiProduces } from '@nestjs/swagger';
 
 @Controller('bill')
 @UseInterceptors(SiteInterceptor)
@@ -104,11 +108,11 @@ export class BillController {
     **Nota:** Todos los parámetros son opcionales. El userId se obtiene automáticamente del token de autenticación.
     `
   })
-  @ApiQuery({ name: 'search', required: false, description: 'Búsqueda por operación, código o subservicio', example: 'proyecto' })
+  @ApiQuery({ name: 'search', required: false, description: 'Búsqueda por operación, código o subservicio', example: ' ' })
   @ApiQuery({ name: 'jobAreaId', required: false, type: Number, description: 'ID del área de trabajo', example: 1 })
   @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'COMPLETED'], description: 'Estado de la factura', example: 'ACTIVE' })
-  @ApiQuery({ name: 'dateStart', required: false, type: String, description: 'Fecha de inicio (YYYY-MM-DD)', example: '2024-01-01' })
-  @ApiQuery({ name: 'dateEnd', required: false, type: String, description: 'Fecha de fin (YYYY-MM-DD)', example: '2024-12-31' })
+  @ApiQuery({ name: 'dateStart', required: false, type: String, description: 'Fecha de inicio (YYYY-MM-DD)', example: '2026-03-08' })
+  @ApiQuery({ name: 'dateEnd', required: false, type: String, description: 'Fecha de fin (YYYY-MM-DD)', example: '2026-03-14' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Elementos por página (máximo: 100)', example: 20 })
   @ApiResponse({
@@ -369,6 +373,107 @@ PATCH /bill/955
     );
     return response;
   }
+@Get('export/excel')
+@ApiOperation({
+  summary: 'Exportar Bills a Excel',
+  description: `
+Exporta las Bills (facturas) filtradas a un archivo Excel.
+
+✅ Procesamiento 100% en backend (STREAM)
+✅ No usa memoria del cliente
+✅ Soporta grandes volúmenes de datos
+
+SIN PAGINACIÓN: descarga todos los registros que coincidan con los filtros
+`
+})
+@ApiQuery({
+  name: 'search',
+  required: false,
+  type: String,
+  description: 'Búsqueda general (operación, cliente, código, subservicio)'
+})
+@ApiQuery({
+  name: 'jobAreaIds',
+  required: false,
+  type: String,
+  isArray: true,
+  description: 'IDs de áreas de trabajo. Ej: jobAreaIds=27&jobAreaIds=28'
+})
+@ApiQuery({
+  name: 'status',
+  required: false,
+  enum: ['ACTIVE', 'COMPLETED'],
+  description: 'Estado de la factura'
+})
+@ApiQuery({
+  name: 'dateStart',
+  required: false,
+  type: String,
+  description: 'Fecha inicio (YYYY-MM-DD)'
+})
+@ApiQuery({
+  name: 'dateEnd',
+  required: false,
+  type: String,
+  description: 'Fecha fin (YYYY-MM-DD)'
+})
+@ApiResponse({
+  status: 200,
+  description: 'Archivo Excel generado correctamente'
+})
+async exportToExcel(
+  @CurrentUser('siteId') siteId: number,
+  @CurrentUser('subsiteId') subsiteId: number,
+  @Query() query: any,
+  @Res() res: Response
+) {
+  try {
+    const normalizedFilters = {
+      search: query.search,
+      status: query.status,
+      dateStart: query.dateStart,
+      dateEnd: query.dateEnd,
+      jobAreaIds: Array.isArray(query.jobAreaIds)
+        ? query.jobAreaIds
+        : query.jobAreaIds
+          ? [query.jobAreaIds]
+          : [],
+      siteId,
+      subsiteId,
+    };
+
+    // console.log('🎯 QUERY CRUDA CONTROLLER:', query);
+    // console.log('🎯 FILTROS NORMALIZADOS CONTROLLER:', normalizedFilters);
+
+    const dateRange =
+      normalizedFilters.dateStart && normalizedFilters.dateEnd
+        ? `_${normalizedFilters.dateStart}_a_${normalizedFilters.dateEnd}`
+        : `_${new Date().toISOString().split('T')[0]}`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="reporte_operacion${dateRange}_${new Date().getTime()}.xlsx"`
+    );
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Pragma', 'no-cache');
+
+    await this.billService.exportBillsToExcelStream(normalizedFilters, res);
+  } catch (error) {
+    console.error('❌ Error exportando Excel:', error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        message: 'Error generando Excel',
+        error: error?.message || error,
+      });
+    }
+  }
+}
+
 
   @Post('recalculate-group-hours')
   @ApiOperation({ 
@@ -454,4 +559,8 @@ POST /bill/recalculate-group-hours
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.billService.remove(id);
   }
+
+
+
+  
 }

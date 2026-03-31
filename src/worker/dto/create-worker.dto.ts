@@ -1,6 +1,6 @@
-import {  IsEnum, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
+import {  IsEnum, IsNumber, IsOptional, IsString, Matches, IsDate } from 'class-validator';
 import { Status } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
 
 /**
@@ -57,28 +57,34 @@ export class CreateWorkerDto {
   id_user?: number;
 
   @ApiProperty({ example: '2021-09-01' })
-  @IsString()
-  @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'dateDisableStart debe tener formato YYYY-MM-DD',
+  @Transform(({ value }) => {
+    if (value instanceof Date) return value;
+    if (typeof value === 'string') return new Date(value);
+    return value;
   })
-  dateDisableStart: string;
+  @IsDate()
+  @IsOptional()
+  dateDisableStart: Date;
 
   @ApiProperty({ example: '2021-10-01' })
-  @IsString()
-  @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'dateDisableEnd debe tener formato YYYY-MM-DD',
+  @Transform(({ value }) => {
+    if (value instanceof Date) return value;
+    if (typeof value === 'string') return new Date(value);
+    return value;
   })
-  dateDisableEnd: string;
+  @IsDate()
+  @IsOptional()
+  dateDisableEnd: Date;
 
   @ApiProperty({ example: '2021-10-01' })
-  @IsString()
-  @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'dateRetierment debe tener formato YYYY-MM-DD',
+  @Transform(({ value }) => {
+    if (value instanceof Date) return value;
+    if (typeof value === 'string') return new Date(value);
+    return value;
   })
-  dateRetierment: string;
+  @IsDate()
+  @IsOptional()
+  dateRetierment: Date;
 
   @ApiHideProperty()
   @IsNumber()

@@ -7,21 +7,16 @@ import { WorkerGroupAnalysisService } from './services/worker-group-analysis.ser
 import { PayrollCalculationService } from './services/payroll-calculation.service';
 import { HoursCalculationService } from './services/hours-calculation.service';
 import { ConfigurationService } from 'src/configuration/configuration.service';
-import {
-  getWeekNumber,
-  hasSundayInRange,
-  getDayName,
-  toLocalDate,
-} from 'src/common/utils/dateType';
+import {getWeekNumber,hasSundayInRange,getDayName,toLocalDate,} from 'src/common/utils/dateType';
 import { BaseCalculationService } from './services/base-calculation.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { group } from 'console';
 import { BillStatus, Status } from '@prisma/client';
-import {
-  getColombianDateTime,
-  getColombianTimeString,
-} from 'src/common/utils/dateColombia';
+import { getColombianDateTime,  getColombianTimeString,} from 'src/common/utils/dateColombia';
 import { FilterBillDto } from './dto/filter-bill.dto';
+import * as ExcelJS from 'exceljs';
+import { Response } from 'express';
+import { Operation } from 'src/operation/entities/operation.entity';
 
 @Injectable()
 export class BillService {
@@ -2250,12 +2245,21 @@ export class BillService {
       id_operation,
     );
 
+    // ✅ CALCULAR EL week_number BASADO EN LA FECHA DEL GRUPO
+    let newWeekNumber = 0;
+    if (matchingGroupSummary.dateRange?.start) {
+      newWeekNumber = getWeekNumber(new Date(matchingGroupSummary.dateRange.start));
+    } else if (matchingGroupSummary.schedule?.dateStart) {
+      newWeekNumber = getWeekNumber(new Date(matchingGroupSummary.schedule.dateStart));
+    }
+
     await this.prisma.bill.update({
       where: { id },
       data: {
         total_bill: totalAmount,
         total_paysheet: totalPaysheet,
         number_of_workers: numberOfWorkers,
+        week_number: newWeekNumber, // ✅ ACTUALIZAR week_number
         updatedAt: new Date(),
         id_user: userId,
       },
@@ -2896,15 +2900,23 @@ export class BillService {
       if (bill) {
         // console.log(`[BillService] 📝 Actualizando Bill ${bill.id} con group_hours: ${groupHours}`);
         
+        // ✅ CALCULAR EL week_number BASADO EN LA FECHA DEL GRUPO
+        let newWeekNumber = bill.week_number; // Mantener el valor actual por defecto
+        if (workers.length > 0 && workers[0].dateStart) {
+          newWeekNumber = getWeekNumber(new Date(workers[0].dateStart));
+          // console.log(`[BillService] 📅 Nuevo week_number calculado: ${newWeekNumber}`);
+        }
+        
         const updatedBill = await this.prisma.bill.update({
           where: { id: bill.id },
           data: {
             group_hours: groupHours,
             number_of_hours: groupHours, // ✅ TAMBIÉN ACTUALIZAR number_of_hours
+            week_number: newWeekNumber, // ✅ TAMBIÉN ACTUALIZAR week_number
           },
         });
         
-        // console.log(`[BillService] ✅ Bill ${bill.id} actualizado. Nuevo valor: ${updatedBill.group_hours}, number_of_hours: ${updatedBill.number_of_hours}`);
+        // console.log(`[BillService] ✅ Bill ${bill.id} actualizado. Nuevo valor: ${updatedBill.group_hours}, number_of_hours: ${updatedBill.number_of_hours}, week_number: ${updatedBill.week_number}`);
 
         // Recalcular op_duration de toda la operación
         await this.recalculateOpDuration(id_operation, id_group);
@@ -3618,15 +3630,7 @@ export class BillService {
    */
   async findAllPaginatedWithFilters(filters: FilterBillDto & { siteId?: number, subsiteId?: number }) {
     try {
-      // console.log('🚀 [Bill Service] Parámetros completos recibidos:', {
-      //   filters_completos: filters,
-      //   tipo_search: typeof filters.search,
-      //   valor_search: filters.search,
-      //   search_length: filters.search?.length,
-      //   todas_las_propiedades: Object.keys(filters)
-      // });
-
-      const {
+           const {
         search,
         jobAreaId, 
         status,
@@ -3910,6 +3914,104 @@ export class BillService {
     }
   }
 
+/** CONSULTAR BILLS QUE TIENEN COMPENSATORIO  */
+
+// consulta optimizada para obtener bills por IDs de operación con cálculo de compensatorio, filtrando por sitio y subsitio
+  async findByOperationIdsWithCompensatory(
+    operationIds: number[],
+    scope?: { siteId?: number; subsiteId?: number },
+  ) {
+    if (!operationIds?.length) return [];
+
+    const whereClause: any = {
+      id_operation: { in: operationIds },
+    };
+
+    if (scope?.siteId || typeof scope?.subsiteId === 'number') {
+      whereClause.operation = {};
+
+      if (scope.siteId) {
+        whereClause.operation.id_site = scope.siteId;
+      }
+
+      if (typeof scope.subsiteId === 'number' && !Number.isNaN(scope.subsiteId)) {
+        whereClause.operation.id_subsite = scope.subsiteId;
+      }
+    }
+
+    const bills = await this.prisma.bill.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        id_operation: true,
+        id_group: true,
+        number_of_workers: true,
+        week_number: true,
+        amount: true,
+        total_paysheet: true,
+        group_hours: true,
+        number_of_hours: true,
+        HOD: true,
+        HON: true,
+        HED: true,
+        HEN: true,
+        HFOD: true,
+        HFON: true,
+        HFED: true,
+        HFEN: true,
+        observation: true,
+        operation: {
+          select: {
+            id: true,
+            dateStart: true,
+            dateEnd: true,
+          },
+        },
+        billDetails: {
+          select: {
+            id_operation_worker: true,
+            pay_unit: true,
+            pay_rate: true,
+            total_paysheet: true,
+            operationWorker: {
+              select: {
+                id_worker: true,
+                tariff: {
+                  select: {
+                    paysheet_tariff: true,
+                    compensatory: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { id: 'desc' },
+    });
+
+    const sundayHoursConfig =
+      await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
+    const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
+
+    return Promise.all(
+      bills.map(async (bill) => {
+        const compensatory = await this.calculateCompensatoryForBill(
+          bill,
+          sundayHoursConfig,
+          weekHoursConfig,
+        );
+
+        return {
+          ...bill,
+          compensatory,
+        };
+      }),
+    );
+  }
+
+
+
   /**
    * Obtiene estadísticas rápidas de búsqueda sin cargar todos los datos
    * Útil para mostrar contadores en el frontend antes de cargar la página específica
@@ -4058,4 +4160,1143 @@ export class BillService {
       recommendedPageSize: totalCount > 10000 ? 50 : totalCount > 1000 ? 25 : 10
     };
   }
+// =========EXPORTACIÓN DEL EXCEL ===============================-----------------------------------------------------------------------
+  /**
+   * Exporta las Bills filtradas a un archivo Excel completo
+   * Replica la estructura de useBillExport.ts del frontend
+   * DOS HOJAS: "Datos" (resumen) y "RTD" (detalle por trabajador)
+   * 
+   * SIN PAGINACIÓN: Descarga TODOS los registros que coincidan con los filtros
+   */
+async exportBillsToExcelStream(
+  filters: any & { siteId?: number; subsiteId?: number },
+  res: Response
+): Promise<void> {
+  // console.log('📊 [EXPORT STREAM] Filtros recibidos:', filters);
+  const workbook = new ExcelJS.Workbook();
+
+  const worksheetData = workbook.addWorksheet('Datos');
+  const worksheetRTD = workbook.addWorksheet('RTD');
+
+// Encabezados para hoja "Datos" (Registro de Factura por operación)
+  const headersDatos = [ //40 columnas
+    'Código', //1 - Código de operación
+    'Fecha Inicio', //2 - Fecha y hora de inicio de la operación
+    'Fecha Final', //3 - Fecha y hora de finalización de la operación
+    'Sem', //4 - Semana
+    'Código Labor', //5 - Código de labor
+    'Servicio', //6 - Nombre de Servicio
+    'Unidad de Medida', //7 - Unidad de medida
+    'Horas Servicio', //8 - Horas de servicio
+    'Q Hombres', //9 - Cantidad de hombres
+    'Total pago', //10 - Total de pago
+    'Cantidad', //11 - Cantidad
+    'Tarifa Nómina', //12 - Tarifa de nómina
+    'Total Nómina', //13 - Total de nómina
+    'Tarifa Facturación', //14 - Tarifa de facturación
+    'Total Facturación', //15 - Total de facturación
+    'Utilidad Servicio', //16 - Utilidad del servicio
+    'Margen Servicio', //17 - Margen del servicio
+    'COMP', //18 - COMP
+    'N_OD', //19 - N_OD
+    'N_ON', //20 - N_ON
+    'N_ED', //21 - N_ED
+    'N_EN', //22 - N_EN
+    'N_FOD', //23 - N_FOD
+    'N_FON', //24 - N_FON
+    'N_FED', //25 - N_FED
+    'N_FEN', //26 - N_FEN
+    'F_OD', //27 - F_OD
+    'F_ON', //28 - F_ON
+    'F_ED', //29 - F_ED
+    'F_EN', //30 - F_EN
+    'F_FOD', //31 - F_FOD
+    'F_FON', //32 - F_FON
+    'F_FED', //33 - F_FED
+    'F_FEN', //34 - F_FEN
+
+    'Buque', //35 - Buque
+    'Total Alimentación', //36 - Total de alimentación
+    'Subsede', //37 - Subsede
+    'Usuario', //38 - Usuario
+    'Observaciones', //39 - Observaciones
+    'Estado', //40 - Estado
+  ];
+//Encabezados para hoja "RTD" (Registro de Detalle de Factura para cada trabajador)
+  const headersRTD = [ // 39 columnas
+    'Código',
+    'Fecha Inicio',
+    'Fecha Final',
+    'Sem',
+    'Código Subservicio',
+    'Subservicio',
+    'Código Trabajador',
+    'Nombre Trabajador',
+    'Unidad de Medida',
+    'Q Horas',
+    'Unidad de pago',
+    'Cantidad',
+    'Tarifa Nómina',
+    'Total Nómina',
+    'COMP',
+    'N_OD',
+    'N_ON',
+    'N_ED',
+    'N_EN',
+    'N_FOD',
+    'N_FON',
+    'N_FED',
+    'N_FEN',
+    'F_OD',
+    'F_ON',
+    'F_ED',
+    'F_EN',
+    'F_FOD',
+    'F_FON',
+    'F_FED',
+    'F_FEN',
+    'Tarifa Facturación',
+    'Total Facturación',
+    'Buque',
+    'Alimentación',
+    'Subsede',
+    'Usuario',
+    'Observaciones',
+    'Estado',
+  ];
+
+  this.configureWorksheetHeader(worksheetData, headersDatos); // Configurar encabezados y estilos para hoja "Datos"
+  this.configureWorksheetHeader(worksheetRTD, headersRTD); // Configurar encabezados y estilos para hoja "RTD"
+  const where = this.buildWhere(filters);
+
+
+
+
+  // console.log('📌 WHERE FINAL:', JSON.stringify(where, null, 2));
+
+  const bills = await this.prisma.bill.findMany({
+  where,
+  select: {
+    id_operation: true,
+    week_number: true,
+    number_of_hours: true,
+    number_of_workers: true,
+    group_hours: true,
+    amount: true,
+    total_bill: true,
+    total_paysheet: true,
+    observation: true,
+    status: true,
+
+    // 🔥 distribuciones (las usas)
+    HOD: true,
+    HON: true,
+    HED: true,
+    HEN: true,
+    HFOD: true,
+    HFON: true,
+    HFED: true,
+    HFEN: true,
+
+    FAC_HOD: true,
+    FAC_HON: true,
+    FAC_HED: true,
+    FAC_HEN: true,
+    FAC_HFOD: true,
+    FAC_HFON: true,
+    FAC_HFED: true,
+    FAC_HFEN: true,
+
+    // 👤 USER
+    user: {
+      select: {
+        name: true,
+      },
+    },
+
+    // 🚢 OPERATION
+    operation: {
+      select: {
+        dateStart: true,
+        dateEnd: true,
+        timeStrat: true,
+        timeEnd: true,
+        op_duration: true,
+        motorShip: true,
+        subSite: {
+          select: { name: true },
+        },
+        task: {
+          select: { name: true },
+        },
+      },
+    },
+
+    // 📦 DETAILS
+    billDetails: {
+      select: {
+        pay_unit: true,
+        pay_rate: true, // 🔥 LO NECESITAS
+        total_paysheet: true,
+        total_bill: true,
+
+        operationWorker: {
+          select: {
+            id: true,
+            id_group: true,
+            dateStart: true,
+            dateEnd: true,
+            timeStart: true,
+            timeEnd: true,
+
+            worker: {
+              select: {
+                id: true,
+                name: true,
+                dni: true,
+                payroll_code: true,
+              },
+            },
+
+            tariff: {
+              select: {
+                code: true,
+                paysheet_tariff: true,
+                facturation_tariff: true,
+
+                // 🔥 SOLO LOS CAMPOS QUE USAS
+                OD: true,
+                ON: true,
+                ED: true,
+                EN: true,
+                FOD: true,
+                FON: true,
+                FED: true,
+                FEN: true,
+
+                FAC_OD: true,
+                FAC_ON: true,
+                FAC_ED: true,
+                FAC_EN: true,
+                FAC_FOD: true,
+                FAC_FON: true,
+                FAC_FED: true,
+                FAC_FEN: true,
+
+                compensatory: true,
+
+                subTask: {
+                  select: {
+                    name: true,
+                  },
+                },
+
+                unitOfMeasure: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  orderBy: {
+    id_operation: 'desc',
+  },
+});
+  
+  const operationIds = bills.map(b => b.id_operation);
+
+  const sundayHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
+  const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
+
+  const feedings = await this.prisma.workerFeeding.findMany({
+  where: {
+    id_operation: { in: operationIds },
+  },
+  select: {
+    id_operation: true,
+    id_worker: true,
+  },
+});
+
+// ✅ CREAR MAPS UNA SOLA VEZ
+const feedingsMap = new Map<number, any[]>();
+const feedingsByWorkerMap = new Map<string, number>();
+
+feedings.forEach((f) => {
+  const opId = f.id_operation;
+  const workerId = f.id_worker;
+
+  // por operación
+  if (!feedingsMap.has(opId)) {
+    feedingsMap.set(opId, []);
+  }
+  feedingsMap.get(opId)!.push(f);
+
+  // por worker
+  const key = `${opId}-${workerId}`;
+  feedingsByWorkerMap.set(key, (feedingsByWorkerMap.get(key) || 0) + 1);
+});
+
+  // console.log('📦 Bills encontradas:', bills.length);
+    // Si no hay datos, agregar una fila indicando que no se encontraron registros para los filtros seleccionados
+  if (!bills.length) {
+    const emptyRow1 = worksheetData.addRow(['SIN DATOS PARA LOS FILTROS SELECCIONADOS']);
+    
+    this.applyDynamicColors(emptyRow1, headersDatos);
+    emptyRow1.commit();
+
+    const emptyRow2 = worksheetRTD.addRow(['SIN DATOS PARA LOS FILTROS SELECCIONADOS']);
+    this.applyDynamicColors(emptyRow2, headersRTD);
+    emptyRow2.commit();
+
+    await workbook.xlsx.write(res);
+          res.end();
+    return;
+  }
+
+  const safeNumber = (value: any): number => {
+    if (value === null || value === undefined || value === '') return 0;
+    const num = Number(value);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const mapHoursDistribution = (bill: any) => {
+    return {
+      billHoursDistribution: {
+        HOD: Number(bill.FAC_HOD ?? bill.HOD ?? 0),
+        HON: Number(bill.FAC_HON ?? bill.HON ?? 0),
+        HED: Number(bill.FAC_HED ?? bill.HED ?? 0),
+        HEN: Number(bill.FAC_HEN ?? bill.HEN ?? 0),
+        HFOD: Number(bill.FAC_HFOD ?? bill.HFOD ?? 0),
+        HFON: Number(bill.FAC_HFON ?? bill.HFON ?? 0),
+        HFED: Number(bill.FAC_HFED ?? bill.HFED ?? 0),
+        HFEN: Number(bill.FAC_HFEN ?? bill.HFEN ?? 0),
+      },
+      paysheetHoursDistribution: {
+        HOD: Number(bill.HOD ?? 0),
+        HON: Number(bill.HON ?? 0),
+        HED: Number(bill.HED ?? 0),
+        HEN: Number(bill.HEN ?? 0),
+        HFOD: Number(bill.HFOD ?? 0),
+        HFON: Number(bill.HFON ?? 0),
+        HFED: Number(bill.HFED ?? 0),
+        HFEN: Number(bill.HFEN ?? 0),
+      },
+    };
+  };
+
+  let rowIndexData = 0;
+//HOJA DATOS
+  for (const bill of bills) {
+    const firstDetail = bill.billDetails?.[0];
+    if (!firstDetail) continue;
+
+    const tariff = firstDetail.operationWorker?.tariff; 
+    const unitName = tariff?.unitOfMeasure?.name?.toUpperCase() || ''; //Unidad de medida
+    const quantityWorkers = bill.billDetails?.length || 0; // Q Hombres
+
+    const totalPago = Number(
+      (bill.billDetails?.reduce((sum, detail) => {
+        return sum + Number(detail.pay_unit || 0);
+      }, 0) || 0).toFixed(3)
+    );
+
+    let numberOfHours = 0;
+    if (unitName === 'HORAS' || unitName === 'HORA') {
+      numberOfHours = safeNumber(bill.number_of_hours);
+    } else {
+      numberOfHours = safeNumber(bill.operation?.op_duration);
+    }
+
+    let cantidad = 0;
+    if (unitName.includes('HORA')) {
+      cantidad = safeNumber(bill.number_of_hours) * quantityWorkers;
+    } else if (unitName.includes('JORNAL')) {
+      cantidad = totalPago;
+    } else {
+      cantidad = safeNumber(bill.amount);
+    }
+
+    const totalFacturacion = safeNumber(bill.total_bill);
+    const totalNomina = safeNumber(bill.total_paysheet);
+    const utilidadServicio = totalFacturacion - totalNomina;
+    const margenServicio = totalFacturacion === 0 ? -1 : utilidadServicio / totalFacturacion;
+
+    const compensatoryHours = (bill as any)?.compensatory?.hours ?? 0;
+
+    const { billHoursDistribution, paysheetHoursDistribution } =
+      mapHoursDistribution(bill);
+
+    const totalPaysheetHours = {
+      HOD: paysheetHoursDistribution.HOD * quantityWorkers,
+      HON: paysheetHoursDistribution.HON * quantityWorkers,
+      HED: paysheetHoursDistribution.HED * quantityWorkers,
+      HEN: paysheetHoursDistribution.HEN * quantityWorkers,
+      HFOD: paysheetHoursDistribution.HFOD * quantityWorkers,
+      HFON: paysheetHoursDistribution.HFON * quantityWorkers,
+      HFED: paysheetHoursDistribution.HFED * quantityWorkers,
+      HFEN: paysheetHoursDistribution.HFEN * quantityWorkers,
+    };
+
+    const totalBillHours = {
+      HOD: billHoursDistribution.HOD * quantityWorkers,
+      HON: billHoursDistribution.HON * quantityWorkers,
+      HED: billHoursDistribution.HED * quantityWorkers,
+      HEN: billHoursDistribution.HEN * quantityWorkers,
+      HFOD: billHoursDistribution.HFOD * quantityWorkers,
+      HFON: billHoursDistribution.HFON * quantityWorkers,
+      HFED: billHoursDistribution.HFED * quantityWorkers,
+      HFEN: billHoursDistribution.HFEN * quantityWorkers,
+    };
+
+    const mainServiceName = tariff?.subTask?.name ||'Sin servicio';
+
+    const groupName = bill.operation?.task?.name || 'Sin grupo';
+
+    const estadoTexto =
+      bill.status === 'ACTIVE'
+        ? 'Activo'
+        : bill.status === 'COMPLETED'
+          ? 'Completo'
+          : bill.status || '';
+
+const dateStart = firstDetail.operationWorker.dateStart;
+const startTime = firstDetail.operationWorker?.timeStart;
+const dateEnd = firstDetail.operationWorker.dateEnd;
+const endTime = firstDetail.operationWorker?.timeEnd ;
+
+    const comp = await this.calculateCompensatoryForBill(bill, sundayHoursConfig, weekHoursConfig);
+    const totalFeeding = feedingsMap.get(bill.id_operation)?.length || 0;
+//Columnas de la hoja "Datos" para cada bill
+    const row = worksheetData.addRow([
+      bill.id_operation ?? '', //1 - Código
+      this.combineDateTime(dateStart,startTime),
+      this.combineDateTime(dateEnd, endTime), //3 - Fecha Final
+      bill.week_number ?? '',  //4 - Semana 
+      Number(tariff?.code ?? ''), //5 Código Subservicio
+      mainServiceName, //6 servicio
+      tariff?.unitOfMeasure?.name ?? '', //7 unidad de medida
+      numberOfHours,//8 horas servicio
+      quantityWorkers, //9 Q Hombres
+      Number(totalPago), //10 Total pago
+      cantidad, //11 Cantidad
+      safeNumber(tariff?.paysheet_tariff), //12 Tarifa Nómina
+      Number(totalNomina), //13 Total Nómina
+        safeNumber(tariff?.facturation_tariff), //14 Tarifa Facturación
+      Number(totalFacturacion),//15 Total Facturación
+      utilidadServicio,//16 Utilidad Servicio
+      margenServicio,//17 Margen Servicio
+      Number(comp.hours || 0).toFixed(2),//18 COMP
+      totalPaysheetHours.HOD,//19 HOD
+      totalPaysheetHours.HON,//20 HON
+      totalPaysheetHours.HED,//21 HED
+      totalPaysheetHours.HEN,//22 HEN
+      totalPaysheetHours.HFOD,//23 HFOD
+      totalPaysheetHours.HFON,//24 HFON
+      totalPaysheetHours.HFED,//25 HFED
+      totalPaysheetHours.HFEN,//26 HFEN
+      totalBillHours.HOD,//27 HOD
+      totalBillHours.HON, //28 HON
+      totalBillHours.HED, //29 HED
+      totalBillHours.HEN, //30 HEN
+      totalBillHours.HFOD,  //31 HFOD
+      totalBillHours.HFON,//  32 HFON
+      totalBillHours.HFED, //33 HFED
+      totalBillHours.HFEN,  //34 HFEN
+      bill.operation?.motorShip ?? '', // 35 Buque
+      totalFeeding, //36 Total Alimentación (pendiente de cálculo, se puede agregar lógica similar a compensatory si es necesario)
+      bill.operation?.subSite?.name ?? 'N/A',//37 Subsede
+      bill.user?.name ?? '', //38 Usuario
+      bill.observation ?? '', //39 Observaciones
+      estadoTexto, //40 Estado
+    ]);
+
+    this.styleRow(row, rowIndexData);
+     this.applyDynamicFormats(row, headersDatos);
+    row.commit();
+    rowIndexData++;
+  }
+
+  let rowIndexRTD = 0;
+
+
+
+
+  
+//HOJA RTD
+  for (const bill of bills) {
+    const estadoTexto =
+      bill.status === 'ACTIVE'
+        ? 'Activo'
+        : bill.status === 'COMPLETED'
+          ? 'Completo'
+          : bill.status || '';
+
+    for (const detail of bill.billDetails || []) {
+      const worker = detail.operationWorker?.worker;
+      const tariff = detail.operationWorker?.tariff;
+          const unitName = tariff?.unitOfMeasure?.name?.toUpperCase() || ''; //Unidad de medida
+              const quantityWorkers = bill.billDetails?.length || 0; // Q Hombres
+      const totalPago = Number(
+      (bill.billDetails?.reduce((sum, detail) => {
+        return sum + Number(detail.pay_unit || 0);
+      }, 0) || 0).toFixed(3)
+    );
+
+          const mainServiceName = tariff?.subTask?.name ||'Sin servicio';
+      const groupName = bill.operation?.task?.name || 'Sin grupo';
+
+       let cantidad = 0;
+    if (unitName.includes('HORA')) {
+      cantidad = safeNumber(bill.number_of_hours) * quantityWorkers;
+    } else if (unitName.includes('JORNAL')) {
+      cantidad = totalPago;
+    } else {
+      cantidad = safeNumber(bill.amount);
+    }
+
+      if (!worker || !tariff) continue;
+
+      const comp = await this.calculateCompensatoryForBill(bill, sundayHoursConfig, weekHoursConfig);
+
+      const feedingCount = feedingsByWorkerMap.get(`${bill.id_operation}-${detail.operationWorker?.worker?.id}`) || 0;
+
+      const rowRTD = worksheetRTD.addRow([
+        bill.id_operation ?? '', // 1 - Código
+        this.combineDateTime(detail.operationWorker?.dateStart ?? null, detail.operationWorker?.timeStart ?? null),// 2- Fecha Inicio
+        this.combineDateTime(detail.operationWorker?.dateEnd ?? null, detail.operationWorker?.timeEnd ?? null), //3- Fecha Final
+        bill.week_number ?? '',//4- Semana
+        tariff.code ?? '', //5- Código Subservicio
+        mainServiceName, //6- Subservicio
+        worker.payroll_code ?? '', //7- Código Trabajador
+        worker.name ?? '', //9- Nombre de Trabajador
+        tariff.unitOfMeasure?.name ?? '', //10- Unidad de Medida
+        this.calculateQHoras(detail, bill), // 11- Q Horas
+        Number(detail.pay_unit), //12- Unidad de pago
+        Number(detail.pay_rate ?? 0), //13- Cantidad
+        Number(tariff.paysheet_tariff ?? 0),//14- Tarifa Nómina
+        Number(detail.total_paysheet ?? 0), //15- Total Nómina
+    
+        Number(comp.hours || 0),  //16- COMP
+        Number(bill.HOD ?? 0), //17- HOD
+        Number(bill.HON ?? 0), //18- HON
+        Number(bill.HED ?? 0), //19- HED
+        Number(bill.HEN ?? 0), //20- HEN
+        Number(bill.HFOD ?? 0), //21- HFOD
+        Number(bill.HFON ?? 0), //22- HFON
+        Number(bill.HFED ?? 0), //23- HFED
+        Number(bill.HFEN ?? 0), //24- HFEN
+        Number(bill.FAC_HOD ?? bill.HOD ?? 0), //25- FAC_HOD
+        Number(bill.FAC_HON ?? bill.HON ?? 0), //26- FAC_HON
+        Number(bill.FAC_HED ?? bill.HED ?? 0), //27- FAC_HED
+        Number(bill.FAC_HEN ?? bill.HEN ?? 0), //28- FAC_HEN
+        Number(bill.FAC_HFOD ?? bill.HFOD ?? 0), //29- FAC_HFOD
+        Number(bill.FAC_HFON ?? bill.HFON ?? 0), //30- FAC_HFON
+        Number(bill.FAC_HFED ?? bill.HFED ?? 0), //31- FAC_HFED
+        Number(bill.FAC_HFEN ?? bill.HFEN ?? 0), //32- FAC_HFEN
+            Number(tariff.facturation_tariff ?? 0),//33- Tarifa Facturación
+        Number(detail.total_bill ?? 0), //34- Total Facturación
+        bill.operation?.motorShip ?? '', //35- Buque
+        feedingCount, //36- Alimentación (número de registros de alimentación para este trabajador en esta operación)
+        bill.operation?.subSite?.name ?? 'N/A', //37- Subsitio
+        bill.user?.name ?? '', //38- Usuario
+        bill.observation ?? '', //39- Observación
+        estadoTexto, //40- Estado
+      ]);
+
+      // ===== FORMATOS RTD ===
+
+      this.styleRow(rowRTD, rowIndexRTD);
+       this.applyDynamicFormats(rowRTD, headersRTD);
+      rowRTD.commit();
+      rowIndexRTD++;
+    }
+  }
+  this.autoAdjustColumns(worksheetData);
+  this.autoAdjustColumns(worksheetRTD);
+
+  await workbook.xlsx.write(res);
+res.end();
+
 }
+
+private autoAdjustColumns(worksheet: any) {
+  worksheet.columns.forEach((column: any) => {
+    let maxLength = 10;
+
+    column.eachCell({ includeEmpty: true }, (cell: any) => {
+      let value = cell.value;
+
+      if (value == null) return;
+
+      if (typeof value === 'object') {
+        value = value.text || value.richText?.map((t: any) => t.text).join('') || '';
+      }
+
+      const length = value.toString().length;
+
+      if (length > maxLength) {
+        maxLength = length;
+      }
+    });
+
+    // 🔥 Ajuste inteligente (clave)
+    column.width = Math.min(maxLength + 2, 25);
+  });
+}
+private combineDateTime(date: Date | string | null, time: string | null): number | null {
+  if (!date) return null;
+
+  const dateStr =
+    typeof date === 'string'
+      ? date.split('T')[0]
+      : date.toISOString().split('T')[0];
+
+  const [year, month, day] = dateStr.split('-').map(Number);
+
+  if (!year || !month || !day) return null;
+
+  // Excel usa 1899-12-30 como día 0
+  const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+  const targetDate = new Date(Date.UTC(year, month - 1, day));
+  const diffTime = targetDate.getTime() - excelEpoch.getTime();
+  const excelDate = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  let excelTime = 0;
+
+  if (time) {
+    const parts = time.split(':');
+    const hours = parseInt(parts[0] || '0', 10);
+    const minutes = parseInt(parts[1] || '0', 10);
+    const seconds = parseInt(parts[2] || '0', 10);
+
+    excelTime = (hours + minutes / 60 + seconds / 3600) / 24;
+  }
+
+  return excelDate + excelTime;
+}
+
+private applyDynamicFormats(row: any, headers: string[]) {
+  row.eachCell((cell: any, colNumber: number) => {
+    const header = headers[colNumber - 1];
+
+    if (!header) return;
+
+    // 📅 FECHAS
+    if (header.includes('Fecha')) {
+      cell.numFmt = '[$-es-ES]dd/mm/yyyy h:mm:ss';
+    }
+
+    // 🔢 ENTEROS
+    else if (
+      header.includes('Código') ||
+      header === 'Sem' ||
+      header === 'Código Labor' ||
+      header === 'Q Hombres' ||
+      header === 'Total Alimentación'
+    ) {
+      cell.numFmt = '0';
+    }
+
+    // ⏱ HORAS / DECIMALES
+    else if (
+      header === 'Horas Servicio' ||
+      header === 'Total pago' ||
+      header === 'Cantidad' ||
+      header === 'COMP' ||
+      header === 'Q Horas' ||
+      header === 'Unidad de pago'
+    ) {
+      cell.numFmt = '0.00';
+    }
+
+    // 💰 DINERO
+    else if (
+      header.includes('Facturación') ||
+      header.includes('Nómina') ||
+      header.includes('Utilidad')
+    ) {
+      cell.numFmt = '"$"#,##0.00';
+    }
+
+    // 📊 PORCENTAJE
+    else if (header.includes('Margen')) {
+      cell.numFmt = '0.00%';
+    }
+
+    // 📈 DISTRIBUCIONES (NOMINA / FACTURACIÓN)
+    else if (
+      header.startsWith('N_') ||
+      header.startsWith('F_') ||
+      header.startsWith('NOM_') ||
+      header.startsWith('FAC_')
+    ) {
+      cell.numFmt = '0.00';
+    }
+
+    // 📝 TEXTO FORZADO
+    // else if (
+    //   header === 'Unidad de Medida' ||
+    //   header === 'Servicio' ||
+    //   header === 'Buque' ||
+    //   header === 'Subsede' ||
+    //   header === 'Usuario' ||
+    //   header === 'Observaciones' ||
+    //   header === 'Estado'
+    // ) {
+    //   cell.numFmt = '@';
+    // }
+  });
+}
+private configureWorksheetHeader(worksheet: any, headers: string[]) {
+  worksheet.columns = headers.map((header, index) => ({
+    header,
+    key: `col_${index + 1}`,
+    width: 18,
+  }));
+
+  const headerRow = worksheet.getRow(1);
+
+  headerRow.eachCell((cell: any, colNumber: number) => {
+    const header = headers[colNumber - 1] || '';
+
+    let bgColor = '4472C4'; // 🔵 azul por defecto
+
+    // 🟢 COMP
+    if (header === 'COMP') {
+      bgColor = '70AD47';
+    }
+
+    // 🟢 NOMINA
+    else if (header.startsWith('N_') || header.startsWith('NOM_')) {
+      bgColor = '70AD47';
+    }
+
+    // 🟠 FACTURACIÓN
+    else if (header.startsWith('F_') || header.startsWith('FAC_')) {
+      bgColor = 'FF5E08';
+    }
+
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: bgColor },
+    };
+
+    cell.font = {
+      bold: true,
+      size: 10,
+      color: { argb: 'FFFFFFFF' },
+    };
+
+    cell.alignment = {
+      horizontal: 'center',
+      vertical: 'middle',
+      wrapText: true,
+    };
+
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF000000' } },
+      left: { style: 'thin', color: { argb: 'FF000000' } },
+      bottom: { style: 'thin', color: { argb: 'FF000000' } },
+      right: { style: 'thin', color: { argb: 'FF000000' } },
+    };
+  });
+
+  headerRow.commit();
+
+  // congelar encabezado
+  worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+}
+
+private styleRow(row: any, index: number) {
+
+  const isEven = (index + 1) % 2 === 0; // 🔥 corregido
+
+  row.eachCell((cell: any) => {
+
+    // 🎨 Zebra
+    if (isEven) {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF2F2F2' },
+      };
+    }
+
+    // 📐 Alineación automática
+    if (!isNaN(Number(cell.value))) {
+      cell.alignment = { horizontal: 'right', vertical: 'middle' };
+    } else {
+      cell.alignment = { horizontal: 'left', vertical: 'middle' };
+    }
+
+    // 🔲 Bordes suaves
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF000000' } },
+      left: { style: 'thin', color: { argb: 'FF000000' } },
+      bottom: { style: 'thin', color: { argb: 'FF000000' } },
+      right: { style: 'thin', color: { argb: 'FF000000' } },
+    };
+  });
+}
+
+private buildWhere(filters: any) {
+  const {
+    search,
+    jobAreaIds = [],
+    status,
+    dateStart,
+    dateEnd,
+    siteId,
+    subsiteId,
+  } = filters;
+
+  const whereClause: any = {};
+
+  // ===== LIMPIAR jobAreaIds =====
+  const rawJobAreaIds = Array.isArray(jobAreaIds) ? jobAreaIds : [jobAreaIds];
+
+  const cleanJobAreaIds = rawJobAreaIds
+    .flatMap((item: any) => {
+      if (item === null || item === undefined || item === '') {
+        return [];
+      }
+
+      if (typeof item === 'string') {
+        const value = item.trim();
+
+        if (value.startsWith('[') && value.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        }
+
+        return [value];
+      }
+
+      if (Array.isArray(item)) {
+        return item;
+      }
+
+      return [item];
+    })
+    .map((id: any) => Number(id))
+    .filter((id: number) => !isNaN(id))
+    .filter((id: number, index: number, arr: number[]) => arr.indexOf(id) === index);
+
+  // console.log('🧹 jobAreaIds limpias:', cleanJobAreaIds);
+
+  // ===== FILTROS DE LA RELACIÓN operation =====
+  const operationFilters: any = {};
+
+  if (siteId !== null && siteId !== undefined && !isNaN(Number(siteId))) {
+    operationFilters.id_site = Number(siteId);
+  }
+
+  if (subsiteId !== null && subsiteId !== undefined && !isNaN(Number(subsiteId))) {
+    operationFilters.id_subsite = Number(subsiteId);
+  }
+
+  if (cleanJobAreaIds.length > 0) {
+    operationFilters.id_area = {
+      in: cleanJobAreaIds,
+    };
+  }
+
+  if (dateStart || dateEnd) {
+    const dateFilter: any = {};
+
+    if (dateStart) {
+      const start = new Date(dateStart);
+      if (!isNaN(start.getTime())) {
+        start.setHours(0, 0, 0, 0);
+        dateFilter.gte = start;
+      }
+    }
+
+    if (dateEnd) {
+      const end = new Date(dateEnd);
+      if (!isNaN(end.getTime())) {
+        end.setHours(23, 59, 59, 999);
+        dateFilter.lte = end;
+      }
+    }
+
+    if (Object.keys(dateFilter).length > 0) {
+      operationFilters.dateStart = dateFilter;
+    }
+  }
+
+  if (Object.keys(operationFilters).length > 0) {
+    whereClause.operation = {
+      is: operationFilters,
+    };
+  }
+
+  // ===== STATUS =====
+  if (status) {
+    whereClause.status = status;
+  }
+
+  // ===== SEARCH =====
+  if (search && String(search).trim() !== '') {
+    const searchValue = String(search).trim();
+    const searchAsNumber = Number(searchValue);
+    const isNumericSearch = !isNaN(searchAsNumber);
+
+    const searchConditions: any[] = [];
+
+    // búsqueda por id de operación
+    if (isNumericSearch) {
+      searchConditions.push({
+        id_operation: searchAsNumber,
+      });
+    }
+
+    // búsqueda por cliente o área
+    searchConditions.push({
+      operation: {
+        is: {
+          OR: [
+            {
+              client: {
+                name: {
+                  contains: searchValue,
+                  mode: 'insensitive',
+                },
+              },
+            },
+            {
+              jobArea: {
+                name: {
+                  contains: searchValue,
+                  mode: 'insensitive',
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    // búsqueda por código tarifa
+    searchConditions.push({
+      billDetails: {
+        some: {
+          operationWorker: {
+            tariff: {
+              code: {
+                contains: searchValue,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // búsqueda por nombre subtask
+    searchConditions.push({
+      billDetails: {
+        some: {
+          operationWorker: {
+            tariff: {
+              subTask: {
+                name: {
+                  contains: searchValue,
+                  mode: 'insensitive',
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    whereClause.OR = searchConditions;
+  }
+
+  // console.log('📌 WHERE FINAL:', JSON.stringify(whereClause, null, 2));
+  return whereClause;
+}
+
+private applyDynamicColors(row: any, headers: string[]) {
+  row.eachCell((cell: any, colNumber: number) => {
+    const header = headers[colNumber - 1] || '';
+
+    let bgColor = 'D9E1F2'; // 🔵 azul por defecto
+
+    // 🟢 COMP
+    if (header === 'COMP') {
+      bgColor = 'E2EFDA';
+    }
+
+    // 🟢 NOMINA
+    else if (
+      header.startsWith('N_') ||
+      header.startsWith('NOM_')
+    ) {
+      bgColor = 'E2EFDA';
+    }
+
+    // 🟠 FACTURACIÓN
+    else if (
+      header.startsWith('F_') ||
+      header.startsWith('FAC_')
+    ) {
+      bgColor = 'FCE4D6';
+    }
+
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: bgColor },
+    };
+  });
+}
+
+
+// private calculateQHoras(detail: any, bill: any): number {
+//   const safeNumber = (v: any) => {
+//     const n = Number(v);
+//     return isNaN(n) ? 0 : n;
+//   };
+
+//   // 1️⃣ si ya existe group_hours → usarlo
+//   const groupHours = safeNumber(bill.group_hours || 0);
+//   if (groupHours > 0) return Number(groupHours.toFixed(3));
+
+//   // 2️⃣ helper para extraer fecha y hora
+//   const extractDateAndTime = (dateField?: string, timeField?: string) => {
+//     if (!dateField) return { date: undefined, time: undefined };
+
+//     if (dateField.includes('T')) {
+//       const [datePart, timePart] = dateField.split('T');
+//       const timeFromDate = timePart
+//         ? timePart.split(':').slice(0, 2).join(':')
+//         : undefined;
+
+//       return {
+//         date: datePart,
+//         time: timeField || timeFromDate,
+//       };
+//     }
+
+//     return {
+//       date: dateField,
+//       time: timeField,
+//     };
+//   };
+
+//   // 3️⃣ obtener inicio y fin
+//   const start = extractDateAndTime(
+//     detail.operationWorker?.dateStart || bill.dateStart_group,
+//     detail.operationWorker?.timeStart || bill.timeStart_group
+//   );
+
+//   const end = extractDateAndTime(
+//     detail.operationWorker?.dateEnd || bill.dateEnd_group,
+//     detail.operationWorker?.timeEnd || bill.timeEnd_group
+//   );
+
+//   if (start.date && start.time && end.date && end.time) {
+//     try {
+//       const [sy, sm, sd] = start.date.split('-').map(Number);
+//       const [ey, em, ed] = end.date.split('-').map(Number);
+//       const [sh, smin] = start.time.split(':').map(Number);
+//       const [eh, emin] = end.time.split(':').map(Number);
+
+//       const startDate = new Date(sy, sm - 1, sd, sh, smin || 0);
+//       const endDate = new Date(ey, em - 1, ed, eh, emin || 0);
+
+//       const diffMs = endDate.getTime() - startDate.getTime();
+//       const diffHours = diffMs / (1000 * 60 * 60);
+
+//       return diffHours > 0 ? Number(diffHours.toFixed(3)) : 0;
+//     } catch (error) {
+//       console.log('⚠️ Error calculando horas:', error);
+//       return 0;
+//     }
+//   }
+
+//   return 0;
+// }
+
+private calculateQHoras(detail: any, bill: any): number {
+  const safeNumber = (v: any) => {
+    const n = Number(v);
+    return isNaN(n) ? 0 : n;
+  };
+
+  // 1️⃣ si ya existe group_hours → usarlo
+  const groupHours = safeNumber(bill.group_hours || 0);
+  if (groupHours > 0) return Number(groupHours.toFixed(3));
+
+  // 2️⃣ helper limpio (backend-safe)
+  const buildDateTime = (dateField?: Date | string, timeField?: string): Date | null => {
+    if (!dateField) return null;
+
+    let date: Date;
+
+    // 🔥 si viene como Date (Prisma)
+    if (dateField instanceof Date) {
+      date = new Date(
+        dateField.getFullYear(),
+        dateField.getMonth(),
+        dateField.getDate()
+      );
+    } 
+    // 🔥 si viene como string
+    else {
+      const [y, m, d] = dateField.split('-').map(Number);
+      if (!y || !m || !d) return null;
+      date = new Date(y, m - 1, d);
+    }
+
+    // 🔥 agregar hora
+    if (timeField) {
+      const [h, min] = timeField.split(':').map(Number);
+      date.setHours(h || 0);
+      date.setMinutes(min || 0);
+      date.setSeconds(0);
+      date.setMilliseconds(0);
+    }
+
+    return date;
+  };
+
+  // 3️⃣ construir fechas
+  const startDate = buildDateTime(
+    detail.operationWorker?.dateStart || bill.dateStart_group,
+    detail.operationWorker?.timeStart || bill.timeStart_group
+  );
+
+  const endDate = buildDateTime(
+    detail.operationWorker?.dateEnd || bill.dateEnd_group,
+    detail.operationWorker?.timeEnd || bill.timeEnd_group
+  );
+
+  if (startDate && endDate) {
+    const diffMs = endDate.getTime() - startDate.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    return diffHours > 0 ? Number(diffHours.toFixed(3)) : 0;
+  }
+
+  return 0;
+}
+
+
+
+
+}
+
