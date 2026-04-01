@@ -13,6 +13,7 @@ import {
   Res,
   UseInterceptors,
   ConflictException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InabilityService } from './inability.service';
 import { CreateInabilityDto } from './dto/create-inability.dto';
@@ -64,12 +65,15 @@ export class InabilityController {
   async findAll(
     @CurrentUser('siteId') siteId: number,
     @CurrentUser('role') role: string,
+    @CurrentUser('subsiteId') subsiteId: number,
   ) {
-    const response = await this.inabilityService.findAll(siteId, role);
-    if (response['status'] === 404) {
+    const response = await this.inabilityService.findAll(siteId, role, subsiteId);
+    if (response && response['status'] === 404) {
       throw new NotFoundException(response['message']);
-    } else if (response['status'] === 409) {
+    } else if (response && response['status'] === 409) {
       throw new ConflictException(response['message']);
+    } else if (response && response['status'] === 500) {
+      throw new InternalServerErrorException(response['message']);
     }
     return response;
   }

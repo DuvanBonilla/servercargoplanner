@@ -1052,6 +1052,17 @@ export class OperationExportService {
 			row.values = headers.map((h) => rows[i][h]);
 			row.eachCell((cell) => {
 				const header = headers[Number(cell.col) - 1];
+				// Ajustar ancho de columnas específicas para fechas
+					 if (
+                            header === 'Inicio' ||
+                            header === 'Fin' ||
+                            header === 'Fecha Inicio' ||
+                            header === 'Fecha Fin' ||
+                            header === 'Fecha Inicio Op.' ||
+                            header === 'Fecha Fin Op.'
+                          ) {
+                         sheet.getColumn(Number(cell.col)).width = 20;
+                         }
 				let horizontal: 'left' | 'center' | 'right' = 'right';
 				if (leftHeaders.has(header)) horizontal = 'left';
 				if (centerHeaders.has(header)) horizontal = 'center';
@@ -1094,7 +1105,7 @@ export class OperationExportService {
 
 		headers.forEach((header, idx) => {
 			const col = sheet.getColumn(idx + 1);
-			if (dateTimeHeaders.has(header)) { col.numFmt = '[$-es-ES,1]dd/mm/yyyy h:mm:ss'; }//retunr;
+			if (dateTimeHeaders.has(header)) { col.numFmt = '[$-es-ES,1]dd/mm/yyyy h:mm:ss'; return;}//retunr;
 			if (decimalHeaders.has(header))  { col.numFmt = '#,##0.00';} //retunr;
 			if (integerHeaders.has(header))  { col.numFmt = '0'; }
 

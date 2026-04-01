@@ -191,14 +191,17 @@ export class InabilityService {
     }
   }
 
-  async findAll(id_site?: number, userRole: string = 'ADMIN') {
+  async findAll(id_site?: number, userRole: string = 'ADMIN', id_subsite?: number | null) {
     try {
-      // Ambos usan el siteId del request
-      // SUPERADMIN puede cambiar de site dinámicamente
-      // ADMIN solo ve su site fijo
+      if (!id_site) {
+        return { status: 404, message: 'Site not found or not assigned to user' };
+      }
       const response = await this.prisma.inability.findMany({
         where: {
-          worker: userRole === 'SUPERADMIN' ? {} : { id_site }
+          worker: {
+            id_site,
+            ...(id_subsite ? { id_subsite } : {}),
+          }
         },
         include:{
           worker: {
@@ -213,12 +216,9 @@ export class InabilityService {
           },
         }
       });
-      if (!response || response.length === 0) {
-        return { status: 404, message: 'No inabilities found' };
-      }
       return response;
     } catch (error) {
-      throw new Error(`Error finding all inabilities: ${error}`);
+      return { status: 500, message: `Error finding all inabilities: ${error}` };
     }
   }
 

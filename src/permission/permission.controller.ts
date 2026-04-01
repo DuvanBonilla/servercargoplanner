@@ -12,7 +12,8 @@ import {   Controller,
   Res,
   UseInterceptors,
   ConflictException,
-  ParseIntPipe, } from '@nestjs/common';
+  ParseIntPipe,
+  InternalServerErrorException, } from '@nestjs/common';
 import { PermissionService } from './permission.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
@@ -85,6 +86,8 @@ export class PermissionController {
       throw new NotFoundException(response['message']);
     } else if (response['status'] === 409) {
       throw new ConflictException(response['message']);
+    }else if (response && response['status'] === 500) {
+      throw new InternalServerErrorException(response['message']);
     }
     return response;
   }
