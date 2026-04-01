@@ -21,7 +21,7 @@ export class UpdateOperationWorkerService {
     WHERE
       w.id = ow.id_worker
       AND o.status = 'COMPLETED'
-      AND w.status != 'AVALIABLE';
+      AND w.status = 'ASSIGNED';
   `);
 
     // 2. Liberar trabajadores cuyo turno terminó
