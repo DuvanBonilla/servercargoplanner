@@ -49,7 +49,7 @@ export class UserService {
 
   async create(createUserDto: CreateUserDto) {
   try {
-    console.log('[UserService] createUserDto recibido:', createUserDto);
+    // console.log('[UserService] createUserDto recibido:', createUserDto);
     
     const validationUser = await this.findOne(createUserDto.dni);
     const userByUsername = await this.findByUsername(createUserDto.username);
@@ -57,13 +57,13 @@ export class UserService {
     // ✅ SOLO VALIDAR SUBSITE SI SE PROPORCIONA Y NO ES NULL/UNDEFINED
     let validate: { status?: number; [key: string]: any } | null = null;
     if (createUserDto.id_subsite !== undefined && createUserDto.id_subsite !== null) {
-      console.log('[UserService] Validando subsite:', createUserDto.id_subsite);
+      // console.log('[UserService] Validando subsite:', createUserDto.id_subsite);
       
       validate = await this.validation.validateAllIds({
         id_subsite: createUserDto.id_subsite,
       });
 
-      console.log('[UserService] Resultado validación subsite:', validate);
+     // console.log('[UserService] Resultado validación subsite:', validate);
 
       // Verificar que la validación no retorne error
       if (validate && 'status' in validate && validate.status !== 200) {
@@ -97,19 +97,19 @@ export class UserService {
     const userData = { ...createUserDto, password: hashedPassword };
     if (userData.id_subsite === null || userData.id_subsite === undefined) {
       delete userData.id_subsite;
-      console.log('[UserService] id_subsite eliminado del userData (era null/undefined)');
+      // console.log('[UserService] id_subsite eliminado del userData (era null/undefined)');
     }
 
-    console.log('[UserService] userData final para crear:', {
-      ...userData,
-      password: '[HIDDEN]' // No mostrar password en logs
-    });
+    // console.log('[UserService] userData final para crear:', {
+    //   ...userData,
+    //   password: '[HIDDEN]' // No mostrar password en logs
+    // });
 
     const response = await this.prisma.user.create({
       data: userData,
     });
 
-    console.log('[UserService] Usuario creado exitosamente con ID:', response.id);
+    // console.log('[UserService] Usuario creado exitosamente con ID:', response.id);
     return response;
 
   } catch (error) {

@@ -243,7 +243,7 @@ export class ValidationTaskAndSubtaskService {
       };
     } catch (error) {
       console.error('Error validating Task-Tariff relations:', error);
-      throw new Error(`Error validating relations: ${error.message}`);
+      throw new Error(`Error validating relations: ${(error as Error).message}`);
     }
   }
 }

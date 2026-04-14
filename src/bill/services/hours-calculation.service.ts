@@ -293,10 +293,10 @@ export class HoursCalculationService {
                                 combinedGroupData.tariffDetails?.compensatory || 
                                 'NO';
 
-  console.log('=== LÓGICA DE COMPENSATORIO ===');
-  console.log('groupDuration:', groupDuration);
-  console.log('baseTariffCompensatory:', baseTariffCompensatory);
-  console.log('shouldCalculateComp (sin domingos):', shouldCalculateComp);
+  // console.log('=== LÓGICA DE COMPENSATORIO ===');
+  // console.log('groupDuration:', groupDuration);
+  // console.log('baseTariffCompensatory:', baseTariffCompensatory);
+  // console.log('shouldCalculateComp (sin domingos):', shouldCalculateComp);
 
   // ✅ CALCULAR COMPENSATORIO SIEMPRE (se mostrará en la respuesta)
   const compensatoryBill = shouldCalculateComp ? compBill : 0;
@@ -316,17 +316,19 @@ export class HoursCalculationService {
   if (baseTariffCompensatory === 'YES' && shouldCalculateComp && !isNaN(totalCompBill)) {
     totalFinalFacturation += totalCompBill;
     // console.log('✅ Compensatorio INCLUIDO en total facturación (tarifa compensatory: YES)');
-  } else {
-    console.log('❌ Compensatorio NO incluido en total facturación (tarifa compensatory:', baseTariffCompensatory, ')');
-  }
+  } 
+  // else {
+  //   console.log('❌ Compensatorio NO incluido en total facturación (tarifa compensatory:', baseTariffCompensatory, ')');
+  // }
 
   // Para nómina: SIEMPRE incluir para servicios por HORAS
   if (shouldCalculateComp && !isNaN(totalCompPayroll)) {
     totalFinalPayroll += totalCompPayroll;
     // console.log('✅ Compensatorio INCLUIDO en total nómina (SIEMPRE para servicios HORAS)');
-  } else {
-    console.log('❌ Compensatorio NO incluido en total nómina - shouldCalculateComp:', shouldCalculateComp, 'totalCompPayroll:', totalCompPayroll);
-  }
+  } 
+  // else {
+  //   console.log('❌ Compensatorio NO incluido en total nómina - shouldCalculateComp:', shouldCalculateComp, 'totalCompPayroll:', totalCompPayroll);
+  // }
 
   // ✅ VALIDACIÓN FINAL ANTES DE RETORNAR
   if (isNaN(totalFinalFacturation)) {

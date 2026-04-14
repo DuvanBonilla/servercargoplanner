@@ -33,7 +33,7 @@ private getAvailableMealTypes(operationDateStart: Date, operationTimeStart: stri
       operationEnd = new Date(operationDateStart);
       operationEnd.setUTCHours(endHours, endMinutes, 0, 0);
     } catch (error) {
-      console.log(`⚠️ Error parseando timeEnd: ${operationTimeEnd}`);
+      console.error(`⚠️ Error parseando timeEnd: ${operationTimeEnd}`, error);
       operationEnd = null;
     }
   }
@@ -71,17 +71,18 @@ private getAvailableMealTypes(operationDateStart: Date, operationTimeStart: stri
       // Verificar si estamos en horario de comida actualmente
       const isCurrentlyMealTime = currentTotalMinutes >= schedule.start && currentTotalMinutes <= schedule.end;
       
-      console.log(`🍽️ ${mealType}:`);
-      console.log(`   - Horario comida: ${Math.floor(schedule.start/60)}:${(schedule.start%60).toString().padStart(2,'0')} - ${Math.floor(schedule.end/60)}:${(schedule.end%60).toString().padStart(2,'0')}`);
-      console.log(`   - ¿Trabajo se superpone con comida? ${hasOverlap}`);
-      console.log(`   - ¿Estamos en horario de comida? ${isCurrentlyMealTime}`);
+      // console.log(`🍽️ ${mealType}:`);
+      // console.log(`   - Horario comida: ${Math.floor(schedule.start/60)}:${(schedule.start%60).toString().padStart(2,'0')} - ${Math.floor(schedule.end/60)}:${(schedule.end%60).toString().padStart(2,'0')}`);
+      // console.log(`   - ¿Trabajo se superpone con comida? ${hasOverlap}`);
+      // console.log(`   - ¿Estamos en horario de comida? ${isCurrentlyMealTime}`);
       
       if (hasOverlap && isCurrentlyMealTime) {
         availableMeals.push(mealType);
-        console.log(`✅ ${mealType} disponible`);
-      } else {
-        console.log(`❌ ${mealType} NO disponible`);
-      }
+        // console.log(`✅ ${mealType} disponible`);
+      } 
+      // else {
+      //   console.log(`❌ ${mealType} NO disponible`);
+      // }
     });
     
   } else if (todayDate.getTime() > operationStartDate.getTime()) {
@@ -190,14 +191,14 @@ const availableMealTypes = this.getAvailableMealTypes(
         }
         
         // ✅ SI ES UNA COMIDA FALTANTE RETRASADA, REGISTRAR TODAS LAS FALTANTES DE ESE TIPO
-        console.log(`[FeedingService] 📋 Detectada comida retrasada para trabajador ${createFeedingDto.id_worker}`);
-        console.log(`[FeedingService] 📋 Tipo: ${createFeedingDto.type}`);
-        console.log(`[FeedingService] 📋 Comidas faltantes: ${workerMissing.missingMeals.join(', ')}`);
+        // console.log(`[FeedingService] 📋 Detectada comida retrasada para trabajador ${createFeedingDto.id_worker}`);
+        // console.log(`[FeedingService] 📋 Tipo: ${createFeedingDto.type}`);
+        // console.log(`[FeedingService] 📋 Comidas faltantes: ${workerMissing.missingMeals.join(', ')}`);
         
         // Contar cuántas veces aparece este tipo de comida en las faltantes
         const countMissing = workerMissing.missingMeals.filter(meal => meal === createFeedingDto.type).length;
         
-        console.log(`[FeedingService] 🔢 Total de ${createFeedingDto.type} faltantes: ${countMissing}`);
+        // console.log(`[FeedingService] 🔢 Total de ${createFeedingDto.type} faltantes: ${countMissing}`);
         
         // ✅ OBTENER FECHAS REALES DEL GRUPO/TRABAJADOR (no de la operación general)
         const workerOperation = await this.prisma.operation_Worker.findFirst({
@@ -224,7 +225,7 @@ const availableMealTypes = this.getAvailableMealTypes(
         const [year, month, day] = dateStr.split('-').map(Number);
         const operationStartLocal = new Date(year, month - 1, day);
         
-        console.log(`[FeedingService] 📅 Fecha inicio GRUPO: ${operationStartLocal.toISOString().split('T')[0]}`);
+        // console.log(`[FeedingService] 📅 Fecha inicio GRUPO: ${operationStartLocal.toISOString().split('T')[0]}`);
         
         // ✅ CALCULAR FECHA FIN DEL TRABAJADOR/GRUPO SI EXISTE
         let operationEndLocal: Date | null = null;
@@ -236,21 +237,21 @@ const availableMealTypes = this.getAvailableMealTypes(
             : String(workerOperation.dateEnd).split('T')[0];
           const [endYear, endMonth, endDay] = dateEndStr.split('-').map(Number);
           operationEndLocal = new Date(endYear, endMonth - 1, endDay);
-          console.log(`[FeedingService] 📅 Fecha fin GRUPO: ${operationEndLocal.toISOString().split('T')[0]}`);
+          // console.log(`[FeedingService] 📅 Fecha fin GRUPO: ${operationEndLocal.toISOString().split('T')[0]}`);
           
           effectiveEndDate = operationEndLocal.getTime() < todayLocal.getTime() 
             ? operationEndLocal 
             : todayLocal;
         }
         
-        console.log(`[FeedingService] 📅 Fecha efectiva: ${effectiveEndDate.toISOString().split('T')[0]}`);
+        // console.log(`[FeedingService] 📅 Fecha efectiva: ${effectiveEndDate.toISOString().split('T')[0]}`);
         
         // ✅ CALCULAR CUÁNTOS DÍAS HAN PASADO hasta effectiveEndDate
         const daysPassed = Math.floor((effectiveEndDate.getTime() - operationStartLocal.getTime()) / (24 * 60 * 60 * 1000));
         
-        console.log(`[FeedingService] 📅 Días desde inicio grupo: ${daysPassed}`);
-        console.log(`[FeedingService] 📅 Fecha inicio: ${operationStartLocal.toISOString().split('T')[0]}`);
-        console.log(`[FeedingService] 📅 Fecha hoy: ${todayLocal.toISOString().split('T')[0]}`);
+        // console.log(`[FeedingService] 📅 Días desde inicio grupo: ${daysPassed}`);
+        // console.log(`[FeedingService] 📅 Fecha inicio: ${operationStartLocal.toISOString().split('T')[0]}`);
+        // console.log(`[FeedingService] 📅 Fecha hoy: ${todayLocal.toISOString().split('T')[0]}`);
         
         // ✅ DETERMINAR EN QUÉ DÍAS DEBERÍA HABER ESTA COMIDA
         const startHour = workerOperation.timeStart 
@@ -273,10 +274,10 @@ const availableMealTypes = this.getAvailableMealTypes(
         // Si el grupo ya terminó, agregar sin restricción. Si sigue activo, verificar horario
         if (groupHasEnded) {
           daysToRegister.push(new Date(operationStartLocal));
-          console.log(`[FeedingService] ✅ Día inicio agregado (grupo terminado)`);
+          // console.log(`[FeedingService] ✅ Día inicio agregado (grupo terminado)`);
         } else if (startHour <= mealHour) {
           daysToRegister.push(new Date(operationStartLocal));
-          console.log(`[FeedingService] ✅ Día inicio agregado (horario válido)`);
+          // console.log(`[FeedingService] ✅ Día inicio agregado (horario válido)`);
         }
         
         // ✅ DÍAS SIGUIENTES: Agregar cada día hasta effectiveEndDate
@@ -302,7 +303,7 @@ const availableMealTypes = this.getAvailableMealTypes(
           }
         }
         
-        console.log(`[FeedingService] 📆 Días donde debería registrarse ${createFeedingDto.type}: ${daysToRegister.length}`);
+        // console.log(`[FeedingService] 📆 Días donde debería registrarse ${createFeedingDto.type}: ${daysToRegister.length}`);
         
         // ✅ CREAR REGISTRO PARA CADA DÍA QUE NO TENGA YA UNO
         for (const feedingDate of daysToRegister) {
@@ -335,13 +336,13 @@ const availableMealTypes = this.getAvailableMealTypes(
             });
             
             createdFeedings.push(feeding);
-            console.log(`[FeedingService] ✅ Registrado ${createFeedingDto.type} para fecha: ${feedingDate.toISOString().split('T')[0]}`);
+            // console.log(`[FeedingService] ✅ Registrado ${createFeedingDto.type} para fecha: ${feedingDate.toISOString().split('T')[0]}`);
           } else {
             console.log(`[FeedingService] ⚠️ Ya existe ${createFeedingDto.type} para fecha: ${feedingDate.toISOString().split('T')[0]}`);
           }
         }
         
-        console.log(`[FeedingService] 📊 Total de alimentaciones retrasadas registradas: ${createdFeedings.length}`);
+        // console.log(`[FeedingService] 📊 Total de alimentaciones retrasadas registradas: ${createdFeedings.length}`);
         
         if (createdFeedings.length > 0) {
           return {
@@ -636,7 +637,7 @@ const availableMealTypes = this.getAvailableMealTypes(
       return paginatedResponse;
     } catch (error) {
       console.error('Error finding worker feeding with pagination:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -897,7 +898,7 @@ async getMissingMealsForOperation(operationId: number) {
       },
   });
   if (!operation) {
-        console.log(`❌ [DEBUG] Operación ${operationId} no encontrada`);
+        // console.log(`❌ [DEBUG] Operación ${operationId} no encontrada`);
 
     return [];
   }

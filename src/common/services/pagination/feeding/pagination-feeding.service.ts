@@ -100,7 +100,7 @@ export class PaginationFeedingService {
       });
     } catch (error) {
       console.error('Error paginating worker feeding:', error);
-      throw new Error(`Error paginating worker feeding: ${error.message}`);
+      throw new Error(`Error paginating worker feeding: ${(error as Error).message}`);
     }
   }
 

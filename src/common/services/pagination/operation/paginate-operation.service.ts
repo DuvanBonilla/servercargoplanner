@@ -59,7 +59,7 @@ export class PaginateOperationService {
       });
     } catch (error) {
       console.error('Error in paginateOperations:', error);
-      throw new Error(`Error paginating operations: ${error.message}`);
+      throw new Error(`Error paginating operations: ${(error as Error).message}`);
     }
   }
 

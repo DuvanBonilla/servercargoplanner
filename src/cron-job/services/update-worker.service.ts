@@ -141,7 +141,7 @@ export class UpdateWorkerService {
   //         }
   //       } catch (error) {
   //         this.logger.error(
-  //           `Failed to delete operation ${operation.id}: ${error.message}`,
+  //           `Failed to delete operation ${operation.id}: ${(error as Error).message}`,
   //         );
   //       }
   //     }
@@ -188,7 +188,7 @@ export class UpdateWorkerService {
 
   //     return true;
   //   } catch (error) {
-  //     this.logger.error(`Error checking if operation ${operationId} can be deleted: ${error.message}`);
+  //     this.logger.error(`Error checking if operation ${operationId} can be deleted: ${(error as Error).message}`);
   //     return false;
   //   }
   // }

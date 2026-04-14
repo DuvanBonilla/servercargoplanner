@@ -19,7 +19,7 @@ async function bootstrap() {
     await prisma.$queryRaw`SELECT 1`;
     console.log('✅ Base de datos conectada correctamente');
   } catch (error) {
-    console.error('❌ Error conectando a base de datos:', error.message);
+    console.error('❌ Error conectando a base de datos:', (error as Error).message);
     process.exit(1);
   }
   

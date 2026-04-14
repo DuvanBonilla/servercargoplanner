@@ -44,9 +44,9 @@ export class BillController {
     @CurrentUser('userId') userId: number,
     @Body() createBillDto: CreateBillDto) {
       // Agrega este console.log para ver lo que llega del frontend
-  console.log('=== Datos recibidos para crear factura ==='); 
-  console.log(JSON.stringify(createBillDto, null, 2));
-  console.log('==========================================');
+  // console.log('=== Datos recibidos para crear factura ==='); 
+  // console.log(JSON.stringify(createBillDto, null, 2));
+  // console.log('==========================================');
     const response = await this.billService.create(createBillDto, userId);
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
@@ -468,7 +468,7 @@ async exportToExcel(
     if (!res.headersSent) {
       res.status(500).json({
         message: 'Error generando Excel',
-        error: error?.message || error,
+        error: (error as Error).message || error,
       });
     }
   }

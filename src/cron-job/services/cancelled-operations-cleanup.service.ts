@@ -73,7 +73,7 @@ export class CancelledOperationsCleanupService {
         } catch (error) {
           if (error.message.includes('no se puede eliminar porque tiene')) {
             skippedCount++;
-            this.logger.warn(`Operación omitida: ID ${operation.id} - ${error.message}`);
+            this.logger.warn(`Operación omitida: ID ${operation.id} - ${(error as Error).message}`);
           } else {
             errorCount++;
             this.logger.error(` Error eliminando operación ID ${operation.id} (Estado: ${operation.status}):`, error.message);

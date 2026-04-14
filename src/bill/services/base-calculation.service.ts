@@ -113,7 +113,7 @@ export class BaseCalculationService {
       }
     }
   
-    console.log("Total calculado:", { totalHours, totalAmount });
+    // console.log("Total calculado:", { totalHours, totalAmount });
     
     if (hasSunday && !useFacturationMultipliers) {
       console.log("💡 Aplicado cálculo especial para horas festivas en domingo (nómina)");

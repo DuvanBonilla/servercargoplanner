@@ -36,21 +36,14 @@ export class ValidationClientProgrammingService {
     status?: string;
   }) {
     try {
-      // Verificar que la programación del cliente no exista
-      if (
-        service_request &&
-        service &&
-        dateStart &&
-        timeStart &&
-        client &&
-        ubication
-      ) {
+      // Bloquear solo cuando TODOS los campos clave son idénticos
+      if (service_request && service && dateStart && timeStart && client && ubication) {
         const existingProgramming =
           await this.prisma.clientProgramming.findFirst({
             where: {
               service_request,
               service,
-              dateStart: new Date(dateStart || ''),
+              dateStart: new Date(dateStart),
               timeStart,
               client,
               ubication,
@@ -59,18 +52,9 @@ export class ValidationClientProgrammingService {
 
         if (existingProgramming) {
           return {
-            message: 'Client programming already exists',
+            message: 'Ya existe una programación con exactamente los mismos datos',
             status: 409,
           };
-        }
-      }
-
-      if (service_request) {
-        const serviceRequest = await this.prisma.clientProgramming.findFirst({
-          where: { service_request },
-        });
-        if (serviceRequest) {
-          return { message: 'Service alredy exists', status: 409 };
         }
       }
 
@@ -100,7 +84,7 @@ export class ValidationClientProgrammingService {
       return { success: true };
     } catch (error) {
       console.error('Error validating client programming:', error);
-      throw new Error(`Error validating client programming: ${error.message}`);
+      throw new Error(`Error validating client programming: ${(error as Error).message}`);
     }
   }
 }

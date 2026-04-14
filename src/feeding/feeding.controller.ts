@@ -108,7 +108,7 @@ export class FeedingController {
       );
     } catch (error) {
       console.error('Error in paginated request:', error);
-      throw new Error(`Error processing paginated request: ${error.message}`);
+      throw new Error(`Error processing paginated request: ${(error as Error).message}`);
     }
   }
 

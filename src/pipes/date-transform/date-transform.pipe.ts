@@ -8,6 +8,11 @@ import {
 @Injectable()
 export class DateTransformPipe implements PipeTransform {
   transform(value: any, metadata: ArgumentMetadata) {
+    // Ignorar parámetros de decoradores personalizados (e.g. @CurrentUser)
+    if (metadata.type === 'custom') {
+      return value;
+    }
+
     // Si no hay valor, retornar sin cambios
     if (value === undefined || value === null) {
       return value;
@@ -31,7 +36,7 @@ export class DateTransformPipe implements PipeTransform {
         throw error;
       }
       throw new BadRequestException(
-        `Error transformando fechas: ${error.message}`,
+        `Error transformando fechas: ${(error as Error).message}`,
       );
     }
   }
@@ -75,7 +80,7 @@ export class DateTransformPipe implements PipeTransform {
         if (typeof result[field] === 'string') {
           if (!this.isValidDateFormat(result[field])) {
             throw new BadRequestException(
-              `${field} debe tener formato YYYY-MM-DD: ${result[field]}`,
+              `${field} debe tener formato YYYY-MM-DD,,,,,: ${result[field]}`,
             );
           }
           // Convertir a objeto Date

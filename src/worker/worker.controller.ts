@@ -26,11 +26,14 @@ import { DateTransformPipe } from 'src/pipes/date-transform/date-transform.pipe'
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 // import { ExcelExportService } from 'src/common/validation/services/excel-export.service';
 import { SiteInterceptor } from 'src/common/interceptors/site.interceptor';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Role } from '@prisma/client';
 /**
  * @category Controller
  */
 @Controller('worker')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @UseInterceptors(SiteInterceptor)
 @ApiBearerAuth('access-token')
 export class WorkerController {
@@ -216,6 +219,7 @@ async findById(
 }
 
   @Patch(':id')
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH)
 async update(
   @Param('id', ParseIntPipe) id: number,
   @Body() updateWorkerDto: UpdateWorkerDto,
@@ -254,6 +258,7 @@ async update(
 }
  //remove worker
  @Delete(':id')
+ @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH)
 async remove(
   @Param('id', ParseIntPipe) id: number,
   @CurrentUser('siteId') siteId: number,

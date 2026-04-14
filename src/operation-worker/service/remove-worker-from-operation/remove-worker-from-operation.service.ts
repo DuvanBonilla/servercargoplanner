@@ -119,7 +119,7 @@ export class RemoveWorkerFromOperationService {
             });
 
             if (operationWorkerToDelete) {
-              console.log(`[RemoveWorkerService] 🗑️ Eliminando worker ${workerId} del grupo ${id_group}`);
+              // console.log(`[RemoveWorkerService] 🗑️ Eliminando worker ${workerId} del grupo ${id_group}`);
               
               // Eliminar BillDetail relacionados
               await this.prisma.billDetail.deleteMany({
@@ -139,7 +139,7 @@ export class RemoveWorkerFromOperationService {
                 where: { id: operationWorkerToDelete.id },
               });
               
-              console.log(`[RemoveWorkerService] ✅ Worker ${workerId} eliminado del grupo ${id_group}`);
+              // console.log(`[RemoveWorkerService] ✅ Worker ${workerId} eliminado del grupo ${id_group}`);
 
               if (deleteResult) {
                 results.push({
@@ -157,7 +157,7 @@ export class RemoveWorkerFromOperationService {
                   },
                 });
                 
-                console.log(`[RemoveWorkerService] 📊 Workers restantes en grupo ${id_group}: ${remainingInGroup}`);
+                // console.log(`[RemoveWorkerService] 📊 Workers restantes en grupo ${id_group}: ${remainingInGroup}`);
 
                 // Verificar si el trabajador aún está en otros grupos de esta operación
                 const remainingInOperation =
@@ -170,7 +170,7 @@ export class RemoveWorkerFromOperationService {
 
                 // Solo liberar si no está en otros grupos de esta operación
                 if (!remainingInOperation) {
-                  console.log(`[RemoveWorkerService] 🔄 Worker ${workerId} ya no está en operación ${id_operation}, verificando otras operaciones...`);
+                  // console.log(`[RemoveWorkerService] 🔄 Worker ${workerId} ya no está en operación ${id_operation}, verificando otras operaciones...`);
                   
                   // Verificar si está en otras operaciones activas
                   const inOtherActiveOps =
@@ -189,7 +189,7 @@ export class RemoveWorkerFromOperationService {
                       where: { id: workerId },
                       data: { status: 'AVALIABLE' },
                     });
-                    console.log(`[RemoveWorkerService] ✅ Worker ${workerId} liberado (status: AVALIABLE)`);
+                    // console.log(`[RemoveWorkerService] ✅ Worker ${workerId} liberado (status: AVALIABLE)`);
                     results[results.length - 1].workerReleased = true;
                   }
                 }
@@ -197,7 +197,7 @@ export class RemoveWorkerFromOperationService {
             } else {
               // Worker no encontrado en el grupo específico
               // Esto puede ocurrir si Flutter tiene datos en caché
-              console.log(`[RemoveWorkerService] ⚠️ Worker ${workerId} no encontrado en grupo ${id_group} (posible caché de Flutter)`);
+              // console.log(`[RemoveWorkerService] ⚠️ Worker ${workerId} no encontrado en grupo ${id_group} (posible caché de Flutter)`);
               
               results.push({
                 workerId,
@@ -272,7 +272,7 @@ export class RemoveWorkerFromOperationService {
             } else {
               // Worker no encontrado en la operación
               // Esto puede ocurrir si Flutter tiene datos en caché
-              console.log(`[RemoveWorkerService] ⚠️ Worker ${workerId} no encontrado en operación ${id_operation} (posible caché de Flutter)`);
+              // console.log(`[RemoveWorkerService] ⚠️ Worker ${workerId} no encontrado en operación ${id_operation} (posible caché de Flutter)`);
               
               results.push({
                 workerId,
@@ -292,7 +292,7 @@ export class RemoveWorkerFromOperationService {
       return { message: 'No workers to remove', removedWorkers: [] };
     } catch (error) {
       console.error('Error removing workers from operation:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -370,12 +370,12 @@ export class RemoveWorkerFromOperationService {
         // ✅ USAR FECHA/HORA QUE EL USUARIO ESPECIFICÓ AL COMPLETAR LA OPERACIÓN
         finalDateEnd = operation.dateEnd;
         finalTimeEnd = operation.timeEnd;
-        console.log(`[RemoveWorkerService] Usando fecha/hora de la operación: ${finalDateEnd.toISOString()} ${finalTimeEnd}`);
+        // console.log(`[RemoveWorkerService] Usando fecha/hora de la operación: ${finalDateEnd.toISOString()} ${finalTimeEnd}`);
       } else {
         // Solo como fallback usar hora actual
         finalDateEnd = getColombianDateTime();
         finalTimeEnd = getColombianTimeString();
-        console.log(`[RemoveWorkerService] Usando fecha/hora actual como fallback: ${finalDateEnd.toISOString()} ${finalTimeEnd}`);
+        // console.log(`[RemoveWorkerService] Usando fecha/hora actual como fallback: ${finalDateEnd.toISOString()} ${finalTimeEnd}`);
       }
 
       // Actualizar fecha de finalización en la tabla intermedia SOLO para trabajadores sin fecha de fin
@@ -398,7 +398,7 @@ export class RemoveWorkerFromOperationService {
       };
     } catch (error) {
       console.error('Error releasing workers from operation:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -408,12 +408,12 @@ export class RemoveWorkerFromOperationService {
     workerId: number,
     groupId: string,
   ) {
-    console.log('[RemoveWorkerService] removeWorkerFromGroup - Parámetros:', {
-      operationId,
-      workerId,
-      groupId,
-      workerIdType: typeof workerId
-    });
+    // console.log('[RemoveWorkerService] removeWorkerFromGroup - Parámetros:', {
+    //   operationId,
+    //   workerId,
+    //   groupId,
+    //   workerIdType: typeof workerId
+    // });
 
     // Validar parámetros
     if (!operationId || !workerId || !groupId) {
@@ -434,14 +434,14 @@ export class RemoveWorkerFromOperationService {
     });
 
     if (billInGroup) {
-      console.log(`[RemoveWorkerService] ❌ Intento de eliminar trabajador de grupo con factura COMPLETED`);
+      // console.log(`[RemoveWorkerService] ❌ Intento de eliminar trabajador de grupo con factura COMPLETED`);
       throw new BadRequestException(
         `No se puede eliminar el trabajador del grupo porque la factura asociada (ID: ${billInGroup.id}) tiene estado COMPLETED. Las facturas completadas no pueden ser modificadas.`
       );
     }
 
     // Validar que el trabajador existe - QUITAR operationIds
-    console.log('[RemoveWorkerService] Validando trabajador:', workerId);
+    // console.log('[RemoveWorkerService] Validando trabajador:', workerId);
     await this.validationService.validateAllIds({
       workerIds: [workerId],  // Solo validar el trabajador
       // QUITAR: operationIds: [operationId],
@@ -456,7 +456,7 @@ export class RemoveWorkerFromOperationService {
       throw new NotFoundException(`Operación ${operationId} no encontrada`);
     }
 
-    console.log('[RemoveWorkerService] Validación completada, eliminando del grupo');
+    // console.log('[RemoveWorkerService] Validación completada, eliminando del grupo');
 
     // ✅ PRIMERO: Buscar el operation_worker para obtener su ID
     const operationWorker = await this.prisma.operation_Worker.findFirst({
@@ -474,7 +474,7 @@ export class RemoveWorkerFromOperationService {
         `Trabajador ${workerId} no encontrado en el grupo ${groupId} de la operación ${operationId}`,
       );
     }
-console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operationWorker.id}`);
+// console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operationWorker.id}`);
 
     // ✅ SEGUNDO: Eliminar BillDetail relacionados (si existen)
     const billDetailsToDelete = await this.prisma.billDetail.findMany({
@@ -482,13 +482,13 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
     });
 
     if (billDetailsToDelete.length > 0) {
-      console.log(`[RemoveWorkerService] Eliminando ${billDetailsToDelete.length} BillDetail(s)...`);
+      // console.log(`[RemoveWorkerService] Eliminando ${billDetailsToDelete.length} BillDetail(s)...`);
       
       await this.prisma.billDetail.deleteMany({
         where: { id_operation_worker: operationWorker.id },
       });
       
-      console.log('[RemoveWorkerService] ✅ BillDetails eliminados');
+      // console.log('[RemoveWorkerService] ✅ BillDetails eliminados');
     }
 
     // ✅ TERCERO: Eliminar WorkerFeeding relacionados (si existen)
@@ -500,7 +500,7 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
     });
 
     if (workerFeedingToDelete.length > 0) {
-      console.log(`[RemoveWorkerService] Eliminando ${workerFeedingToDelete.length} WorkerFeeding(s)...`);
+      // console.log(`[RemoveWorkerService] Eliminando ${workerFeedingToDelete.length} WorkerFeeding(s)...`);
       
       await this.prisma.workerFeeding.deleteMany({
         where: { 
@@ -517,20 +517,20 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
       where: { id: operationWorker.id },
     });
 
-    console.log('[RemoveWorkerService] ✅ Operation_Worker eliminado:', deleteResult);
+    // console.log('[RemoveWorkerService] ✅ Operation_Worker eliminado:', deleteResult);
     // Verificar si el trabajador ya no tiene más asignaciones
     const remainingAssignments = await this.prisma.operation_Worker.count({
       where: { id_worker: workerId },
     });
 
-    console.log('[RemoveWorkerService] Asignaciones restantes del trabajador:', remainingAssignments);
+    // console.log('[RemoveWorkerService] Asignaciones restantes del trabajador:', remainingAssignments);
 
     if (remainingAssignments === 0) {
       await this.prisma.worker.update({
         where: { id: workerId },
         data: { status: 'AVALIABLE' },
       });
-      console.log('[RemoveWorkerService] Trabajador marcado como AVAILABLE');
+      // console.log('[RemoveWorkerService] Trabajador marcado como AVAILABLE');
     }
 
     return {
@@ -598,7 +598,7 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
           where: { id_operation_worker: opWorker.id },
         });
         
-        console.log('[RemoveWorkerService] ✅ BillDetails eliminados');
+        // console.log('[RemoveWorkerService] ✅ BillDetails eliminados');
       }
 
       // Eliminar WorkerFeeding relacionados
@@ -610,7 +610,7 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
       });
 
       if (workerFeedingToDelete.length > 0) {
-        console.log(`[RemoveWorkerService] Eliminando ${workerFeedingToDelete.length} WorkerFeeding(s) para Operation_Worker ${opWorker.id}...`);
+        // console.log(`[RemoveWorkerService] Eliminando ${workerFeedingToDelete.length} WorkerFeeding(s) para Operation_Worker ${opWorker.id}...`);
         
         await this.prisma.workerFeeding.deleteMany({
           where: { 
@@ -631,21 +631,21 @@ console.log(`[RemoveWorkerService] Operation_Worker encontrado con ID: ${operati
       },
     });
 
-    console.log('[RemoveWorkerService] ✅ Operation_Workers eliminados:', deleteResult);
+    // console.log('[RemoveWorkerService] ✅ Operation_Workers eliminados:', deleteResult);
 
     // Verificar si el trabajador ya no tiene más asignaciones
     const remainingAssignments = await this.prisma.operation_Worker.count({
       where: { id_worker: workerId },
     });
 
-    console.log('[RemoveWorkerService] Asignaciones restantes del trabajador:', remainingAssignments);
+    // console.log('[RemoveWorkerService] Asignaciones restantes del trabajador:', remainingAssignments);
 
     if (remainingAssignments === 0) {
       await this.prisma.worker.update({
         where: { id: workerId },
         data: { status: 'AVALIABLE' },
       });
-      console.log('[RemoveWorkerService] Trabajador marcado como AVAILABLE');
+      // console.log('[RemoveWorkerService] Trabajador marcado como AVAILABLE');
     }
 
     return {

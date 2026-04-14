@@ -137,7 +137,7 @@ export class CalledAttentionController {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      throw new Error(`Error processing paginated request: ${error.message}`);
+      throw new Error(`Error processing paginated request: ${(error as Error).message}`);
     }
   }
   @Get()

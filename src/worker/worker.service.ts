@@ -565,7 +565,7 @@ async findOne(dni: string, id_site?: number) {
     return response;
   } catch (error) {
     console.error('[WorkerService] Error finding worker by DNI:', error);
-    throw new Error(error.message);
+    throw new Error((error as Error).message);
   }
 }
 
@@ -630,7 +630,7 @@ async findById(id: number, id_site?: number) {
     return response;
   } catch (error) {
     console.error('[WorkerService] Error finding worker by ID:', error);
-    throw new Error(error.message);
+    throw new Error((error as Error).message);
   }
 }
   /**

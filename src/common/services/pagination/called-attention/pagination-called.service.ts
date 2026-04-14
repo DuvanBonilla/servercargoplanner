@@ -67,7 +67,7 @@ export class PaginationCalledService {
       });
     } catch (error) {
       console.error('Error paginating called attentions:', error);
-      throw new Error(`Error paginating called attentions: ${error.message}`);
+      throw new Error(`Error paginating called attentions: ${(error as Error).message}`);
     }
   }
 

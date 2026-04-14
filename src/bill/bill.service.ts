@@ -148,9 +148,9 @@ export class BillService {
     for (const result of calculationResults.groupResults) {
       const groupDto = this.getGroupDto(createBillDto.groups, result.groupId);
 
-      console.log(`\n--- Procesando grupo: ${result.groupId} ---`);
-      console.log(`Workers en este grupo: ${result.workers?.length || 0}`);
-      console.log(`Worker IDs:`, result.workers?.map(w => w.id) || []);
+      // console.log(`\n--- Procesando grupo: ${result.groupId} ---`);
+      // console.log(`Workers en este grupo: ${result.workers?.length || 0}`);
+      // console.log(`Worker IDs:`, result.workers?.map(w => w.id) || []);
          
     // ✅ AGREGAR INFORMACIÓN DE LA OPERACIÓN AL RESULTADO
     result.operation = {
@@ -168,7 +168,7 @@ export class BillService {
       );
       const billSaved = await this.prisma.bill.create({ data: billData });
       
-      console.log(`Bill creada con ID: ${billSaved.id} para grupo: ${result.groupId}`);
+      // console.log(`Bill creada con ID: ${billSaved.id} para grupo: ${result.groupId}`);
 
       await this.processBillDetails(
         result.workers,
@@ -999,17 +999,17 @@ export class BillService {
       index === self.findIndex(w => w.id === worker.id)
     ) || [];
 
-    console.log(`\n[processBillDetails] Bill ID: ${billId}, Grupo: ${groupDto.id}`);
-    console.log(`Workers recibidos: ${workers?.length || 0}`);
-    console.log(`Workers únicos: ${uniqueWorkers.length}`);
+    // console.log(`\n[processBillDetails] Bill ID: ${billId}, Grupo: ${groupDto.id}`);
+    // console.log(`Workers recibidos: ${workers?.length || 0}`);
+    // console.log(`Workers únicos: ${uniqueWorkers.length}`);
 
     if (workers?.length !== uniqueWorkers.length) {
       console.warn(
         `⚠️ [processBillDetails] Se encontraron ${workers.length - uniqueWorkers.length} workers duplicados. ` +
         `Total original: ${workers.length}, Únicos: ${uniqueWorkers.length}`
       );
-      console.log('Workers originales:', workers?.map(w => w.id));
-      console.log('Workers únicos:', uniqueWorkers.map(w => w.id));
+      // console.log('Workers originales:', workers?.map(w => w.id));
+      // console.log('Workers únicos:', uniqueWorkers.map(w => w.id));
     }
 
     let billDetailsCreated = 0;
@@ -1021,7 +1021,7 @@ export class BillService {
         groupDto.id,
       );
 
-      console.log(`  → Creando billDetail para worker ${worker.id}, operation_worker: ${operationWorker.id}`);
+      // console.log(`  → Creando billDetail para worker ${worker.id}, operation_worker: ${operationWorker.id}`);
 
       const totalPaysheetWorker = this.calculateTotalWorker(
         result.payroll.totalAmount,
@@ -1051,7 +1051,7 @@ export class BillService {
       billDetailsCreated++;
     }
 
-    console.log(`[processBillDetails] Total billDetails creados: ${billDetailsCreated}\n`);
+    // console.log(`[processBillDetails] Total billDetails creados: ${billDetailsCreated}\n`);
   }
 
   // Procesar detalles para grupos HORAS
@@ -1276,10 +1276,10 @@ export class BillService {
     });
 
     if (allMatches.length > 1) {
-      console.log(`📊 [findOperationWorker] Worker ${workerId} existe en ${allMatches.length} grupos:`);
-      allMatches.forEach(match => {
-        console.log(`   - operation_worker ${match.id} en grupo ${match.id_group}${match.id_group === groupId ? ' ← SELECCIONADO' : ''}`);
-      });
+      // console.log(`📊 [findOperationWorker] Worker ${workerId} existe en ${allMatches.length} grupos:`);
+      // allMatches.forEach(match => {
+      //   console.log(`   - operation_worker ${match.id} en grupo ${match.id_group}${match.id_group === groupId ? ' ← SELECCIONADO' : ''}`);
+      // });
     }
     
     const operationWorker = await this.prisma.operation_Worker.findFirst({
@@ -1312,7 +1312,7 @@ export class BillService {
       );
     }
     
-    console.log(`✅ [findOperationWorker] Encontrado operation_worker ${operationWorker.id} para worker ${workerId} en grupo ${operationWorker.id_group}`);
+    // console.log(`✅ [findOperationWorker] Encontrado operation_worker ${operationWorker.id} para worker ${workerId} en grupo ${operationWorker.id_group}`);
 
     return operationWorker;
   }
@@ -2422,7 +2422,7 @@ export class BillService {
 
       // ✅ Si no existe el billDetail, crearlo
       if (!billDetail) {
-        console.log(`✅ Creando billDetail para nuevo operation_worker ${operationWorker.id}`);
+        // console.log(`✅ Creando billDetail para nuevo operation_worker ${operationWorker.id}`);
         billDetail = await this.prisma.billDetail.create({
           data: {
             id_bill: billId,
@@ -2816,7 +2816,7 @@ export class BillService {
 
     } catch (error) {
       console.error(`[BillService] ❌ Error recalculando op_duration:`, error);
-      throw new ConflictException(`Error al recalcular la duración de la operación: ${error.message}`);
+      throw new ConflictException(`Error al recalcular la duración de la operación: ${(error as Error).message}`);
     }
   }
 
@@ -2995,7 +2995,7 @@ export class BillService {
       return groupHours;
     } catch (error) {
       console.error(`[BillService] ❌ Error recalculando group_hours:`, error);
-      throw new ConflictException(`Error al recalcular las horas del grupo: ${error.message}`);
+      throw new ConflictException(`Error al recalcular las horas del grupo: ${(error as Error).message}`);
     }
   }
 
@@ -3133,7 +3133,7 @@ export class BillService {
 
     } catch (error) {
       console.error(`[BillService] ❌ Error actualizando fechas del grupo ${groupId}:`, error);
-      throw new ConflictException(`Error al actualizar las fechas del grupo: ${error.message}`);
+      throw new ConflictException(`Error al actualizar las fechas del grupo: ${(error as Error).message}`);
     }
   }
 
@@ -3165,7 +3165,7 @@ export class BillService {
       const latestEndDateTime = await this.getLatestGroupEndDateTime(operationId);
       
       if (!latestEndDateTime) {
-        console.log(`[BillService] ❌ No se pudo determinar fecha de finalización para operación ${operationId}`);
+        // console.log(`[BillService] ❌ No se pudo determinar fecha de finalización para operación ${operationId}`);
         return;
       }
 
@@ -3910,7 +3910,7 @@ export class BillService {
 
     } catch (error) {
       console.error('Error en findAllPaginatedWithFilters:', error);
-      throw new Error(`Error obteniendo bills paginadas: ${error.message}`);
+      throw new Error(`Error obteniendo bills paginadas: ${(error as Error).message}`);
     }
   }
 
@@ -4219,8 +4219,9 @@ async exportBillsToExcelStream(
     'Total Alimentación', //36 - Total de alimentación
     'Subsede', //37 - Subsede
     'Usuario', //38 - Usuario
-    'Observaciones', //39 - Observaciones
-    'Estado', //40 - Estado
+    'Creado por', //39 - Creado por (usuario de la operación)
+    'Observaciones', //40 - Observaciones
+    'Estado', //41 - Estado
   ];
 //Encabezados para hoja "RTD" (Registro de Detalle de Factura para cada trabajador)
   const headersRTD = [ // 39 columnas
@@ -4261,6 +4262,7 @@ async exportBillsToExcelStream(
     'Alimentación',
     'Subsede',
     'Usuario',
+    'Creado por',
     'Observaciones',
     'Estado',
   ];
@@ -4324,6 +4326,9 @@ async exportBillsToExcelStream(
         op_duration: true,
         motorShip: true,
         subSite: {
+          select: { name: true },
+        },
+        user:{
           select: { name: true },
         },
         task: {
@@ -4612,8 +4617,9 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
       totalFeeding, //36 Total Alimentación (pendiente de cálculo, se puede agregar lógica similar a compensatory si es necesario)
       bill.operation?.subSite?.name ?? 'N/A',//37 Subsede
       bill.user?.name ?? '', //38 Usuario
-      bill.observation ?? '', //39 Observaciones
-      estadoTexto, //40 Estado
+      bill.operation?.user?.name ?? '', //39 Creado por (usuario de la operación)
+      bill.observation ?? '', //40 Observaciones
+      estadoTexto, //41 Estado
     ]);
 
     this.styleRow(row, rowIndexData);
@@ -4705,8 +4711,9 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
         feedingCount, //36- Alimentación (número de registros de alimentación para este trabajador en esta operación)
         bill.operation?.subSite?.name ?? 'N/A', //37- Subsitio
         bill.user?.name ?? '', //38- Usuario
-        bill.observation ?? '', //39- Observación
-        estadoTexto, //40- Estado
+        bill.operation.user?.name ?? '', //39- Creado por (usuario de la operación)
+        bill.observation ?? '', //40- Observación
+        estadoTexto, //41- Estado
       ]);
 
       // ===== FORMATOS RTD ===

@@ -90,7 +90,7 @@ export class ValidationWorkerService {
     } catch (error) {
       console.error('Error validating worker in operation:', error);
       throw new Error(
-        `Error validating worker-operation relation: ${error.message}`,
+        `Error validating worker-operation relation: ${(error as Error).message}`,
       );
     }
   }
@@ -113,7 +113,7 @@ export class ValidationWorkerService {
       return !!existingWorker;
     } catch (error) {
       console.error('Error checking if worker code exists:', error);
-      throw new Error(`Error checking worker code: ${error.message}`);
+      throw new Error(`Error checking worker code: ${(error as Error).message}`);
     }
   }
 
@@ -130,7 +130,7 @@ export class ValidationWorkerService {
       return !!existingWorker;
     } catch (error) {
       console.error('Error checking if worker DNI exists:', error);
-      throw new Error(`Error checking worker DNI: ${error.message}`);
+      throw new Error(`Error checking worker DNI: ${(error as Error).message}`);
     }
   }
 
@@ -147,7 +147,7 @@ export class ValidationWorkerService {
       return !!existingWorker;
     } catch (error) {
       console.error('Error checking if worker phone exists:', error);
-      throw new Error(`Error checking worker phone: ${error.message}`);
+      throw new Error(`Error checking worker phone: ${(error as Error).message}`);
     }
   }
 
@@ -204,7 +204,7 @@ export class ValidationWorkerService {
       };
     } catch (error) {
       console.error('Error validating workers existence:', error);
-      throw new Error(`Error validating workers: ${error.message}`);
+      throw new Error(`Error validating workers: ${(error as Error).message}`);
     }
   }
 }

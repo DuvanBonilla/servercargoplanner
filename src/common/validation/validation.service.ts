@@ -184,11 +184,11 @@ export class ValidationService {
 
       // 8. Validar que todos los trabajadores existan si se proporcionan IDs
       if (workerIds && workerIds.length > 0) {
-        console.log('[ValidationService] ===== WORKER VALIDATION START =====');
-        console.log('[ValidationService] IDs recibidos (raw):', {
-          array: workerIds,
-          values: workerIds.map((id, i) => ({ index: i, value: id, type: typeof id, isNumber: Number.isInteger(id) }))
-        });
+        // console.log('[ValidationService] ===== WORKER VALIDATION START =====');
+        // console.log('[ValidationService] IDs recibidos (raw):', {
+        //   array: workerIds,
+        //   values: workerIds.map((id, i) => ({ index: i, value: id, type: typeof id, isNumber: Number.isInteger(id) }))
+        // });
         
         // FILTRAR valores undefined, null o inválidos antes de la consulta
         const validWorkerIds = workerIds
@@ -201,11 +201,11 @@ export class ValidationService {
           })
           .map(id => Number(id)); // Convertir a número
         
-        console.log('[ValidationService] IDs válidos después del filtro:', {
-          original_count: workerIds.length,
-          valid_count: validWorkerIds.length,
-          validIds: validWorkerIds,
-        });
+        // console.log('[ValidationService] IDs válidos después del filtro:', {
+        //   original_count: workerIds.length,
+        //   valid_count: validWorkerIds.length,
+        //   validIds: validWorkerIds,
+        // });
         
         if (validWorkerIds.length > 0) {
           const existingWorkers = await this.prisma.worker.findMany({
@@ -222,10 +222,10 @@ export class ValidationService {
             }
           });
 
-          console.log('[ValidationService] Workers encontrados en BD:', {
-            total: existingWorkers.length,
-            workers: existingWorkers,
-          });
+          // console.log('[ValidationService] Workers encontrados en BD:', {
+          //   total: existingWorkers.length,
+          //   workers: existingWorkers,
+          // });
 
           const existingWorkerIds = existingWorkers.map(w => w.id);
           const missingWorkerIds = validWorkerIds.filter(id => !existingWorkerIds.includes(id));
@@ -235,7 +235,7 @@ export class ValidationService {
             throw new NotFoundException(`Trabajadores no encontrados con IDs: ${missingWorkerIds.join(', ')}`);
           }
 
-          console.log('[ValidationService] ✅ Todos los trabajadores válidos existen');
+          // console.log('[ValidationService] ✅ Todos los trabajadores válidos existen');
           response.existingWorkers = existingWorkers;
         } else {
           if (workerIds.length > 0) {
@@ -246,9 +246,9 @@ export class ValidationService {
             });
             throw new BadRequestException('No se proporcionaron IDs de trabajadores válidos');
           }
-          console.log('[ValidationService] No hay IDs de trabajadores para validar');
+          // console.log('[ValidationService] No hay IDs de trabajadores para validar');
         }
-        console.log('[ValidationService] ===== WORKER VALIDATION END =====');
+        // console.log('[ValidationService] ===== WORKER VALIDATION END =====');
       }
 
       // 9. Validar que todos los encargados existan si se proporcionan IDs
@@ -435,7 +435,8 @@ export class ValidationService {
       return response;
     } catch (error) {
       // console.error('Error validating IDs:', error);
-      throw new Error(`Error validating IDs: ${error.message}`);
+      console.error('Error validating IDs:', (error as Error).message);
+      throw new Error(`Error validating IDs: ${(error as Error).message}`);
     }
   }
 
@@ -534,8 +535,8 @@ export class ValidationService {
       // Si no existe, se puede proceder con la creación
       return { success: true };
     } catch (error) {
-      console.error('Error validating client programming:', error);
-      throw new Error(`Error validating client programming: ${error.message}`);
+      console.error('Error validating client programming:', (error as Error).message);
+      throw new Error(`Error validating client programming: ${(error as Error).message}`);
     }
   }
 
@@ -588,9 +589,9 @@ export class ValidationService {
       // console.log('Worker is assigned to operation');
       return { success: true };
     } catch (error) {
-      console.error('Error validating worker in operation:', error);
+      console.error('Error validating worker in operation:', (error as Error).message);
       throw new Error(
-        `Error validating worker-operation relation: ${error.message}`,
+        `Error validating worker-operation relation: ${(error as Error).message}`,
       );
     }
   }
@@ -612,8 +613,8 @@ export class ValidationService {
       });
       return !!existingWorker;
     } catch (error) {
-      console.error('Error checking if worker code exists:', error);
-      throw new Error(`Error checking worker code: ${error.message}`);
+      console.error('Error checking if worker code exists:', (error as Error).message);
+      throw new Error(`Error checking worker code: ${(error as Error).message}`);
     }
   }
 
@@ -630,7 +631,7 @@ export class ValidationService {
       return !!existingWorker;
     } catch (error) {
       console.error('Error checking if worker DNI exists:', error);
-      throw new Error(`Error checking worker DNI: ${error.message}`);
+      throw new Error(`Error checking worker DNI: ${(error as Error).message}`);
     }
   }
 
@@ -647,7 +648,7 @@ export class ValidationService {
       return !!existingWorker;
     } catch (error) {
       console.error('Error checking if worker phone exists:', error);
-      throw new Error(`Error checking worker phone: ${error.message}`);
+      throw new Error(`Error checking worker phone: ${(error as Error).message}`);
     }
   }
 
@@ -681,7 +682,7 @@ export class ValidationService {
       return { available: true };
     } catch (error) {
       console.error('Error validating code for update:', error);
-      throw new Error(`Error validating code: ${error.message}`);
+      throw new Error(`Error validating code: ${(error as Error).message}`);
     }
   }
 
@@ -713,7 +714,7 @@ export class ValidationService {
       return { available: true };
     } catch (error) {
       console.error('Error validating payroll code for update:', error);
-      throw new Error(`Error validating payroll code: ${error.message}`);
+      throw new Error(`Error validating payroll code: ${(error as Error).message}`);
     }
   }
 }

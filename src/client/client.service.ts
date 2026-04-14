@@ -24,7 +24,7 @@ export class ClientService {
       });
       return response;
     } catch (error) {
-      throw new Error(`Error: ${error.message}`);
+      throw new Error(`Error: ${(error as Error).message}`);
     }
   }
   /**
@@ -37,7 +37,7 @@ export class ClientService {
 
       return response;
     } catch (error) {
-      throw new Error(`Error: ${error.message}`);
+      throw new Error(`Error: ${(error as Error).message}`);
     }
   }
   /**
@@ -57,7 +57,7 @@ export class ClientService {
       }
       return response;
     } catch (error) {
-      throw new Error(`Error: ${error.message}`);
+      throw new Error(`Error: ${(error as Error).message}`);
     }
   }
   /**
@@ -80,7 +80,7 @@ export class ClientService {
       });
       return response;
     } catch (error) {
-      throw new Error(`Error: ${error.message}`);
+      throw new Error(`Error: ${(error as Error).message}`);
     }
   }
   /**
@@ -99,7 +99,7 @@ export class ClientService {
       });
       return response;
     } catch (error) {
-      throw new Error(`Error: ${error.message}`);
+      throw new Error(`Error: ${(error as Error).message}`);
     }
   }
 }

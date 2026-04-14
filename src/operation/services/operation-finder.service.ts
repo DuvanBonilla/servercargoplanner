@@ -51,7 +51,7 @@ export class OperationFinderService {
       );
     } catch (error) {
       console.error('Error getting all operations:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -78,7 +78,7 @@ export class OperationFinderService {
       return this.transformer.transformOperationResponse(response);
     } catch (error) {
       console.error(`Error finding operation with ID ${id}:`, error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -128,7 +128,7 @@ export class OperationFinderService {
       );
     } catch (error) {
       console.error('Error finding operations by status:', error);
-      throw new Error(`Error finding operations by status: ${error.message}`);
+      throw new Error(`Error finding operations by status: ${(error as Error).message}`);
     }
   }
   /**
@@ -187,7 +187,7 @@ export class OperationFinderService {
       );
     } catch (error) {
       console.error('Error finding operations by date range:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
   /**
@@ -216,7 +216,7 @@ export class OperationFinderService {
       });
     } catch (error) {
       console.error('Error finding operations:', error);
-      throw new Error(`Error finding operations: ${error.message}`);
+      throw new Error(`Error finding operations: ${(error as Error).message}`);
     }
   }
 
@@ -245,7 +245,7 @@ export class OperationFinderService {
       );
     } catch (error) {
       console.error(`Error finding operations for user ${id_user}:`, error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -446,7 +446,7 @@ export class OperationFinderService {
       return transformedOperation;
     } catch (error) {
       console.error(`Error finding operation with ID ${operationId}:`, error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 }

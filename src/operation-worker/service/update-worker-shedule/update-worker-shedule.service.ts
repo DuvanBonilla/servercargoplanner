@@ -337,7 +337,7 @@ export class UpdateWorkerSheduleService {
       return result;
     } catch (error) {
       console.error('[UpdateWorkerSheduleService] ERROR:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 }

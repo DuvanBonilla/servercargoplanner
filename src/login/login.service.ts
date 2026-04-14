@@ -102,7 +102,7 @@ export class LoginService {
       return newToken;
     } catch (error) {
       console.error('Error refreshing token:', error);
-      throw new Error(`Error refreshing token: ${error.message}`);
+      throw new Error(`Error refreshing token: ${(error as Error).message}`);
     }
   }
 }

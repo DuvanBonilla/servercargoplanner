@@ -134,7 +134,7 @@ async create(
       const result = await this.operationService.initializePendingOperations();
       return result;
     } catch (error) {
-      throw new BadRequestException(error.message);
+      throw new BadRequestException((error as Error).message);
     }
   }
 
@@ -164,7 +164,7 @@ async create(
         status: 200
       };
     } catch (error) {
-      throw new BadRequestException(error.message);
+      throw new BadRequestException((error as Error).message);
     }
   }
 
@@ -193,7 +193,7 @@ async create(
   //       status: 200
   //     };
   //   } catch (error) {
-  //     throw new BadRequestException(`Error al despertar y procesar: ${error.message}`);
+  //     throw new BadRequestException(`Error al despertar y procesar: ${(error as Error).message}`);
   //   }
   // }
 
@@ -222,7 +222,7 @@ async create(
   //       status: 200
   //     };
   //   } catch (error) {
-  //     throw new BadRequestException(`Error al forzar activación: ${error.message}`);
+  //     throw new BadRequestException(`Error al forzar activación: ${(error as Error).message}`);
   //   }
   // }
 
@@ -260,7 +260,7 @@ async create(
           : 'Usa POST /operation/initialize-pending para inicializar operaciones manualmente'
       };
     } catch (error) {
-      throw new BadRequestException(error.message);
+      throw new BadRequestException((error as Error).message);
     }
   }
   @Get('pending-status')
@@ -335,7 +335,7 @@ async create(
         status: 200
       };
     } catch (error) {
-      throw new BadRequestException(error.message);
+      throw new BadRequestException((error as Error).message);
     }
   }
 
@@ -701,7 +701,7 @@ async create(
       if (error instanceof BadRequestException) {
         throw error;
       }
-      throw new Error(`Error processing paginated request: ${error.message}`);
+      throw new Error(`Error processing paginated request: ${(error as Error).message}`);
     }
   }
 

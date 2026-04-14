@@ -74,7 +74,7 @@ export class OperationInChargeService {
       return { message: 'No users to assign', assignedUsers: [] };
     } catch (error) {
       console.error('Error assigning in charge users to operation:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -123,7 +123,7 @@ export class OperationInChargeService {
       return { message: 'No users to remove', removedUsers: [] };
     } catch (error) {
       console.error('Error removing in charge users from operation:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -164,7 +164,7 @@ export class OperationInChargeService {
       return users;
     } catch (error) {
       console.error('Error getting in charge users from operation:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 }

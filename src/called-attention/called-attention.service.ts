@@ -53,14 +53,14 @@ export class CalledAttentionService {
     // ✅ CREAR VARIABLE LOCAL PARA id_user ASEGURADO
     const userId = createCalledAttentionDto.id_user; // Ya sabemos que no es undefined
 
-    console.log(
-      '[CalledAttentionService] Creando atención con DNI (transformado):',
-      dniWorker,
-      '(tipo:',
-      typeof dniWorker,
-      ') - Usuario:',
-      userId,
-    );
+    // console.log(
+    //   '[CalledAttentionService] Creando atención con DNI (transformado):',
+    //   dniWorker,
+    //   '(tipo:',
+    //   typeof dniWorker,
+    //   ') - Usuario:',
+    //   userId,
+    // );
 
     // ✅ BUSCAR EL TRABAJADOR POR DNI Y VALIDAR
     const worker = await this.prisma.worker.findUnique({
@@ -82,7 +82,7 @@ export class CalledAttentionService {
       };
     }
 
-    console.log('[CalledAttentionService] Trabajador encontrado:', worker);
+    // console.log('[CalledAttentionService] Trabajador encontrado:', worker);
 
     // ✅ VALIDAR PERMISOS POR SITE
     if (id_site !== undefined && worker.id_site !== id_site) {
@@ -144,22 +144,22 @@ export class CalledAttentionService {
         },
       });
 
-      console.log(
-        '[CalledAttentionService] Contador de failures actualizado:',
-        `${updatedWorker.name} (DNI: ${updatedWorker.dni}) ahora tiene ${updatedWorker.failures} failures`,
-      );
+      // console.log(
+      //   '[CalledAttentionService] Contador de failures actualizado:',
+      //   `${updatedWorker.name} (DNI: ${updatedWorker.dni}) ahora tiene ${updatedWorker.failures} failures`,
+      // );
 
       return calledAttention;
     });
 
-    console.log(
-      '[CalledAttentionService] Atención creada exitosamente:',
-      result.id,
-    );
+    // console.log(
+    //   '[CalledAttentionService] Atención creada exitosamente:',
+    //   result.id,
+    // );
     return result;
   } catch (error) {
     console.error('[CalledAttentionService] Error creando atención:', error);
-    throw new Error(error.message);
+    throw new Error((error as Error).message);
   }
 }
 
@@ -211,7 +211,7 @@ export class CalledAttentionService {
   //     return response;
   //   } catch (error) {
   //     console.error('Error finding called attentions:', error);
-  //     throw new Error(error.message);
+  //     throw new Error((error as Error).message);
   //   }
   // }
 
@@ -264,7 +264,7 @@ export class CalledAttentionService {
         '[CalledAttentionService] Error obteniendo atenciones:',
         error,
       );
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -314,7 +314,7 @@ export class CalledAttentionService {
         '[CalledAttentionService] Error obteniendo atención:',
         error,
       );
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -363,7 +363,7 @@ export class CalledAttentionService {
         '[CalledAttentionService] Error obteniendo atenciones por DNI:',
         error,
       );
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -452,7 +452,7 @@ export class CalledAttentionService {
         '[CalledAttentionService] Error actualizando atención:',
         error,
       );
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -518,10 +518,10 @@ export class CalledAttentionService {
           },
         });
 
-        console.log(
-          '[CalledAttentionService] Contador de failures decrementado:',
-          `${updatedWorker.name} (DNI: ${updatedWorker.dni}) ahora tiene ${updatedWorker.failures} failures`
-        );
+        // console.log(
+        //   '[CalledAttentionService] Contador de failures decrementado:',
+        //   `${updatedWorker.name} (DNI: ${updatedWorker.dni}) ahora tiene ${updatedWorker.failures} failures`
+        // );
       }
 
       return deletedAttention;
@@ -530,7 +530,7 @@ export class CalledAttentionService {
     return result;
   } catch (error) {
     console.error('[CalledAttentionService] Error eliminando atención:', error);
-    throw new Error(error.message);
+    throw new Error((error as Error).message);
   }
 }
 
@@ -597,7 +597,7 @@ export class CalledAttentionService {
         '[CalledAttentionService] Error buscando atenciones:',
         error,
       );
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -678,7 +678,7 @@ export class CalledAttentionService {
         '[CalledAttentionService] Error obteniendo atenciones por ID del trabajador:',
         error,
       );
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
 
@@ -721,7 +721,7 @@ export class CalledAttentionService {
         error,
       );
       throw new Error(
-        `Error obteniendo atenciones paginadas: ${error.message}`,
+        `Error obteniendo atenciones paginadas: ${(error as Error).message}`,
       );
     }
   }

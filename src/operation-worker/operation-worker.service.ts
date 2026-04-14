@@ -80,7 +80,7 @@ export class OperationWorkerService {
       return updateResult;
     } catch (error) {
       console.error('Error completing client programming:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
   /**
@@ -145,7 +145,7 @@ export class OperationWorkerService {
       return workers;
     } catch (error) {
       console.error('Error getting workers from operation:', error);
-      throw new Error(error.message);
+      throw new Error((error as Error).message);
     }
   }
   /**
@@ -159,19 +159,19 @@ export class OperationWorkerService {
     workersToUpdate: WorkerScheduleDto[],
     id_site?: number | null,
   ) {
-    console.log('[OperationWorkerService] updateWorkersSchedule llamado con:');
-    console.log('- id_operation:', id_operation);
-    console.log('- workersToUpdate:', JSON.stringify(workersToUpdate, null, 2));
+    // console.log('[OperationWorkerService] updateWorkersSchedule llamado con:');
+    // console.log('- id_operation:', id_operation);
+    // console.log('- workersToUpdate:', JSON.stringify(workersToUpdate, null, 2));
 
     // ✅ VERIFICAR QUE CADA WORKER TENGA id_subtask
     workersToUpdate.forEach((worker, index) => {
-      console.log(`[OperationWorkerService] Worker ${index}:`, {
-        id_group: worker.id_group,
-        workerIds: worker.workerIds,
-        id_task: worker.id_task,
-        id_subtask: worker.id_subtask, // ✅ VERIFICAR QUE ESTÉ
-        id_tariff: worker.id_tariff,
-      });
+      // console.log(`[OperationWorkerService] Worker ${index}:`, {
+      //   id_group: worker.id_group,
+      //   workerIds: worker.workerIds,
+      //   id_task: worker.id_task,
+      //   id_subtask: worker.id_subtask, // ✅ VERIFICAR QUE ESTÉ
+      //   id_tariff: worker.id_tariff,
+      // });
 
       if (worker.id_subtask === undefined) {
         console.error(
@@ -446,7 +446,7 @@ export class OperationWorkerService {
     dateEnd: Date,
     timeEnd: string,
   ) {
-    console.log(`[OperationWorkerService] Finalizando grupo ${id_group} con fecha/hora: ${dateEnd.toISOString()} ${timeEnd}`);
+    // console.log(`[OperationWorkerService] Finalizando grupo ${id_group} con fecha/hora: ${dateEnd.toISOString()} ${timeEnd}`);
     
     // 1. Actualizar el grupo con fecha y hora de finalización
     const updateResult = await this.prisma.operation_Worker.updateMany({
