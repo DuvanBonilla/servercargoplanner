@@ -795,10 +795,10 @@ export class OperationExportService {
 		const [eh, em] = String(timeEnd).split(':').map((n) => Number(n || 0));
 
 		const start = new Date(dateStart);
-		start.setHours(sh, sm, 0, 0);
+		start.setUTCHours(sh, sm, 0, 0);
 
 		const end = new Date(dateEnd);
-		end.setHours(eh, em, 0, 0);
+		end.setUTCHours(eh, em, 0, 0);
 
 		const diff = end.getTime() - start.getTime();
 		if (diff < 0) return '0:00';

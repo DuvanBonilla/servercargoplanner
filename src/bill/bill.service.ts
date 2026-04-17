@@ -343,10 +343,10 @@ export class BillService {
       if (w.dateStart && w.timeStart && w.dateEnd && w.timeEnd) {
         const start = new Date(w.dateStart);
         const [sh, sm] = w.timeStart.split(':').map(Number);
-        start.setHours(sh, sm, 0, 0);
+        start.setUTCHours(sh, sm, 0, 0);
         const end = new Date(w.dateEnd);
         const [eh, em] = w.timeEnd.split(':').map(Number);
-        end.setHours(eh, em, 0, 0);
+        end.setUTCHours(eh, em, 0, 0);
         const diff = (end.getTime() - start.getTime()) / 3_600_000;
         if (diff > 0) {
           totalHoras += diff;
@@ -1381,6 +1381,13 @@ export class BillService {
             timeEnd: true,
             op_duration: true,
             motorShip: true,
+            clientProgramming:{
+              select: {
+                id: true,
+                service_request: true,
+                service: true,
+               },
+            },
             client: {
               select: {
                 id: true,
@@ -1514,6 +1521,13 @@ export class BillService {
             timeEnd: true,
             op_duration: true,
             motorShip: true,
+            clientProgramming:{
+              select: {
+                id: true,
+                service_request: true,
+                service: true,
+               },
+            },
             id_site: true,
             id_subsite: true,
             client: {
@@ -1632,6 +1646,13 @@ export class BillService {
             timeEnd: true,
             op_duration: true,
             motorShip: true,
+            clientProgramming:{
+              select: {
+                id: true,
+                service_request: true,
+                service: true,
+               },
+            },
             subSite: true,
             client: {
               select: {
@@ -3358,6 +3379,13 @@ export class BillService {
             timeEnd: true,
             op_duration: true,
             motorShip: true,
+            clientProgramming:{
+              select: {
+                id: true,
+                service_request: true,
+                service: true,
+               },
+            },
             client: {
               select: {
                 id: true,
@@ -3500,6 +3528,13 @@ export class BillService {
             timeEnd: true,
             op_duration: true,
             motorShip: true,
+            clientProgramming:{
+              select: {
+                id: true,
+                service_request: true,
+                service: true,
+               },
+            },
             client: {
               select: {
                 id: true,
@@ -3818,6 +3853,13 @@ export class BillService {
               timeEnd: true,
               op_duration: true,
               motorShip: true,
+              clientProgramming:{
+              select: {
+                id: true,
+                service_request: true,
+                service: true,
+               },
+            },
               client: {
                 select: {
                   id: true,
@@ -4179,49 +4221,50 @@ async exportBillsToExcelStream(
   const worksheetRTD = workbook.addWorksheet('RTD');
 
 // Encabezados para hoja "Datos" (Registro de Factura por operación)
-  const headersDatos = [ //40 columnas
+  const headersDatos = [ //43 columnas
     'Código', //1 - Código de operación
     'Fecha Inicio', //2 - Fecha y hora de inicio de la operación
     'Fecha Final', //3 - Fecha y hora de finalización de la operación
     'Sem', //4 - Semana
     'Código Labor', //5 - Código de labor
     'Servicio', //6 - Nombre de Servicio
-    'Unidad de Medida', //7 - Unidad de medida
-    'Horas Servicio', //8 - Horas de servicio
-    'Q Hombres', //9 - Cantidad de hombres
-    'Total pago', //10 - Total de pago
-    'Cantidad', //11 - Cantidad
-    'Tarifa Nómina', //12 - Tarifa de nómina
-    'Total Nómina', //13 - Total de nómina
-    'Tarifa Facturación', //14 - Tarifa de facturación
-    'Total Facturación', //15 - Total de facturación
-    'Utilidad Servicio', //16 - Utilidad del servicio
-    'Margen Servicio', //17 - Margen del servicio
-    'COMP', //18 - COMP
-    'N_OD', //19 - N_OD
-    'N_ON', //20 - N_ON
-    'N_ED', //21 - N_ED
-    'N_EN', //22 - N_EN
-    'N_FOD', //23 - N_FOD
-    'N_FON', //24 - N_FON
-    'N_FED', //25 - N_FED
-    'N_FEN', //26 - N_FEN
-    'F_OD', //27 - F_OD
-    'F_ON', //28 - F_ON
-    'F_ED', //29 - F_ED
-    'F_EN', //30 - F_EN
-    'F_FOD', //31 - F_FOD
-    'F_FON', //32 - F_FON
-    'F_FED', //33 - F_FED
-    'F_FEN', //34 - F_FEN
-
-    'Buque', //35 - Buque
-    'Total Alimentación', //36 - Total de alimentación
-    'Subsede', //37 - Subsede
-    'Usuario', //38 - Usuario
-    'Creado por', //39 - Creado por (usuario de la operación)
-    'Observaciones', //40 - Observaciones
-    'Estado', //41 - Estado
+    'Solicitud SC', //7 - solicitud del servicio del cliente (service_request)
+    'Descripción SC', //8 - nombre del servicio del cliente (service)
+    'Unidad de Medida', //9 - Unidad de medida
+    'Horas Servicio', //10 - Horas de servicio
+    'Q Hombres', //11 - Cantidad de hombres
+    'Total pago', //12 - Total de pago
+    'Cantidad', //13 - Cantidad
+    'Tarifa Nómina', //14 - Tarifa de nómina
+    'Total Nómina', //15 - Total de nómina
+    'Tarifa Facturación', //16 - Tarifa de facturación
+    'Total Facturación', //17 - Total de facturación
+    'Utilidad Servicio', //18 - Utilidad del servicio
+    'Margen Servicio', //19 - Margen del servicio
+    'COMP', //20 - COMP
+    'N_OD', //21 - N_OD
+    'N_ON', //22 - N_ON
+    'N_ED', //23 - N_ED
+    'N_EN', //24 - N_EN
+    'N_FOD', //25 - N_FOD
+    'N_FON', //26 - N_FON
+    'N_FED', //27 - N_FED
+    'N_FEN', //28 - N_FEN
+    'F_OD', //29 - F_OD
+    'F_ON', //30 - F_ON
+    'F_ED', //31 - F_ED
+    'F_EN', //32 - F_EN
+    'F_FOD', //33 - F_FOD
+    'F_FON', //34 - F_FON
+    'F_FED', //35 - F_FED
+    'F_FEN', //36 - F_FEN
+    'Buque', //37 - Buque
+    'Total Alimentación', //38 - Total de alimentación
+    'Subsede', //39 - Subsede
+    'Usuario', //40 - Usuario
+    'Creado por', //41 - Creado por (usuario de la operación)
+    'Observaciones', //42 - Observaciones
+    'Estado', //43 - Estado
   ];
 //Encabezados para hoja "RTD" (Registro de Detalle de Factura para cada trabajador)
   const headersRTD = [ // 39 columnas
@@ -4231,6 +4274,8 @@ async exportBillsToExcelStream(
     'Sem',
     'Código Subservicio',
     'Subservicio',
+    'Solicitud SC', 
+    'Descripción SC',
     'Código Trabajador',
     'Nombre Trabajador',
     'Unidad de Medida',
@@ -4325,6 +4370,13 @@ async exportBillsToExcelStream(
         timeEnd: true,
         op_duration: true,
         motorShip: true,
+        clientProgramming:{
+              select: {
+                id: true,
+                service_request: true,
+                service: true,
+               },
+            },
         subSite: {
           select: { name: true },
         },
@@ -4585,41 +4637,43 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
       bill.week_number ?? '',  //4 - Semana 
       Number(tariff?.code ?? ''), //5 Código Subservicio
       mainServiceName, //6 servicio
-      tariff?.unitOfMeasure?.name ?? '', //7 unidad de medida
-      numberOfHours,//8 horas servicio
-      quantityWorkers, //9 Q Hombres
-      Number(totalPago), //10 Total pago
-      cantidad, //11 Cantidad
-      safeNumber(tariff?.paysheet_tariff), //12 Tarifa Nómina
-      Number(totalNomina), //13 Total Nómina
-        safeNumber(tariff?.facturation_tariff), //14 Tarifa Facturación
-      Number(totalFacturacion),//15 Total Facturación
-      utilidadServicio,//16 Utilidad Servicio
-      margenServicio,//17 Margen Servicio
-      Number(comp.hours || 0).toFixed(2),//18 COMP
-      totalPaysheetHours.HOD,//19 HOD
-      totalPaysheetHours.HON,//20 HON
-      totalPaysheetHours.HED,//21 HED
-      totalPaysheetHours.HEN,//22 HEN
-      totalPaysheetHours.HFOD,//23 HFOD
-      totalPaysheetHours.HFON,//24 HFON
-      totalPaysheetHours.HFED,//25 HFED
-      totalPaysheetHours.HFEN,//26 HFEN
-      totalBillHours.HOD,//27 HOD
-      totalBillHours.HON, //28 HON
-      totalBillHours.HED, //29 HED
-      totalBillHours.HEN, //30 HEN
-      totalBillHours.HFOD,  //31 HFOD
-      totalBillHours.HFON,//  32 HFON
-      totalBillHours.HFED, //33 HFED
-      totalBillHours.HFEN,  //34 HFEN
-      bill.operation?.motorShip ?? '', // 35 Buque
-      totalFeeding, //36 Total Alimentación (pendiente de cálculo, se puede agregar lógica similar a compensatory si es necesario)
-      bill.operation?.subSite?.name ?? 'N/A',//37 Subsede
-      bill.user?.name ?? '', //38 Usuario
-      bill.operation?.user?.name ?? '', //39 Creado por (usuario de la operación)
-      bill.observation ?? '', //40 Observaciones
-      estadoTexto, //41 Estado
+      bill.operation?.clientProgramming?.service_request ?? '', //7 solicitud del servicio del cliente (service_request)
+      bill.operation?.clientProgramming?.service ?? '', //8 nombre del servicio del cliente (service)
+      tariff?.unitOfMeasure?.name ?? '', //9 unidad de medida
+      numberOfHours,//10 horas servicio
+      quantityWorkers, //11 Q Hombres
+      Number(totalPago), //12 Total pago
+      cantidad, //13 Cantidad
+      safeNumber(tariff?.paysheet_tariff), //14 Tarifa Nómina
+      Number(totalNomina), //15 Total Nómina
+        safeNumber(tariff?.facturation_tariff), //16 Tarifa Facturación
+      Number(totalFacturacion),//17 Total Facturación
+      utilidadServicio,//18 Utilidad Servicio
+      margenServicio,//19 Margen Servicio
+      Number(comp.hours || 0).toFixed(2),//20 COMP
+      totalPaysheetHours.HOD,//21 HOD
+      totalPaysheetHours.HON,//22 HON
+      totalPaysheetHours.HED,//23 HED
+      totalPaysheetHours.HEN,//24 HEN
+      totalPaysheetHours.HFOD,//25 HFOD
+      totalPaysheetHours.HFON,//26 HFON
+      totalPaysheetHours.HFED,//27 HFED
+      totalPaysheetHours.HFEN,//28 HFEN
+      totalBillHours.HOD,//29 HOD
+      totalBillHours.HON, //30 HON
+      totalBillHours.HED, //31 HED
+      totalBillHours.HEN, //32 HEN
+      totalBillHours.HFOD,  //33 HFOD
+      totalBillHours.HFON,//  34 HFON
+      totalBillHours.HFED, //35 HFED
+      totalBillHours.HFEN,  //36 HFEN
+      bill.operation?.motorShip ?? '', // 37 Buque
+      totalFeeding, //38 Total Alimentación (pendiente de cálculo, se puede agregar lógica similar a compensatory si es necesario)
+      bill.operation?.subSite?.name ?? 'N/A',//39 Subsede
+      bill.user?.name ?? '', //40 Usuario
+      bill.operation?.user?.name ?? '', //41 Creado por (usuario de la operación)
+      bill.observation ?? '', //42 Observaciones
+      estadoTexto, //43 Estado
     ]);
 
     this.styleRow(row, rowIndexData);
@@ -4679,41 +4733,44 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
         bill.week_number ?? '',//4- Semana
         tariff.code ?? '', //5- Código Subservicio
         mainServiceName, //6- Subservicio
-        worker.payroll_code ?? '', //7- Código Trabajador
-        worker.name ?? '', //9- Nombre de Trabajador
-        tariff.unitOfMeasure?.name ?? '', //10- Unidad de Medida
-        this.calculateQHoras(detail, bill), // 11- Q Horas
-        Number(detail.pay_unit), //12- Unidad de pago
-        Number(detail.pay_rate ?? 0), //13- Cantidad
-        Number(tariff.paysheet_tariff ?? 0),//14- Tarifa Nómina
-        Number(detail.total_paysheet ?? 0), //15- Total Nómina
-    
-        Number(comp.hours || 0),  //16- COMP
-        Number(bill.HOD ?? 0), //17- HOD
-        Number(bill.HON ?? 0), //18- HON
-        Number(bill.HED ?? 0), //19- HED
-        Number(bill.HEN ?? 0), //20- HEN
-        Number(bill.HFOD ?? 0), //21- HFOD
-        Number(bill.HFON ?? 0), //22- HFON
-        Number(bill.HFED ?? 0), //23- HFED
-        Number(bill.HFEN ?? 0), //24- HFEN
-        Number(bill.FAC_HOD ?? bill.HOD ?? 0), //25- FAC_HOD
-        Number(bill.FAC_HON ?? bill.HON ?? 0), //26- FAC_HON
-        Number(bill.FAC_HED ?? bill.HED ?? 0), //27- FAC_HED
-        Number(bill.FAC_HEN ?? bill.HEN ?? 0), //28- FAC_HEN
-        Number(bill.FAC_HFOD ?? bill.HFOD ?? 0), //29- FAC_HFOD
-        Number(bill.FAC_HFON ?? bill.HFON ?? 0), //30- FAC_HFON
-        Number(bill.FAC_HFED ?? bill.HFED ?? 0), //31- FAC_HFED
-        Number(bill.FAC_HFEN ?? bill.HFEN ?? 0), //32- FAC_HFEN
-            Number(tariff.facturation_tariff ?? 0),//33- Tarifa Facturación
-        Number(detail.total_bill ?? 0), //34- Total Facturación
-        bill.operation?.motorShip ?? '', //35- Buque
-        feedingCount, //36- Alimentación (número de registros de alimentación para este trabajador en esta operación)
-        bill.operation?.subSite?.name ?? 'N/A', //37- Subsitio
-        bill.user?.name ?? '', //38- Usuario
-        bill.operation.user?.name ?? '', //39- Creado por (usuario de la operación)
-        bill.observation ?? '', //40- Observación
-        estadoTexto, //41- Estado
+        bill.operation?.clientProgramming?.service_request ?? '', //7 solicitud del servicio del cliente (service_request)
+        bill.operation?.clientProgramming?.service ?? '', //8 nombre del servicio del cliente (service)
+        worker.payroll_code ?? '', //9- Código Trabajador
+        worker.name ?? '', //10- Nombre de Trabajador
+        tariff.unitOfMeasure?.name ?? '', //11- Unidad de Medida
+        this.calculateQHoras(detail, bill), // 12- Q Horas
+        Number(detail.pay_unit), //13- Unidad de pago
+        Number(detail.pay_rate ?? 0), //14- Cantidad
+        Number(tariff.paysheet_tariff ?? 0),//15- Tarifa Nómina
+        Number(detail.total_paysheet ?? 0), //16- Total Nómina
+
+        Number(comp.hours || 0),  //17- COMP
+        Number(bill.HOD ?? 0), //18- HOD
+        Number(bill.HON ?? 0), //19- HON
+        Number(bill.HED ?? 0), //20- HED
+        Number(bill.HEN ?? 0), //21- HEN
+        Number(bill.HFOD ?? 0), //22- HFOD
+        Number(bill.HFON ?? 0), //23- HFON
+        Number(bill.HFED ?? 0), //24- HFED
+        Number(bill.HFEN ?? 0), //25- HFEN
+
+        Number(bill.FAC_HOD ?? bill.HOD ?? 0), //26- FAC_HOD
+        Number(bill.FAC_HON ?? bill.HON ?? 0), //27- FAC_HON
+        Number(bill.FAC_HED ?? bill.HED ?? 0), //28- FAC_HED
+        Number(bill.FAC_HEN ?? bill.HEN ?? 0), //29- FAC_HEN
+        Number(bill.FAC_HFOD ?? bill.HFOD ?? 0), //30- FAC_HFOD
+        Number(bill.FAC_HFON ?? bill.HFON ?? 0), //31- FAC_HFON
+        Number(bill.FAC_HFED ?? bill.HFED ?? 0), //32- FAC_HFED
+        Number(bill.FAC_HFEN ?? bill.HFEN ?? 0), //33- FAC_HFEN
+            Number(tariff.facturation_tariff ?? 0),//34- Tarifa Facturación
+        Number(detail.total_bill ?? 0), //35- Total Facturación
+        bill.operation?.motorShip ?? '', //36- Buque
+        feedingCount, //37- Alimentación (número de registros de alimentación para este trabajador en esta operación)
+        bill.operation?.subSite?.name ?? 'N/A', //38- Subsitio
+        bill.user?.name ?? '', //39- Usuario
+        bill.operation.user?.name ?? '', //40- Creado por (usuario de la operación)
+        bill.observation ?? '', //41- Observación
+        estadoTexto, //42- Estado
       ]);
 
       // ===== FORMATOS RTD ===
@@ -4745,6 +4802,12 @@ private autoAdjustColumns(worksheet: any) {
         value = value.text || value.richText?.map((t: any) => t.text).join('') || '';
       }
 
+       // Detectar fechas
+      if (value instanceof Date) {
+        maxLength = Math.max(maxLength, 20);
+        return;
+      }
+
       const length = value.toString().length;
 
       if (length > maxLength) {
@@ -4752,8 +4815,8 @@ private autoAdjustColumns(worksheet: any) {
       }
     });
 
-    // 🔥 Ajuste inteligente (clave)
-    column.width = Math.min(maxLength + 2, 25);
+    // ajustar ancho con un límite máximo para evitar columnas excesivamente anchas
+      column.width = Math.min(maxLength * 1.2 + 2, 50);
   });
 }
 private combineDateTime(date: Date | string | null, time: string | null): number | null {
@@ -4805,7 +4868,8 @@ private applyDynamicFormats(row: any, headers: string[]) {
       header === 'Sem' ||
       header === 'Código Labor' ||
       header === 'Q Hombres' ||
-      header === 'Total Alimentación'
+      header === 'Total Alimentación'||
+      header === 'Solicitud SC'
     ) {
       cell.numFmt = '0';
     }

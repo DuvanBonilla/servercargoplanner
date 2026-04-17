@@ -18,7 +18,7 @@ class OperationUpdateBaseDto extends OmitType(CreateOperationDto, [
 export class WorkerDisconnect {
   @ApiProperty({ example: 5 })
   @IsNumber()
-  id: number;
+  id!: number;
 
   @ApiProperty({ 
     example: "bc5a073b-e861-4825-a718-6ec81f46404f",
@@ -34,7 +34,7 @@ export class WorkerDisconnect {
 export class SimpleWorkerConnect {
   @ApiProperty({ example: 1 })
   @IsNumber()
-  id: number;
+  id!: number;
 }
 
 // DTO específico para la conexión de trabajadores programados
@@ -43,11 +43,11 @@ export class ScheduledWorkerConnect extends WorkerScheduleDto {}
 export class WorkerUpdate {
   @ApiProperty({ example: 1 })
   @IsNumber()
-  id_worker: number;
+  id_worker!: number;
 
   @ApiProperty({ example: "bc5a073b-e861-4825-a718-6ec81f46404f" })
   @IsString()
-  id_group: string;
+  id_group!: string;
 
   @ApiProperty({ example: 1, required: false })
   @IsOptional()

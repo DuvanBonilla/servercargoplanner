@@ -1,10 +1,11 @@
-export const getColombianDateTime = () => {
-  const now = new Date();
-  // Convertir a hora colombiana (UTC-5)
-  const colombianTime = new Date(
-    now.toLocaleString('en-US', { timeZone: 'America/Bogota' }),
-  );
-  return colombianTime;
+/** Colombia es siempre UTC-5, sin horario de verano (DST). */
+const COLOMBIA_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+export const getColombianDateTime = (): Date => {
+  // Aritmética UTC pura: evita el anti-patrón new Date(toLocaleString(...))
+  // que en algunas configuraciones aplica el offset histórico LMT de Bogotá
+  // (-4:56:16 en lugar de -5:00:00), causando un desfase de ~4 minutos.
+  return new Date(Date.now() - COLOMBIA_OFFSET_MS);
 };
 
 // Función para obtener solo la hora en formato HH:MM
@@ -19,31 +20,22 @@ export const getColombianTimeString = () => {
 };
 
 /**
- * Crea el inicio del día en zona horaria de Colombia
+ * Crea el inicio del día en zona horaria de Colombia.
+ * Recibe un Date cuyo valor UTC ya representa la hora colombiana
+ * (producido por getColombianDateTime) y extrae la fecha con getUTC*.
  */
 export const getColombianStartOfDay = (date: Date): Date => {
-  const colombianDate = new Date(
-    date.toLocaleString('en-US', { timeZone: 'America/Bogota' }),
-  );
   return new Date(
-    colombianDate.getFullYear(),
-    colombianDate.getMonth(),
-    colombianDate.getDate(),
-    0,
-    0,
-    0,
-    0, // Medianoche
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0),
   );
 };
 
 /**
- * Crea el fin del día en zona horaria de Colombia
+ * Crea el fin del día en zona horaria de Colombia.
  */
 export const getColombianEndOfDay = (date: Date): Date => {
   const startOfDay = getColombianStartOfDay(date);
-  const endOfDay = new Date(startOfDay);
-  endOfDay.setDate(startOfDay.getDate() + 1);
-  return endOfDay;
+  return new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
 };
 
 /**

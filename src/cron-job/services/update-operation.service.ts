@@ -280,7 +280,7 @@ export class UpdateOperationService {
 for (const operation of pendingOperations) {
   const [hours, minutes] = operation.timeStrat.split(':').map(Number);
   const startDateTime = new Date(operation.dateStart);
-  startDateTime.setHours(hours, minutes, 0, 0);
+  startDateTime.setUTCHours(hours, minutes, 0, 0);
 
   const minutesDiff = differenceInMinutes(now, startDateTime);
   
@@ -382,7 +382,7 @@ for (const operation of pendingOperations) {
       
       // 📊 MONITOREO: Reportar estadísticas de error
       const errorStats = {
-        error: error.message,
+        error: (error as Error).message,
         timestamp: new Date().toISOString(),
         pendingCount: 0,
         consecutiveEmptyRuns: this.consecutiveEmptyRuns,
@@ -643,7 +643,7 @@ endDateTime.setHours(hours, minutes, 0, 0);
         updatedCount: 0,
         billsCreatedCount: 0,
         releasedWorkersCount: 0,
-        error: error.message 
+        error: (error as Error).message 
       };
     }
   }

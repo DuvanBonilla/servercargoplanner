@@ -46,10 +46,10 @@ export class ClientProgrammingService {
       // --- Validaciones previas si se quiere crear ya como ASSIGNED ---
       let resolvedOperation: any = null;
       if (requestedStatus === 'ASSIGNED') {
-        // 1. Solo ADMIN o SUPERADMIN pueden asignar
-        if (role !== 'ADMIN' && role !== 'SUPERADMIN') {
+        // 1. Solo ADMIN, SUPERADMIN o SUPERVISOR pueden asignar
+        if (role !== 'ADMIN' && role !== 'SUPERADMIN' && role !== 'SUPERVISOR') {
           throw new ForbiddenException(
-            'Solo usuarios con rol ADMIN o SUPERADMIN pueden crear una programación como ASSIGNED',
+            'Solo usuarios con rol ADMIN, SUPERADMIN o SUPERVISOR pueden crear una programación como ASSIGNED',
           );
         }
 
@@ -334,10 +334,10 @@ export class ClientProgrammingService {
         newStatus === 'ASSIGNED' &&
         (currentStatus === 'UNASSIGNED' || currentStatus === 'INCOMPLETE')
       ) {
-        // 1. Solo ADMIN o SUPERADMIN pueden asignar
-        if (role !== 'ADMIN' && role !== 'SUPERADMIN') {
+        // 1. Solo ADMIN, SUPERADMIN o SUPERVISOR pueden asignar o reasignar
+        if (role !== 'ADMIN' && role !== 'SUPERADMIN' && role !== 'SUPERVISOR') {
           throw new ForbiddenException(
-            'Solo usuarios con rol ADMIN o SUPERADMIN pueden asignar una programación de cliente',
+            'Solo usuarios con rol ADMIN, SUPERADMIN o SUPERVISOR pueden asignar o reasignar una programación de cliente',
           );
         }
 
@@ -396,6 +396,12 @@ export class ClientProgrammingService {
                 `La operación #${id_operation} ya tiene asignada la programación ` +
                 `#${operation.id_clientProgramming}. ` +
                 `Para confirmar la reasignación envíe force_assign: true.`,
+            });
+          } else {
+            // Si se confirma la reasignación, poner la programación anterior como UNASSIGNED
+            await this.prisma.clientProgramming.update({
+              where: { id: operation.id_clientProgramming },
+              data: { status: 'UNASSIGNED' },
             });
           }
         }

@@ -127,6 +127,10 @@ export class OperationService {
     id_site?: number,
   ) {
     try {
+      // Si se está duplicando, forzar id_clientProgramming a null
+      if ((createOperationDto as any).isDuplicate) {
+        createOperationDto.id_clientProgramming = 0;
+      }
       // console.log('[OperationService] ==> INICIANDO createWithWorkers');
       // console.log('[OperationService] createOperationDto:', JSON.stringify(createOperationDto, null, 2));
 
@@ -193,6 +197,7 @@ export class OperationService {
       }
 
       // console.log('[OperationService] ==> Validando programación cliente');
+      
       //validar programacion cliente
       const validateClientProgramming =
         await this.relationService.validateClientProgramming(
@@ -391,12 +396,49 @@ export class OperationService {
    * @returns Operación actualizada
    */
   async update(
-  id: number,
-  updateOperationDto: UpdateOperationDto,
-  id_subsite?: number,
-  id_site?: number,
-) {
-  try {
+    id: number,
+    updateOperationDto: UpdateOperationDto,
+    id_subsite?: number,
+    id_site?: number,
+  ) {
+    try {
+      // --- PATCH: Actualizar status de ClientProgramming si cambia y site == 1 ---
+      // Obtener la operación actual antes de actualizar
+      const currentOp = await this.prisma.operation.findUnique({
+        where: { id },
+        select: { id_clientProgramming: true, id_site: true },
+      });
+
+      // Si el site es 1 y hay id_clientProgramming, asegurar que el status sea ASSIGNED
+      if (
+        currentOp &&
+        currentOp.id_site === 1 &&
+        updateOperationDto.id_clientProgramming
+      ) {
+        await this.prisma.clientProgramming.update({
+          where: { id: updateOperationDto.id_clientProgramming },
+          data: { status: StatusComplete.ASSIGNED },
+        });
+      }
+
+      // Si el id_clientProgramming anterior era ASSIGNED y no está COMPLETED, ponerlo en UNASSIGNED si se libera
+      if (
+        currentOp &&
+        currentOp.id_site === 1 &&
+        currentOp.id_clientProgramming &&
+        currentOp.id_clientProgramming !== updateOperationDto.id_clientProgramming
+      ) {
+        const prevCP = await this.prisma.clientProgramming.findUnique({
+          where: { id: currentOp.id_clientProgramming },
+          select: { status: true },
+        });
+        if (prevCP && prevCP.status === StatusComplete.ASSIGNED) {
+          await this.prisma.clientProgramming.update({
+            where: { id: currentOp.id_clientProgramming },
+            data: { status: StatusComplete.UNASSIGNED },
+          });
+        }
+      }
     // console.log('[OperationService] Iniciando actualización de operación:', id);
     // console.log('[OperationService] DTO recibido:', JSON.stringify(updateOperationDto, null, 2));
 

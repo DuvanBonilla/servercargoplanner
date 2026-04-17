@@ -17,30 +17,30 @@ export class CreateOperationDto {
   @IsEnum(StatusOperation, {
     message: `status debe ser uno de los siguientes valores: ${Object.values(StatusOperation).join(', ')}`,
   })
-  status: StatusOperation;
+  status!: StatusOperation;
 
   @ApiProperty({ example: '23' })
   @Type(() => Number)
   @IsNumber()
-  zone: number;
+  zone!: number;
 
   @ApiProperty({ example: 'HTR4567' })
   @IsString()
-  motorShip: string;
+  motorShip!: string;
 
   @ApiProperty({ example: '2021-09-01' })
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'dateStart debe tener formato YYYY-MM-DD',
   })
-  dateStart: string;
+  dateStart!: string;
 
   @ApiProperty({ example: '08:00' })
   @IsString()
   @Matches(/^([01]?[0-9]|2[0-3]):([0-5][0-9])$/, {
     message: 'timeStrat debe tener formato HH:MM',
   })
-  timeStrat: string;
+  timeStrat!: string;
 
   @ApiProperty({ example: '2021-09-01' })
   @IsString()
@@ -48,7 +48,7 @@ export class CreateOperationDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'dateEnd debe tener formato YYYY-MM-DD',
   })
-  dateEnd: string;
+  dateEnd!: string;
 
   @ApiProperty({ example: '17:00' })
   @IsString()
@@ -56,7 +56,7 @@ export class CreateOperationDto {
   @Matches(/^([01]?[0-9]|2[0-3]):([0-5][0-9])$/, {
     message: 'timeEnd debe tener formato HH:MM',
   })
-  timeEnd: string;
+  timeEnd!: string;
 
   @ApiHideProperty()
   @Type(() => Number)
@@ -73,7 +73,7 @@ export class CreateOperationDto {
   @ApiProperty({ example: '1' })
   @Type(() => Number)
   @IsNumber()
-  id_area: number;
+  id_area!: number;
 
   @ApiProperty({ example: '1' })
   @Type(() => Number)
@@ -84,7 +84,7 @@ export class CreateOperationDto {
   @ApiProperty({ example: '1' })
   @Type(() => Number)
   @IsNumber()
-  id_client: number;
+  id_client!: number;
 
   @ApiProperty({ type: [Number], example: [1, 2, 3] })
   @IsArray()
