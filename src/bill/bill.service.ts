@@ -1384,8 +1384,7 @@ export class BillService {
             clientProgramming:{
               select: {
                 id: true,
-                service_request: true,
-                service: true,
+                service_request: true
                },
             },
             client: {
@@ -1524,8 +1523,7 @@ export class BillService {
             clientProgramming:{
               select: {
                 id: true,
-                service_request: true,
-                service: true,
+                service_request: true
                },
             },
             id_site: true,
@@ -1649,8 +1647,7 @@ export class BillService {
             clientProgramming:{
               select: {
                 id: true,
-                service_request: true,
-                service: true,
+                service_request: true
                },
             },
             subSite: true,
@@ -3382,8 +3379,7 @@ export class BillService {
             clientProgramming:{
               select: {
                 id: true,
-                service_request: true,
-                service: true,
+                service_request: true
                },
             },
             client: {
@@ -3531,8 +3527,7 @@ export class BillService {
             clientProgramming:{
               select: {
                 id: true,
-                service_request: true,
-                service: true,
+                service_request: true
                },
             },
             client: {
@@ -3856,8 +3851,7 @@ export class BillService {
               clientProgramming:{
               select: {
                 id: true,
-                service_request: true,
-                service: true,
+                service_request: true
                },
             },
               client: {
@@ -4221,61 +4215,58 @@ async exportBillsToExcelStream(
   const worksheetRTD = workbook.addWorksheet('RTD');
 
 // Encabezados para hoja "Datos" (Registro de Factura por operación)
-  const headersDatos = [ //43 columnas
+  const headersDatos = [ //42 columnas
     'Código', //1 - Código de operación
     'Fecha Inicio', //2 - Fecha y hora de inicio de la operación
     'Fecha Final', //3 - Fecha y hora de finalización de la operación
     'Sem', //4 - Semana
     'Código Labor', //5 - Código de labor
     'Servicio', //6 - Nombre de Servicio
-    'Solicitud SC', //7 - solicitud del servicio del cliente (service_request)
-    'Descripción SC', //8 - nombre del servicio del cliente (service)
-    'Unidad de Medida', //9 - Unidad de medida
-    'Horas Servicio', //10 - Horas de servicio
-    'Q Hombres', //11 - Cantidad de hombres
-    'Total pago', //12 - Total de pago
-    'Cantidad', //13 - Cantidad
-    'Tarifa Nómina', //14 - Tarifa de nómina
-    'Total Nómina', //15 - Total de nómina
-    'Tarifa Facturación', //16 - Tarifa de facturación
-    'Total Facturación', //17 - Total de facturación
-    'Utilidad Servicio', //18 - Utilidad del servicio
-    'Margen Servicio', //19 - Margen del servicio
-    'COMP', //20 - COMP
-    'N_OD', //21 - N_OD
-    'N_ON', //22 - N_ON
-    'N_ED', //23 - N_ED
-    'N_EN', //24 - N_EN
-    'N_FOD', //25 - N_FOD
-    'N_FON', //26 - N_FON
-    'N_FED', //27 - N_FED
-    'N_FEN', //28 - N_FEN
-    'F_OD', //29 - F_OD
-    'F_ON', //30 - F_ON
-    'F_ED', //31 - F_ED
-    'F_EN', //32 - F_EN
-    'F_FOD', //33 - F_FOD
-    'F_FON', //34 - F_FON
-    'F_FED', //35 - F_FED
-    'F_FEN', //36 - F_FEN
-    'Buque', //37 - Buque
-    'Total Alimentación', //38 - Total de alimentación
-    'Subsede', //39 - Subsede
-    'Usuario', //40 - Usuario
-    'Creado por', //41 - Creado por (usuario de la operación)
-    'Observaciones', //42 - Observaciones
-    'Estado', //43 - Estado
+    'Unidad de Medida', //7 - Unidad de medida
+    'Horas Servicio', //8 - Horas de servicio
+    'Q Hombres', //9 - Cantidad de hombres
+    'Total pago', //10 - Total de pago
+    'Cantidad', //11 - Cantidad
+    'Tarifa Nómina', //12 - Tarifa de nómina
+    'Total Nómina', //13 - Total de nómina
+    'Tarifa Facturación', //14 - Tarifa de facturación
+    'Total Facturación', //15 - Total de facturación
+    'Utilidad Servicio', //16 - Utilidad del servicio
+    'Margen Servicio', //17 - Margen del servicio
+    'COMP', //18 - COMP
+    'N_OD', //19 - N_OD
+    'N_ON', //20 - N_ON
+    'N_ED', //21 - N_ED
+    'N_EN', //22 - N_EN
+    'N_FOD', //23 - N_FOD
+    'N_FON', //24 - N_FON
+    'N_FED', //25 - N_FED
+    'N_FEN', //26 - N_FEN
+    'F_OD', //27 - F_OD
+    'F_ON', //28 - F_ON
+    'F_ED', //29 - F_ED
+    'F_EN', //30 - F_EN
+    'F_FOD', //31 - F_FOD
+    'F_FON', //32 - F_FON
+    'F_FED', //33 - F_FED
+    'F_FEN', //34 - F_FEN
+    'Buque', //35 - Buque
+    'Total Alimentación', //36 - Total de alimentación
+    'Solicitud SC', //37 - solicitud del servicio del cliente (service_request)
+    'Subsede', //38 - Subsede
+    'Usuario', //39 - Usuario
+    'Creado por', //40 - Creado por (usuario de la operación)
+    'Observaciones', //41 - Observaciones
+    'Estado', //42 - Estado
   ];
 //Encabezados para hoja "RTD" (Registro de Detalle de Factura para cada trabajador)
-  const headersRTD = [ // 39 columnas
+  const headersRTD = [ // 41 columnas
     'Código',
     'Fecha Inicio',
     'Fecha Final',
     'Sem',
     'Código Subservicio',
     'Subservicio',
-    'Solicitud SC', 
-    'Descripción SC',
     'Código Trabajador',
     'Nombre Trabajador',
     'Unidad de Medida',
@@ -4305,6 +4296,7 @@ async exportBillsToExcelStream(
     'Total Facturación',
     'Buque',
     'Alimentación',
+    'Solicitud SC', 
     'Subsede',
     'Usuario',
     'Creado por',
@@ -4373,8 +4365,7 @@ async exportBillsToExcelStream(
         clientProgramming:{
               select: {
                 id: true,
-                service_request: true,
-                service: true,
+                service_request: true
                },
             },
         subSite: {
@@ -4637,8 +4628,6 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
       bill.week_number ?? '',  //4 - Semana 
       Number(tariff?.code ?? ''), //5 Código Subservicio
       mainServiceName, //6 servicio
-      bill.operation?.clientProgramming?.service_request ?? '', //7 solicitud del servicio del cliente (service_request)
-      bill.operation?.clientProgramming?.service ?? '', //8 nombre del servicio del cliente (service)
       tariff?.unitOfMeasure?.name ?? '', //9 unidad de medida
       numberOfHours,//10 horas servicio
       quantityWorkers, //11 Q Hombres
@@ -4646,7 +4635,7 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
       cantidad, //13 Cantidad
       safeNumber(tariff?.paysheet_tariff), //14 Tarifa Nómina
       Number(totalNomina), //15 Total Nómina
-        safeNumber(tariff?.facturation_tariff), //16 Tarifa Facturación
+      safeNumber(tariff?.facturation_tariff), //16 Tarifa Facturación
       Number(totalFacturacion),//17 Total Facturación
       utilidadServicio,//18 Utilidad Servicio
       margenServicio,//19 Margen Servicio
@@ -4669,6 +4658,7 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
       totalBillHours.HFEN,  //36 HFEN
       bill.operation?.motorShip ?? '', // 37 Buque
       totalFeeding, //38 Total Alimentación (pendiente de cálculo, se puede agregar lógica similar a compensatory si es necesario)
+      bill.operation?.clientProgramming?.service_request ?? '', //7 solicitud SC (service_request)
       bill.operation?.subSite?.name ?? 'N/A',//39 Subsede
       bill.user?.name ?? '', //40 Usuario
       bill.operation?.user?.name ?? '', //41 Creado por (usuario de la operación)
@@ -4733,44 +4723,43 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
         bill.week_number ?? '',//4- Semana
         tariff.code ?? '', //5- Código Subservicio
         mainServiceName, //6- Subservicio
-        bill.operation?.clientProgramming?.service_request ?? '', //7 solicitud del servicio del cliente (service_request)
-        bill.operation?.clientProgramming?.service ?? '', //8 nombre del servicio del cliente (service)
-        worker.payroll_code ?? '', //9- Código Trabajador
-        worker.name ?? '', //10- Nombre de Trabajador
-        tariff.unitOfMeasure?.name ?? '', //11- Unidad de Medida
-        this.calculateQHoras(detail, bill), // 12- Q Horas
-        Number(detail.pay_unit), //13- Unidad de pago
-        Number(detail.pay_rate ?? 0), //14- Cantidad
-        Number(tariff.paysheet_tariff ?? 0),//15- Tarifa Nómina
-        Number(detail.total_paysheet ?? 0), //16- Total Nómina
-
-        Number(comp.hours || 0),  //17- COMP
-        Number(bill.HOD ?? 0), //18- HOD
-        Number(bill.HON ?? 0), //19- HON
-        Number(bill.HED ?? 0), //20- HED
-        Number(bill.HEN ?? 0), //21- HEN
-        Number(bill.HFOD ?? 0), //22- HFOD
-        Number(bill.HFON ?? 0), //23- HFON
-        Number(bill.HFED ?? 0), //24- HFED
-        Number(bill.HFEN ?? 0), //25- HFEN
-
-        Number(bill.FAC_HOD ?? bill.HOD ?? 0), //26- FAC_HOD
-        Number(bill.FAC_HON ?? bill.HON ?? 0), //27- FAC_HON
-        Number(bill.FAC_HED ?? bill.HED ?? 0), //28- FAC_HED
-        Number(bill.FAC_HEN ?? bill.HEN ?? 0), //29- FAC_HEN
-        Number(bill.FAC_HFOD ?? bill.HFOD ?? 0), //30- FAC_HFOD
-        Number(bill.FAC_HFON ?? bill.HFON ?? 0), //31- FAC_HFON
-        Number(bill.FAC_HFED ?? bill.HFED ?? 0), //32- FAC_HFED
-        Number(bill.FAC_HFEN ?? bill.HFEN ?? 0), //33- FAC_HFEN
-            Number(tariff.facturation_tariff ?? 0),//34- Tarifa Facturación
-        Number(detail.total_bill ?? 0), //35- Total Facturación
-        bill.operation?.motorShip ?? '', //36- Buque
-        feedingCount, //37- Alimentación (número de registros de alimentación para este trabajador en esta operación)
-        bill.operation?.subSite?.name ?? 'N/A', //38- Subsitio
-        bill.user?.name ?? '', //39- Usuario
-        bill.operation.user?.name ?? '', //40- Creado por (usuario de la operación)
-        bill.observation ?? '', //41- Observación
-        estadoTexto, //42- Estado
+        worker.payroll_code ?? '', //7- Código Trabajador
+        worker.name ?? '', //8- Nombre de Trabajador
+        tariff.unitOfMeasure?.name ?? '', //9- Unidad de Medida
+        this.calculateQHoras(detail, bill), // 10- Q Horas
+        Number(detail.pay_unit), //11- Unidad de pago
+        Number(detail.pay_rate ?? 0), //12- Cantidad
+        Number(tariff.paysheet_tariff ?? 0),//13- Tarifa Nómina
+        Number(detail.total_paysheet ?? 0), //14- Total Nómina
+        
+        Number(comp.hours || 0),  //15- COMP
+        Number(bill.HOD ?? 0), //16- HOD
+        Number(bill.HON ?? 0), //17- HON
+        Number(bill.HED ?? 0), //18- HED
+        Number(bill.HEN ?? 0), //19- HEN
+        Number(bill.HFOD ?? 0), //20- HFOD
+        Number(bill.HFON ?? 0), //21- HFON
+        Number(bill.HFED ?? 0), //22- HFED
+        Number(bill.HFEN ?? 0), //23- HFEN
+        
+        Number(bill.FAC_HOD ?? bill.HOD ?? 0), //24- FAC_HOD
+        Number(bill.FAC_HON ?? bill.HON ?? 0), //25- FAC_HON
+        Number(bill.FAC_HED ?? bill.HED ?? 0), //26- FAC_HED
+        Number(bill.FAC_HEN ?? bill.HEN ?? 0), //27- FAC_HEN
+        Number(bill.FAC_HFOD ?? bill.HFOD ?? 0), //28- FAC_HFOD
+        Number(bill.FAC_HFON ?? bill.HFON ?? 0), //29- FAC_HFON
+        Number(bill.FAC_HFED ?? bill.HFED ?? 0), //30- FAC_HFED
+        Number(bill.FAC_HFEN ?? bill.HFEN ?? 0), //31- FAC_HFEN
+        Number(tariff.facturation_tariff ?? 0),//32- Tarifa Facturación
+        Number(detail.total_bill ?? 0), //33- Total Facturación
+        bill.operation?.motorShip ?? '', //34- Buque
+        feedingCount, //35- Alimentación (número de registros de alimentación para este trabajador en esta operación)
+        bill.operation?.clientProgramming?.service_request ?? '', //36- solicitud del servicio del cliente (Solicitud SC)
+        bill.operation?.subSite?.name ?? 'N/A', //37- Subsitio
+        bill.user?.name ?? '', //38- Usuario
+        bill.operation.user?.name ?? '', //39- Creado por (usuario de la operación)
+        bill.observation ?? '', //40- Observación
+        estadoTexto, //41- Estado
       ]);
 
       // ===== FORMATOS RTD ===
