@@ -78,11 +78,9 @@ import { AppController } from './app.controller';
     PermissionModule,
   ],
   providers: [
-    PrismaService,
     DocsAuthMiddleware
   ],
   controllers: [AppController, DocsController],
-  exports: [PrismaService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
