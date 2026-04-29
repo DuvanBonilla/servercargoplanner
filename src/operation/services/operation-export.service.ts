@@ -273,8 +273,10 @@ export class OperationExportService {
 			) as StatusOperation[];
 
 			if (validStatuses.length) where.status = { in: validStatuses };
-		} else {
-    where.status = StatusOperation.COMPLETED;  //descargar SOLO OpFinalizadas
+		} 
+		
+		else {
+              where.status = { not: StatusOperation.CANCELED };  //No descargar las operaciones CANCELED
       }  
 
 		if (filters.jobAreaIds?.length) where.id_area = { in: filters.jobAreaIds };

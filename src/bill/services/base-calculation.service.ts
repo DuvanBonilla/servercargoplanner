@@ -66,9 +66,9 @@ export class BaseCalculationService {
 
           // LÓGICA ESPECIAL PARA DOMINGO - SOLO PARA NÓMINA Y HORAS FESTIVAS
           if (hasSunday && !useFacturationMultipliers && festivaHourTypes.includes(hourType)) {
-            console.log(`\n=== CÁLCULO ESPECIAL DOMINGO PARA ${hourType} ===`);
-            console.log(`Horas originales: ${hours}`);
-            console.log(`Límite diario domingo: ${dailyHoursLimit} horas`);
+            // console.log(`\n=== CÁLCULO ESPECIAL DOMINGO PARA ${hourType} ===`);
+            // console.log(`Horas originales: ${hours}`);
+            // console.log(`Límite diario domingo: ${dailyHoursLimit} horas`);
             
             // Para domingo, las horas festivas se calculan con base en las 48 horas semanales
             // Pero el multiplicador puede cambiar según la lógica de negocio
@@ -85,9 +85,9 @@ export class BaseCalculationService {
               console.log(`Calculando ${hourType} como festiva extra en domingo`);
             }
             
-            console.log(`Tipo de cálculo: ${calculationType}`);
-            console.log(`Multiplicador aplicado: ${specialMultiplier}`);
-            console.log(`=== FIN CÁLCULO DOMINGO ===\n`);
+            // console.log(`Tipo de cálculo: ${calculationType}`);
+            // console.log(`Multiplicador aplicado: ${specialMultiplier}`);
+            // console.log(`=== FIN CÁLCULO DOMINGO ===\n`);
           }
 
           // Calcular el monto (las horas se mantienen, pero el contexto de cálculo cambia)

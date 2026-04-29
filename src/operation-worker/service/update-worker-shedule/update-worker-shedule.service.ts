@@ -144,7 +144,7 @@ export class UpdateWorkerSheduleService {
 
         // ✅ SI NO HAY WORKERS EN EL GRUPO PERO SE PROPORCIONARON NUEVOS, CREARLOS
         if (existingGroupRecords.length === 0 && workerIds && workerIds.length > 0) {
-          console.log(`[UpdateWorkerSheduleService] ✨ Grupo ${id_group} vacío, agregando ${workerIds.length} worker(s) nuevo(s)`);
+          // console.log(`[UpdateWorkerSheduleService] ✨ Grupo ${id_group} vacío, agregando ${workerIds.length} worker(s) nuevo(s)`);
           
           // Validar que los trabajadores existen
           const validation = await this.validationService.validateAllIds({
