@@ -54,7 +54,7 @@ export class BaseCalculationService {
           console.warn(`Tipo de hora no reconocido: ${hourType}`);
           continue;
         }
-        const multiplierKey = useFacturationMultipliers 
+        const multiplierKey = useFacturationMultipliers  
           ? `FAC_${mappedHourType}` 
           : mappedHourType;
 

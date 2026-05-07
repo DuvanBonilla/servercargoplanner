@@ -526,7 +526,7 @@ export class BillService {
     } else {
       const amount = group.amount || 0;
       totalPaysheet = amount * paysheetTariff;
-      // console.log('Amount:', amount, 'Paysheet Tariff:', paysheetTariff);
+      console.log('Amount:', amount, 'Paysheet Tariff:', paysheetTariff);
     }
 
     return { totalFacturation, totalPaysheet };
@@ -545,14 +545,14 @@ export class BillService {
     const amount = group.amount ?? amountDb ?? 0;
     
     // ✅ LOG PARA DEPURACIÓN
-    // console.log('=== CALCULATE QUANTITY TOTALS ===');
-    // console.log('Grupo:', matchingGroupSummary.groupId);
-    // console.log('paysheetTariff:', paysheetTariff);
-    // console.log('facturationTariff:', facturationTariff);
-    // console.log('amount:', amount);
-    // console.log('totalPaysheet:', amount * paysheetTariff);
-    // console.log('totalFacturation:', amount * facturationTariff);
-    // console.log('=================================');
+    console.log('=== CALCULATE QUANTITY TOTALS ===');
+    console.log('Grupo:', matchingGroupSummary.groupId);
+    console.log('paysheetTariff:', paysheetTariff);
+    console.log('facturationTariff:', facturationTariff);
+    console.log('amount:', amount);
+    console.log('totalPaysheet:', amount * paysheetTariff);
+    console.log('totalFacturation:', amount * facturationTariff);
+    console.log('=================================');
     
     return {
       totalPaysheet: amount * paysheetTariff,
@@ -771,12 +771,12 @@ export class BillService {
   try {
     // ✅ USAR group_hours EN LUGAR DE op_duration PARA EL COMPENSATORIO
     const groupDuration = Number(billDB.group_hours) || 0;
-    // console.log('🔍 [calculateCompensatoryForBill] Usando group_hours:', {
-    //   billId: billDB.id,
-    //   groupHours: groupDuration,
-    //   opDurationTotal: billDB.operation?.op_duration,
-    //   diferencia: `El compensatorio usa ${groupDuration}h del grupo, NO ${billDB.operation?.op_duration}h de la operación total`
-    // });
+    console.log('🔍 [calculateCompensatoryForBill] Usando group_hours:', {
+      billId: billDB.id,
+      groupHours: groupDuration,
+      opDurationTotal: billDB.group_hours,
+      diferencia: `El compensatorio usa ${groupDuration}h del grupo, NO ${billDB.operation?.op_duration}h de la operación total`
+    });
     
     if (groupDuration === 0) {
       return {
@@ -796,28 +796,28 @@ export class BillService {
       ? toLocalDate(billDB.operation.dateEnd)
       : undefined;
 
-    // console.log('🔍 [calculateCompensatoryForBill] Verificación de fechas:', {
-    //   billId: billDB.id,
-    //   dateStartRaw: billDB.operation?.dateStart,
-    //   dateEndRaw: billDB.operation?.dateEnd,
-    //   startDate: startDate?.toISOString().split('T')[0],
-    //   endDate: endDate?.toISOString().split('T')[0],
-    //   startDayOfWeek: startDate?.getDay(), // 0=domingo, 1=lunes, ...
-    //   endDayOfWeek: endDate?.getDay(),
-    // });
+    console.log('🔍 [calculateCompensatoryForBill] Verificación de fechas:', {
+      billId: billDB.id,
+      dateStartRaw: billDB.operation?.dateStart,
+      dateEndRaw: billDB.operation?.dateEnd,
+      startDate: startDate?.toISOString().split('T')[0],
+      endDate: endDate?.toISOString().split('T')[0],
+      startDayOfWeek: startDate?.getDay(), // 0=domingo, 1=lunes, ...
+      endDayOfWeek: endDate?.getDay(),
+    });
 
     // VERIFICAR SI HAY DOMINGO REAL
     let hasSundayReal = false;
     if (startDate && endDate) {
       hasSundayReal = hasSundayInRange(startDate, endDate);
-      // console.log('🔍 [calculateCompensatoryForBill] Resultado verificación domingo:', {
-      //   billId: billDB.id,
-      //   hasSundayReal,
-      //   fechaInicio: startDate.toISOString().split('T')[0],
-      //   fechaFin: endDate.toISOString().split('T')[0],
-      //   diaInicioSemana: startDate.getDay() === 0 ? 'DOMINGO' : ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][startDate.getDay() - 1],
-      //   diaFinSemana: endDate.getDay() === 0 ? 'DOMINGO' : ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][endDate.getDay() - 1],
-      // });
+      console.log('🔍 [calculateCompensatoryForBill] Resultado verificación domingo:', {
+        billId: billDB.id,
+        hasSundayReal,
+        fechaInicio: startDate.toISOString().split('T')[0],
+        fechaFin: endDate.toISOString().split('T')[0],
+        diaInicioSemana: startDate.getDay() === 0 ? 'DOMINGO' : ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][startDate.getDay() - 1],
+        diaFinSemana: endDate.getDay() === 0 ? 'DOMINGO' : ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][endDate.getDay() - 1],
+      });
     }
 
     if (hasSundayReal) {
@@ -852,16 +852,16 @@ export class BillService {
     const effectiveHours = Math.min(groupDuration, dayHours);
     const compensatoryHours = effectiveHours * compensatoryPerHour;
 
-    // console.log('📊 [Cálculo Compensatorio Detallado]:', {
-    //   weekHours,
-    //   dayHours,
-    //   compensatoryDay,
-    //   compensatoryPerHour,
-    //   groupDuration: `${groupDuration}h (duración del GRUPO)`,
-    //   effectiveHours,
-    //   compensatoryHours: `${compensatoryHours}h (resultado final)`,
-    //   nota: 'Ahora usa group_hours en lugar de op_duration'
-    // });
+    console.log('📊 [Cálculo Compensatorio Detallado]:', {
+      weekHours,
+      dayHours,
+      compensatoryDay,
+      compensatoryPerHour,
+      groupDuration: `${groupDuration}h (duración del GRUPO)`,
+      effectiveHours,
+      compensatoryHours: `${compensatoryHours}h (resultado final)`,
+      nota: 'Ahora usa group_hours en lugar de op_duration'
+    });
 
     const workerCount = billDB.number_of_workers ?? 0;
     const tariff = billDB.billDetails?.[0]?.operationWorker?.tariff?.paysheet_tariff ?? 0;

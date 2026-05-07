@@ -14,28 +14,28 @@ import { Decimal } from '@prisma/client/runtime/library';
 export class HoursDistribution {
   @ApiProperty({ example: '1' })
   @IsNumber()
-  HOD: number;
+  HOD!: number;
   @IsNumber()
   @ApiProperty({ example: '0' })
-  HON: number;
+  HON!: number;
   @IsNumber()
   @ApiProperty({ example: '2' })
-  HED: number;
+  HED!: number;
   @IsNumber()
   @ApiProperty({ example: '0' })
-  HEN: number;
+  HEN!: number;
   @IsNumber()
   @ApiProperty({ example: '0' })
-  HFOD: number;
+  HFOD!: number;
   @IsNumber()
   @ApiProperty({ example: '0' })
-  HFON: number;
+  HFON!: number;
   @IsNumber()
   @ApiProperty({ example: '0' })
-  HFED: number;
+  HFED!: number;
   @IsNumber()
   @ApiProperty({ example: '0' })
-  HFEN: number;
+  HFEN!: number;
 }
 
 export class GroupBillDto {
@@ -49,17 +49,17 @@ export class GroupBillDto {
   id?: string;
 
   @ApiProperty({ description: 'Distribuccion horaria para facturacion' })
-  billHoursDistribution: HoursDistribution;
+  billHoursDistribution!: HoursDistribution;
 
   @ApiProperty({ description: 'Distribuccion horaria para nomina' })
-  paysheetHoursDistribution: HoursDistribution;
+  paysheetHoursDistribution!: HoursDistribution;
 
   @ApiProperty({ example: '1' })
   @IsNumber()
   @Min(0)
   @Type(() => Number)
   @IsOptional()
-  amount: number;
+  amount!: number;
 
   @ApiProperty({ 
     example: 1,
@@ -70,7 +70,7 @@ export class GroupBillDto {
   @Min(0)
   @Type(() => Number)
   @IsOptional()
-  group_hours: Decimal;
+  group_hours!: Decimal;
 
   @ApiProperty({ 
     example: 1,
@@ -93,7 +93,7 @@ export class GroupBillDto {
 
   @IsOptional()
   @ValidateNested({ each: true })
-  pays: WorkerPay[];
+  pays!: WorkerPay[];
 
    @IsOptional()
   @IsObject()
@@ -109,13 +109,13 @@ export class WorkerPay {
   @IsNumber()
   @Min(1)
   @Type(() => Number)
-  id_worker: number;
+  id_worker!: number;
 
   @ApiProperty({ example: '1.5' })
   @IsNumber()
   @Min(0)
   @Type(() => Number)
-  pay: number;
+  pay!: number;
 }
 
 export class CreateBillDto {
@@ -123,7 +123,7 @@ export class CreateBillDto {
   @IsNumber()
   @Type(() => Number)
   @Min(1)
-  id_operation: number;
+  id_operation!: number;
 
   @ApiProperty({ 
     description: 'Grupos de trabajadores con sus distribuciones horarias y pagos',
@@ -131,5 +131,5 @@ export class CreateBillDto {
   })
   @ValidateNested({ each: true })
   @Type(() => GroupBillDto)
-  groups: GroupBillDto[];
+  groups!: GroupBillDto[];
 }

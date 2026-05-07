@@ -28,8 +28,8 @@ export class OperationsCronService {
     private updateOperation: UpdateOperationService,
     private updateWorker: UpdateWorkerService,
     private updateOperationWorker: UpdateOperationWorkerService,
-    // private updatePermission: UpdatePermissionService,
-    // private updateInability:UpdateInabilityService, 
+    private updatePermission: UpdatePermissionService,
+    private updateInability:UpdateInabilityService, 
   ) {}
 
   /**
@@ -100,7 +100,7 @@ export class OperationsCronService {
   /**
    * Actualiza los trabajadores con permisos que inician hoy
    */
-  // @Cron(CronExpression.EVERY_10_MINUTES)
+  // @Cron(CronExpression.EVERY_20_MINUTES)
   // async handleUpdateWorkersWithStartingPermissions() {
   //   try {
   //     await this.updatePermission.updateWorkersWithStartingPermissions();
@@ -133,14 +133,14 @@ export class OperationsCronService {
    * Actualiza los trabajadores con incapacidades expiradas
    */
 
-// @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-// async handleUpdateWorkersWithExpiredInabilities() {
-//   try {
-//     await this.updateInability.updateWorkersWithExpiredInabilities();
-//   } catch (error) {
-//     this.logger.error('Error updating workers with expired inabilities:', error);
-//   }
-// }
+@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+async handleUpdateWorkersWithExpiredInabilities() {
+  try {
+    await this.updateInability.updateWorkersWithExpiredInabilities();
+  } catch (error) {
+    this.logger.error('Error updating workers with expired inabilities:', error);
+  }
+}
 
 
   /**
