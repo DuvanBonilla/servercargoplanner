@@ -418,6 +418,11 @@ model Bill {
   billDetails       BillDetail[]
   group_hours       Decimal?  @db.Decimal(15, 3)
   observation       String?
+  dateStart_group DateTime? @db.Date
+  timeStart_group String?
+  dateEnd_group   DateTime? @db.Date
+  timeEnd_group   String?
+
 }
 
 model BillDetail {
@@ -470,6 +475,7 @@ enum Role {
   SUPERADMIN
   GH
   SUPERVISOR
+  PROGRAMMER
 }
 
 enum Status {

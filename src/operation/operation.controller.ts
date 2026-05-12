@@ -29,7 +29,7 @@ import { ExportOperationsDto, ExportReportType } from './dto/export-operations.d
 @Controller('operation')
 @UseInterceptors(SiteInterceptor)
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPERVISOR, Role.ADMIN, Role.SUPERADMIN)
+@Roles(Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN)
 @ApiBearerAuth('access-token')
 export class OperationController {
   constructor(
@@ -865,6 +865,7 @@ async create(
     @Query('id_group') id_group: string,
     @CurrentUser('userId') userId: number,
     @CurrentUser('isSupervisor') isSupervisor: number,
+    @CurrentUser('isProgrammer') isProgrammer: number,
     @CurrentUser('isAdmin') isAdmin: number,
     @CurrentUser('siteId') siteId: number,
     @CurrentUser('subsiteId') subsiteId: number,
@@ -872,7 +873,7 @@ async create(
     const response = await this.operationService.remove(
       id,
       isAdmin ? siteId : undefined,
-      isSupervisor ? subsiteId : undefined,
+       (isSupervisor || isProgrammer)  ? subsiteId : undefined,
       id_group || undefined,
       userId,
     );
@@ -919,6 +920,7 @@ async create(
       @Body('id_groups') id_groups: string[],
       @CurrentUser('userId') userId: number,
       @CurrentUser('isSupervisor') isSupervisor: number,
+      @CurrentUser('isProgrammer') isProgrammer: number,
       @CurrentUser('isAdmin') isAdmin: number,
       @CurrentUser('siteId') siteId: number,
       @CurrentUser('subsiteId') subsiteId: number,
@@ -931,7 +933,7 @@ async create(
         id,
         id_groups,
         isAdmin ? siteId : undefined,
-        isSupervisor ? subsiteId : undefined,
+        (isSupervisor || isProgrammer) ? subsiteId : undefined,
         userId,
       );
 

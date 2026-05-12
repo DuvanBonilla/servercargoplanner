@@ -11,5 +11,5 @@ export class WorkerDistributionQueryDto {
   @IsOptional()
   @IsDateString()
   @Transform(({ value }) => value || new Date().toISOString().split('T')[0])
-  date: string;
+  date!: string;
 }

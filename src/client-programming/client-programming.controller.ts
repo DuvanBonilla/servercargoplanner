@@ -33,7 +33,7 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 @ApiTags('Client Programming')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @UseInterceptors(SiteInterceptor)
-@Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR)
+@Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.PROGRAMMER)
 @ApiBearerAuth('access-token')
 export class ClientProgrammingController {
   constructor(
@@ -131,7 +131,7 @@ async update(
   @CurrentUser('subsiteId') subsiteId: number,
   @CurrentUser('role') role: string,
 ) {
-  // Validar que el usuario tenga permiso en ese site (solo ADMIN/SUPERVISOR)
+  // Validar que el usuario tenga permiso en ese site (solo ADMIN)
   if (role !== 'SUPERADMIN' && siteId !== null && siteId !== undefined) {
     if (
       updateClientProgrammingDto.id_site !== null &&

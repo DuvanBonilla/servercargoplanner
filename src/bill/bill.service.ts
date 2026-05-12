@@ -490,32 +490,116 @@ export class BillService {
 
     // Calcular nómina
     if (paysheetUnit === 'HORAS') {
+      // 
       const paysheetResult =
-        await this.hoursCalculationService.processHoursGroups(
-          matchingGroupSummary,
-          group,
-        );
-      totalPaysheet = paysheetResult.totalFinalPayroll;
-      
-      // ✅ AGREGAR COMPENSATORIO AL TOTAL PAYSHEET PARA TARIFA DE HORAS
-      // Siempre se suma al total_paysheet cuando es por HORAS
-      // Obtener datos necesarios para calcular compensatorio
-      const workerCount = matchingGroupSummary.workers?.length || 0;
-      const paysheetTariff = matchingGroupSummary.paysheet_tariff ?? 
-                            matchingGroupSummary.tariffDetails?.paysheet_tariff ?? 0;
-      const groupDuration = Number(group.group_hours) || 0;
-      
-      // Calcular horas de compensatorio
-      const weekHours = 44; // valor por defecto
-      const dayHours = weekHours / 6; // 7.333333 para 44 horas
-      const compensatoryDay = dayHours / 6; // 1.222222 para 44 horas
-      const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por hora
-      const effectiveHours = Math.min(groupDuration, dayHours);
-      const compensatoryHours = effectiveHours * compensatoryPerHour;
-      const compensatoryAmount = compensatoryHours * workerCount * paysheetTariff;
-      
-      // Siempre sumar al total paysheet para servicios por HORAS
-      totalPaysheet += compensatoryAmount;
+    await this.hoursCalculationService.processHoursGroups(
+
+      matchingGroupSummary,
+      group,
+    );
+
+  totalPaysheet = paysheetResult.totalFinalPayroll;
+
+  // =========================================================
+  // ✅ CALCULAR COMPENSATORIO BASADO EN FECHAS DEL GRUPO
+  // =========================================================
+
+  const workerCount =
+    matchingGroupSummary.workers?.length || 0;
+
+  const paysheetTariff =
+    matchingGroupSummary.paysheet_tariff ??
+    matchingGroupSummary.tariffDetails?.paysheet_tariff ??
+    0;
+
+  const groupDuration =
+    Number(group.group_hours) || 0;
+
+  // ✅ USAR FECHAS REALES DEL GRUPO
+  const startDate =
+    matchingGroupSummary?.dateRange?.start
+      ? toLocalDate(
+          matchingGroupSummary.dateRange.start,
+        )
+      : undefined;
+
+  const endDate =
+    matchingGroupSummary?.dateRange?.end
+      ? toLocalDate(
+          matchingGroupSummary.dateRange.end,
+        )
+      : undefined;
+
+  // ✅ VALIDAR SI EL GRUPO CAE EN DOMINGO
+  const hasSundayReal =
+    startDate && endDate
+      ? hasSundayInRange(startDate, endDate)
+      : false;
+
+  console.log(
+    '🔍 [calculateAlternativeServiceTotals] Validación domingo:',
+    {
+      groupId: matchingGroupSummary.groupId,
+      startDate:
+        startDate?.toISOString().split('T')[0],
+      endDate:
+        endDate?.toISOString().split('T')[0],
+      hasSundayReal,
+    },
+  );
+
+  // =========================================================
+  // ✅ CÁLCULO DEL COMPENSATORIO
+  // =========================================================
+
+  const weekHours = hasSundayReal ? 48 : 44;
+
+  const dayHours = weekHours / 6;
+
+  const compensatoryDay = dayHours / 6;
+
+  const compensatoryPerHour =
+    compensatoryDay / dayHours;
+
+  const effectiveHours = Math.min(
+    groupDuration,
+    dayHours,
+  );
+
+  const compensatoryHours =
+    effectiveHours * compensatoryPerHour;
+
+  const compensatoryAmount =
+    compensatoryHours *
+    workerCount *
+    paysheetTariff;
+
+  console.log(
+    '📊 [Compensatorio Servicio Alternativo]',
+    {
+      groupId: matchingGroupSummary.groupId,
+      groupDuration,
+      compensatoryHours,
+      compensatoryAmount,
+      hasSundayReal,
+    },
+  );
+
+  // =========================================================
+  // ✅ SOLO SUMAR SI NO ES DOMINGO
+  // =========================================================
+
+  if (!hasSundayReal) {
+    totalPaysheet += compensatoryAmount;
+
+    console.log(
+      '✅ Compensatorio SUMADO al total_paysheet',
+    );
+  } else {
+    console.log(
+      '🚫 Compensatorio NO sumado por domingo',
+    );
+  }
     } else if (paysheetUnit === 'JORNAL') {
       const paysheetResult = this.payrollCalculationService.processJornalGroups(
         [matchingGroupSummary],
@@ -675,7 +759,7 @@ export class BillService {
   }
 
     // ✅ CALCULAR COMPENSATORIO PARA TARIFAS DE HORAS
-    let totalFinalPayrollWithCompensatory = result.totalFinalPayroll;
+     let totalFinalPayrollWithCompensatory = result.totalFinalPayroll;
     if (matchingGroupSummary) {
       // Siempre calcular compensatorio para servicios por HORAS
       // Obtener datos necesarios para calcular compensatorio
@@ -684,17 +768,88 @@ export class BillService {
                             matchingGroupSummary.tariffDetails?.paysheet_tariff ?? 0;
       const groupDuration = Number(groupDto.group_hours) || 0;
       
-      // Calcular horas de compensatorio
-      const weekHours = 44; // valor por defecto
-      const dayHours = weekHours / 6; // 7.333333 para 44 horas
-      const compensatoryDay = dayHours / 6; // 1.222222 para 44 horas
-      const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por hora
-      const effectiveHours = Math.min(groupDuration, dayHours);
-      const compensatoryHours = effectiveHours * compensatoryPerHour;
-      const compensatoryAmount = compensatoryHours * workerCount * paysheetTariff;
+      // // Calcular horas de compensatorio
+      // const weekHours = 44; // valor por defecto
+      // const dayHours = weekHours / 6; // 7.333333 para 44 horas
+      // const compensatoryDay = dayHours / 6; // 1.222222 para 44 horas
+      // const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por hora
+      // const effectiveHours = Math.min(groupDuration, dayHours);
+      // const compensatoryHours = effectiveHours * compensatoryPerHour;
+      // const compensatoryAmount = compensatoryHours * workerCount * paysheetTariff;
       
       // Siempre sumar al total paysheet para servicios por HORAS
-      totalFinalPayrollWithCompensatory += compensatoryAmount;
+      // totalFinalPayrollWithCompensatory += compensatoryAmount;
+
+// =====================================================
+// ✅ OBTENER FECHAS REALES DESDE operation_worker
+// =====================================================
+
+const operationWorkers =
+  matchingGroupSummary?.workers || [];
+
+// Buscar fechas reales del grupo
+const validWorkers = operationWorkers.filter(
+  (w: any) =>
+    w.dateStart &&
+    w.timeStart &&
+    w.dateEnd &&
+    w.timeEnd,
+);
+
+// Ordenar por fecha/hora inicio
+validWorkers.sort((a: any, b: any) => {
+  const startA = new Date(
+    `${a.dateStart}T${a.timeStart}`,
+  ).getTime();
+
+  const startB = new Date(
+    `${b.dateStart}T${b.timeStart}`,
+  ).getTime();
+
+  return startA - startB;
+});
+
+// Fecha inicial real del grupo
+const firstWorker = validWorkers[0];
+
+// Fecha final real del grupo
+const lastWorker =
+  validWorkers[validWorkers.length - 1];
+
+const startDate = firstWorker?.dateStart
+  ? toLocalDate(firstWorker.dateStart)
+  : undefined;
+
+const endDate = lastWorker?.dateEnd
+  ? toLocalDate(lastWorker.dateEnd)
+  : undefined;
+
+// ✅ VALIDAR DOMINGO REAL DEL GRUPO
+const hasSundayReal =
+  startDate && endDate
+    ? hasSundayInRange(startDate, endDate)
+    : false;
+
+// Calcular compensatorio
+const weekHours = hasSundayReal ? 48 : 44;
+const dayHours = weekHours / 6;
+const compensatoryDay = dayHours / 6;
+const compensatoryPerHour = compensatoryDay / dayHours;
+
+const effectiveHours = Math.min(groupDuration, dayHours);
+
+const compensatoryHours =
+  effectiveHours * compensatoryPerHour;
+
+const compensatoryAmount =
+  compensatoryHours *
+  workerCount *
+  paysheetTariff;
+
+// ✅ SOLO SUMAR SI NO ES DOMINGO
+if (!hasSundayReal) {
+  totalFinalPayrollWithCompensatory += compensatoryAmount;
+}
     }
 
     return {
@@ -775,7 +930,7 @@ export class BillService {
       billId: billDB.id,
       groupHours: groupDuration,
       opDurationTotal: billDB.group_hours,
-      diferencia: `El compensatorio usa ${groupDuration}h del grupo, NO ${billDB.operation?.op_duration}h de la operación total`
+      diferencia: `El compensatorio usa ${groupDuration}h del grupo`
     });
     
     if (groupDuration === 0) {
@@ -787,19 +942,24 @@ export class BillService {
         error: 'No se encontró la duración del grupo (group_hours) o es 0',
       };
     }
+    
+    // Normalizar fechas usando operationWorker real
+const operationWorker = billDB.billDetails?.[0]?.operationWorker;
+
 
     // Normalizar fechas usando la función de utilidades
-    const startDate = billDB.operation?.dateStart
-      ? toLocalDate(billDB.operation.dateStart)
+    // const startDate = billDB.operation_worker?.dateStart
+    const startDate = operationWorker.dateStart
+      ? toLocalDate(operationWorker.dateStart)
       : undefined;
-    const endDate = billDB.operation?.dateEnd
-      ? toLocalDate(billDB.operation.dateEnd)
+    const endDate = operationWorker.dateEnd
+      ? toLocalDate(operationWorker.dateEnd)
       : undefined;
 
     console.log('🔍 [calculateCompensatoryForBill] Verificación de fechas:', {
       billId: billDB.id,
-      dateStartRaw: billDB.operation?.dateStart,
-      dateEndRaw: billDB.operation?.dateEnd,
+      dateStartRaw: billDB.operation_worker?.dateStart,
+      dateEndRaw: billDB.operation_worker?.dateEnd,
       startDate: startDate?.toISOString().split('T')[0],
       endDate: endDate?.toISOString().split('T')[0],
       startDayOfWeek: startDate?.getDay(), // 0=domingo, 1=lunes, ...
@@ -807,18 +967,26 @@ export class BillService {
     });
 
     // VERIFICAR SI HAY DOMINGO REAL
-    let hasSundayReal = false;
-    if (startDate && endDate) {
-      hasSundayReal = hasSundayInRange(startDate, endDate);
-      console.log('🔍 [calculateCompensatoryForBill] Resultado verificación domingo:', {
-        billId: billDB.id,
-        hasSundayReal,
-        fechaInicio: startDate.toISOString().split('T')[0],
-        fechaFin: endDate.toISOString().split('T')[0],
-        diaInicioSemana: startDate.getDay() === 0 ? 'DOMINGO' : ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][startDate.getDay() - 1],
-        diaFinSemana: endDate.getDay() === 0 ? 'DOMINGO' : ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][endDate.getDay() - 1],
-      });
-    }
+    // let hasSundayReal = false;
+
+    const hasSundayReal =
+  startDate && endDate
+    ? hasSundayInRange(startDate, endDate)
+    : false;
+
+
+
+    // if (startDate && endDate) {
+    //   hasSunday = hasSundayInRange(startDate, endDate);
+    //   console.log('🔍 [calculateCompensatoryForBill] Resultado verificación domingo:', {
+    //     billId: billDB.id,
+    //     hasSundayReal2,
+    //     fechaInicio: startDate.toISOString().split('T')[0],
+    //     fechaFin: endDate.toISOString().split('T')[0],
+    //     diaInicioSemana: startDate.getDay() === 0 ? 'DOMINGO' : ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][startDate.getDay() - 1],
+    //     diaFinSemana: endDate.getDay() === 0 ? 'DOMINGO' : ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][endDate.getDay() - 1],
+    //   });
+    // }
 
     if (hasSundayReal) {
       return {
@@ -1716,16 +1884,19 @@ export class BillService {
       billDB.id_group,
     );
 
+
+    const operationWorker = billDB.billDetails?.[0]?.operationWorker;
+
     // Mapeo para que la respuesta tenga la misma estructura que el DTO
     return {
       ...billDB,
       op_duration: billDB.operation?.op_duration,
       compensatory,
       // ✅ AGREGAR FECHAS DEL GRUPO
-      dateStart_group: groupDates.dateStart,
-      timeStart_group: groupDates.timeStart,
-      dateEnd_group: groupDates.dateEnd,
-      timeEnd_group: groupDates.timeEnd,
+      dateStart_group: operationWorker.dateStart,
+      timeStart_group: operationWorker.timeStart,
+      dateEnd_group: operationWorker.dateEnd,
+      timeEnd_group: operationWorker.timeEnd,
       billHoursDistribution: {
         HOD: billDB.HOD,
         HON: billDB.HON,
@@ -4773,44 +4944,14 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
       rowIndexRTD++;
     }
   }
-  // this.autoAdjustColumns(worksheetData);
-  // this.autoAdjustColumns(worksheetRTD);
+
 
   await workbook.xlsx.write(res);
 res.end();
 
 }
 
-private autoAdjustColumns(worksheet: any) {
-  worksheet.columns.forEach((column: any) => {
-    let maxLength = 10;
 
-    column.eachCell({ includeEmpty: true }, (cell: any) => {
-      let value = cell.value;
-
-      if (value == null) return;
-
-      if (typeof value === 'object') {
-        value = value.text || value.richText?.map((t: any) => t.text).join('') || '';
-      }
-
-       // Detectar fechas
-      if (value instanceof Date) {
-        maxLength = Math.max(maxLength, 20);
-        return;
-      }
-
-      const length = value.toString().length;
-
-      if (length > maxLength) {
-        maxLength = length;
-      }
-    });
-
-    // ajustar ancho con un límite máximo para evitar columnas excesivamente anchas
-      column.width = Math.min(maxLength * 1.2 + 2, 50);
-  });
-}
 
 private calculateHoursFromOperation(operation: any): number {
   if (!operation?.dateStart || !operation?.timeStrat) {
@@ -5384,13 +5525,13 @@ private calculateQHoras(detail: any, bill: any): number {
 
   // 3️⃣ construir fechas
   const startDate = buildDateTime(
-    detail.operationWorker?.dateStart || bill.dateStart_group,
-    detail.operationWorker?.timeStart || bill.timeStart_group
+    detail.operationWorker?.dateStart,
+    detail.operationWorker?.timeStart
   );
 
   const endDate = buildDateTime(
-    detail.operationWorker?.dateEnd || bill.dateEnd_group,
-    detail.operationWorker?.timeEnd || bill.timeEnd_group
+    detail.operationWorker?.dateEnd,
+    detail.operationWorker?.timeEnd
   );
 
   if (startDate && endDate) {

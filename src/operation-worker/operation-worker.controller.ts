@@ -29,7 +29,7 @@ import { UpdateWorkersScheduleDto } from './dto/update-workers-schedule.dto';
 @ApiTags('Operation Workers')
 @Controller('operation-worker')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPERVISOR, Role.ADMIN, Role.SUPERADMIN)
+@Roles(Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN)
 @ApiBearerAuth('access-token')
 export class OperationWorkerController {
   constructor(

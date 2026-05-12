@@ -113,7 +113,7 @@ export class ExportFiltersDto {
 export class ExportOperationsDto {
   @ApiProperty({ enum: ExportReportType, example: ExportReportType.WORKER })
   @IsEnum(ExportReportType)
-  reportType: ExportReportType;
+  reportType!: ExportReportType;
 
   @ApiPropertyOptional({ type: ExportFiltersDto })
   @IsOptional()

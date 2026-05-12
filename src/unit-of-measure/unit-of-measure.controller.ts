@@ -26,7 +26,7 @@ import { ParseIntPipe } from 'src/pipes/parse-int/parse-int.pipe';
 @Controller('unit-of-measure')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR)
+@Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.PROGRAMMER)
 @UseInterceptors(SiteInterceptor)
 export class UnitOfMeasureController {
   constructor(private readonly unitOfMeasureService: UnitOfMeasureService) {}

@@ -34,7 +34,7 @@ import { ApiProduces } from '@nestjs/swagger';
 @Controller('bill')
 @UseInterceptors(SiteInterceptor)
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPERVISOR, Role.ADMIN, Role.SUPERADMIN)
+@Roles(Role.SUPERVISOR,Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN)
 @ApiBearerAuth('access-token')
 export class BillController {
   constructor(private readonly billService: BillService) {}

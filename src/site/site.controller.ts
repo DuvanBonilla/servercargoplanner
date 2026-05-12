@@ -43,7 +43,7 @@ export class SiteController {
   }
 
   @Get()
-  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.SUPERVISOR)
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.SUPERVISOR, Role.PROGRAMMER)
   async findAll(@CurrentUser('siteId') siteId: number, @CurrentUser('isSuperAdmin') isSuperAdmin: boolean) {
     const response = await this.siteService.findAll(!isSuperAdmin ? siteId : undefined);
     if (response['status'] === 404) {
@@ -53,7 +53,7 @@ export class SiteController {
   }
 
   @Get(':id')
-  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.SUPERVISOR)
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.SUPERVISOR, Role.PROGRAMMER)
   async findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser('siteId') siteId: number) {
     const response = await this.siteService.findOne(id, siteId);
     if (response['status'] === 404) {

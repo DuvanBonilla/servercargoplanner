@@ -113,16 +113,16 @@ export class HoursCalculationService {
   const effectiveHours = Math.min(hours, dayHours);
   const compensatoryHours = effectiveHours * compensatoryPerHour;
 
-  // console.log('=== CÁLCULO COMPENSATORIO CORREGIDO ===');
-  // console.log('billStatus:', billStatus);
-  // console.log('weekHours:', weekHours);
-  // console.log('dayHours (valor máximo):', dayHours);
-  // console.log('compensatoryDay:', compensatoryDay);
-  // console.log('compensatoryPerHour:', compensatoryPerHour);
-  // console.log('hours (duración operación):', hours);
-  // console.log('effectiveHours (limitado):', effectiveHours);
-  // console.log('compensatoryHours (resultado):', compensatoryHours);
-  // console.log('=== FIN CÁLCULO COMPENSATORIO ===');
+  console.log('=== CÁLCULO COMPENSATORIO CORREGIDO ===');
+  console.log('billStatus:', billStatus);
+  console.log('weekHours:', weekHours);
+  console.log('dayHours (valor máximo):', dayHours);
+  console.log('compensatoryDay:', compensatoryDay);
+  console.log('compensatoryPerHour:', compensatoryPerHour);
+  console.log('hours (duración operación):', hours);
+  console.log('effectiveHours (limitado):', effectiveHours);
+  console.log('compensatoryHours (resultado):', compensatoryHours);
+  console.log('=== FIN CÁLCULO COMPENSATORIO ===');
 
   return compensatoryHours;
 }

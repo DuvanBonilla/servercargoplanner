@@ -65,6 +65,13 @@ export const CurrentUser = createParamDecorator(
             : request.user?.role === Role.SUPERVISOR ||
               request.userPayload?.role === Role.SUPERVISOR;
         break;
+      case 'isProgrammer':
+        result =
+          request.isProgrammer !== undefined
+            ? request.isProgrammer
+            : request.user?.role === Role.PROGRAMMER ||
+              request.userPayload?.role === Role.PROGRAMMER;
+        break;
       case 'subsiteId':
         result =
           request.userPayload?.id_subsite ||

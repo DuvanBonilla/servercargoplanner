@@ -82,7 +82,7 @@ async create(
 }
 
   @Get(':id')
-  @Roles(Role.SUPERVISOR, Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.SUPERVISOR, Role.ADMIN, Role.SUPERADMIN, Role.PROGRAMMER)
   async findOne(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('siteId') siteId: number,
@@ -95,7 +95,7 @@ async create(
   }
 
    @Get()
-  @Roles(Role.SUPERVISOR, Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.SUPERVISOR, Role.ADMIN, Role.SUPERADMIN, Role.PROGRAMMER)
   async findAll(
     @CurrentUser('siteId') siteId: number,
     @CurrentUser('subsiteId') subsiteId?: number, // Hacer opcional con ?

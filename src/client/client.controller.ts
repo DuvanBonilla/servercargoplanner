@@ -45,7 +45,7 @@ export class ClientController {
   }
 
   @Get()
-  @Roles(Role.SUPERVISOR, Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.SUPERVISOR,Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN)
   async findAll() {
     const response = await this.clientService.findAll();
     return response;

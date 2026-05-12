@@ -147,7 +147,7 @@ export class OperationService {
       // console.log('[OperationService] ==> Usuario encontrado:', user);
 
       // Validar fecha para SUPERVISOR
-      if (user?.role === 'SUPERVISOR' && createOperationDto.dateStart) {
+      if ((user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER') && createOperationDto.dateStart) {
         // console.log('[OperationService] ==> Validando fecha para SUPERVISOR');
         // Si el usuario existe y su rol es 'SUPERVISOR', y además se proporcionó dateStart en el DTO
         const now = new Date(); // Obtener la fecha/hora actual
@@ -160,7 +160,7 @@ export class OperationService {
           // Si la diferencia es mayor o igual a 120 horas (5 días), devolver un objeto con mensaje y estado 400
           return {
             message:
-              'Como SUPERVISOR solo puedes crear operaciones con máximo o igual a 120 horas de antigüedad.',
+              'Como SUPERVISOR/PROGRAMMER solo puedes crear operaciones con máximo o igual a 120 horas de antigüedad.',
             status: 400,
           };
         }
@@ -791,14 +791,14 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         };
       }
 
-      // ✅ VALIDAR SEMANA PARA SUPERVISOR
+      // ✅ VALIDAR SEMANA PARA SUPERVISOR/PROGRAMMER
       if (userId) {
         const user = await this.prisma.user.findUnique({
           where: { id: userId },
           select: { role: true },
         });
 
-        if (user?.role === 'SUPERVISOR' && billInGroup?.status === 'ACTIVE') {
+        if ((user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER') && billInGroup?.status === 'ACTIVE') {
           // Obtener semana actual
           const currentDate = new Date();
           const currentWeekNumber = getWeekNumber(currentDate);

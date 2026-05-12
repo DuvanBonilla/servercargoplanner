@@ -93,7 +93,7 @@ export class PayrollCalculationService {
     } catch (error) {
       console.error(
         `Error al calcular para el grupo ${group.groupId}:`,
-        error.message,
+        error.message, 
       );
       continue;
     }
