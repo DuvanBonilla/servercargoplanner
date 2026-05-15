@@ -386,7 +386,7 @@ model Bill {
   operation         Operation @relation(fields: [id_operation], references: [id])
   // id_tariff         Int
   // tariff            Tariff    @relation(fields: [id_tariff], references: [id])
-  amount            Int
+  amount            Decimal?   @db.Decimal(15, 3)
   number_of_workers Int
   total_bill        Decimal   @db.Decimal(15, 3)
   total_paysheet    Decimal   @db.Decimal(15, 3)

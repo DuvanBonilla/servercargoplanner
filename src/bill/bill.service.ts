@@ -628,15 +628,15 @@ export class BillService {
       matchingGroupSummary.tariffDetails?.facturation_tariff ?? 0;
     const amount = group.amount ?? amountDb ?? 0;
     
-    // ✅ LOG PARA DEPURACIÓN
-    console.log('=== CALCULATE QUANTITY TOTALS ===');
-    console.log('Grupo:', matchingGroupSummary.groupId);
-    console.log('paysheetTariff:', paysheetTariff);
-    console.log('facturationTariff:', facturationTariff);
-    console.log('amount:', amount);
-    console.log('totalPaysheet:', amount * paysheetTariff);
-    console.log('totalFacturation:', amount * facturationTariff);
-    console.log('=================================');
+    // // ✅ LOG PARA DEPURACIÓN
+    // console.log('=== CALCULATE QUANTITY TOTALS ===');
+    // console.log('Grupo:', matchingGroupSummary.groupId);
+    // console.log('paysheetTariff:', paysheetTariff);
+    // console.log('facturationTariff:', facturationTariff);
+    // console.log('amount:', amount);
+    // console.log('totalPaysheet:', amount * paysheetTariff);
+    // console.log('totalFacturation:', amount * facturationTariff);
+    // console.log('=================================');
     
     return {
       totalPaysheet: amount * paysheetTariff,
@@ -926,12 +926,12 @@ if (!hasSundayReal) {
   try {
     // ✅ USAR group_hours EN LUGAR DE op_duration PARA EL COMPENSATORIO
     const groupDuration = Number(billDB.group_hours) || 0;
-    console.log('🔍 [calculateCompensatoryForBill] Usando group_hours:', {
-      billId: billDB.id,
-      groupHours: groupDuration,
-      opDurationTotal: billDB.group_hours,
-      diferencia: `El compensatorio usa ${groupDuration}h del grupo`
-    });
+    // console.log('🔍 [calculateCompensatoryForBill] Usando group_hours:', {
+    //   billId: billDB.id,
+    //   groupHours: groupDuration,
+    //   opDurationTotal: billDB.group_hours,
+    //   diferencia: `El compensatorio usa ${groupDuration}h del grupo`
+    // });
     
     if (groupDuration === 0) {
       return {
@@ -956,15 +956,15 @@ const operationWorker = billDB.billDetails?.[0]?.operationWorker;
       ? toLocalDate(operationWorker.dateEnd)
       : undefined;
 
-    console.log('🔍 [calculateCompensatoryForBill] Verificación de fechas:', {
-      billId: billDB.id,
-      dateStartRaw: billDB.operation_worker?.dateStart,
-      dateEndRaw: billDB.operation_worker?.dateEnd,
-      startDate: startDate?.toISOString().split('T')[0],
-      endDate: endDate?.toISOString().split('T')[0],
-      startDayOfWeek: startDate?.getDay(), // 0=domingo, 1=lunes, ...
-      endDayOfWeek: endDate?.getDay(),
-    });
+    // console.log('🔍 [calculateCompensatoryForBill] Verificación de fechas:', {
+    //   billId: billDB.id,
+    //   dateStartRaw: billDB.operation_worker?.dateStart,
+    //   dateEndRaw: billDB.operation_worker?.dateEnd,
+    //   startDate: startDate?.toISOString().split('T')[0],
+    //   endDate: endDate?.toISOString().split('T')[0],
+    //   startDayOfWeek: startDate?.getDay(), // 0=domingo, 1=lunes, ...
+    //   endDayOfWeek: endDate?.getDay(),
+    // });
 
     // VERIFICAR SI HAY DOMINGO REAL
     // let hasSundayReal = false;
@@ -1020,16 +1020,16 @@ const operationWorker = billDB.billDetails?.[0]?.operationWorker;
     const effectiveHours = Math.min(groupDuration, dayHours);
     const compensatoryHours = effectiveHours * compensatoryPerHour;
 
-    console.log('📊 [Cálculo Compensatorio Detallado]:', {
-      weekHours,
-      dayHours,
-      compensatoryDay,
-      compensatoryPerHour,
-      groupDuration: `${groupDuration}h (duración del GRUPO)`,
-      effectiveHours,
-      compensatoryHours: `${compensatoryHours}h (resultado final)`,
-      nota: 'Ahora usa group_hours en lugar de op_duration'
-    });
+    // console.log('📊 [Cálculo Compensatorio Detallado]:', {
+    //   weekHours,
+    //   dayHours,
+    //   compensatoryDay,
+    //   compensatoryPerHour,
+    //   groupDuration: `${groupDuration}h (duración del GRUPO)`,
+    //   effectiveHours,
+    //   compensatoryHours: `${compensatoryHours}h (resultado final)`,
+    //   nota: 'Ahora usa group_hours en lugar de op_duration'
+    // });
 
     const workerCount = billDB.number_of_workers ?? 0;
     const tariff = billDB.billDetails?.[0]?.operationWorker?.tariff?.paysheet_tariff ?? 0;
@@ -2005,7 +2005,7 @@ const operationWorker = billDB.billDetails?.[0]?.operationWorker;
         validateOperationID,
         userId,
         billDb.id_operation,
-        billDb.amount,
+        Number(billDb.amount),
         billDb,
       );
     } else {
@@ -2175,7 +2175,7 @@ const operationWorker = billDB.billDetails?.[0]?.operationWorker;
       // NO debemos recalcularlas, solo recalcular los totales con el nuevo número de trabajadores
       const updateBillDto: UpdateBillDto = {
         id: String(bill.id_group || ''),
-        amount: bill.amount,
+        amount: Number(bill.amount),
         group_hours: bill.group_hours ? new Decimal(bill.group_hours.toString()) : new Decimal(0),
         billHoursDistribution: {
           HOD: Number(bill.FAC_HOD) || 0,
@@ -2215,7 +2215,7 @@ const operationWorker = billDB.billDetails?.[0]?.operationWorker;
         validateOperationID,
         bill.id_user,
         operationId,
-        bill.amount,
+        Number(bill.amount),
         bill,
       );
 
@@ -3132,7 +3132,7 @@ const operationWorker = billDB.billDetails?.[0]?.operationWorker;
             // Preparar UpdateBillDto para forzar recálculo
             const updateBillDto: UpdateBillDto = {
               id: String(id_group),
-              amount: bill.amount || 0, // ✅ USAR AMOUNT DE LA BD
+              amount: Number(bill.amount) || 0, // ✅ USAR AMOUNT DE LA BD
               group_hours: new Decimal(groupHours.toString()),
               billHoursDistribution: {
                 HOD: Number(bill.HOD) || 0,
@@ -3167,7 +3167,7 @@ const operationWorker = billDB.billDetails?.[0]?.operationWorker;
               validateOperationID,
               bill.id_user,
               id_operation,
-              bill.amount,
+              Number(bill.amount),
               bill,
             );
 

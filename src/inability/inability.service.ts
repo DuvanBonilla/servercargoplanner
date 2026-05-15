@@ -16,20 +16,36 @@ export class InabilityService {
   /**
    * Obtiene la fecha de hoy en formato YYYY-MM-DD (UTC)
    */
-  private getTodayUTC(): string {
-    const now = new Date();
-    return now.toISOString().split('T')[0];
-  }
+  // private getTodayUTC(): string {
+  //   const now = new Date();
+  //   return now.toISOString().split('T')[0];
+  // }
+
+  private getTodayColombia(): string {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Bogota',
+  }).format(new Date());
+}
 
   /**
    * Convierte una fecha a string YYYY-MM-DD (UTC)
    */
+  // private dateToString(date: Date | string): string {
+  //   if (typeof date === 'string') {
+  //     return date;
+  //   }
+  //   return date.toISOString().split('T')[0];
+  // }
+
   private dateToString(date: Date | string): string {
-    if (typeof date === 'string') {
-      return date;
-    }
-    return date.toISOString().split('T')[0];
+  if (typeof date === 'string') {
+    return date.slice(0, 10);
   }
+
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Bogota',
+  }).format(date);
+}
 
   /**
    * Convierte fechas en formato YYYY-MM-DD a ISO-8601 DateTime válido usando UTC
@@ -41,7 +57,7 @@ export class InabilityService {
       // Si es solo fecha (YYYY-MM-DD), convertir a fecha UTC sin cambios de timezone
       if (normalized.dateDisableStart.length === 10) {
         const [year, month, day] = normalized.dateDisableStart.split('-').map(Number);
-        normalized.dateDisableStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+        normalized.dateDisableStart = new Date(year, month - 1, day, 0, 0, 0, 0);
       }
     }
     
@@ -49,7 +65,7 @@ export class InabilityService {
       // Si es solo fecha (YYYY-MM-DD), convertir a fecha UTC sin cambios de timezone
       if (normalized.dateDisableEnd.length === 10) {
         const [year, month, day] = normalized.dateDisableEnd.split('-').map(Number);
-        normalized.dateDisableEnd = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+        normalized.dateDisableEnd = new Date(year, month - 1, day, 0, 0, 0, 0);
       }
     }
     
@@ -62,7 +78,8 @@ export class InabilityService {
    */
   private isInabilityActive(inability: any): boolean {
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
+    // const today = now.toISOString().split('T')[0];
+    const today = this.getTodayColombia();
 
     const startDate = this.dateToString(inability.dateDisableStart);
     const endDate = this.dateToString(inability.dateDisableEnd);

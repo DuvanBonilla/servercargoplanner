@@ -387,7 +387,7 @@ export class HoursCalculationService {
       group.unit_of_measure !== 'JORNAL'
     ) {
       // Por cantidad (ej: cajas, toneladas)
-      paysheetTotal = (groupBill.amount || 0) * (group.paysheet_tariff || 0);
+      paysheetTotal = Number(groupBill.amount || 0) * Number(group.paysheet_tariff || 0);
     } else {
       // Lógica tradicional
       paysheetTotal = this.baseCalculationService.calculateHoursByDistribution(
@@ -407,7 +407,7 @@ export class HoursCalculationService {
       group.facturation_unit !== 'HORAS' &&
       group.facturation_unit !== 'JORNAL'
     ) {
-      billingTotal = (groupBill.amount || 0) * (group.facturation_tariff || 0);
+      billingTotal = Number(groupBill.amount || 0) * (group.facturation_tariff || 0);
     } else {
       billingTotal = this.baseCalculationService.calculateHoursByDistribution(
         group,

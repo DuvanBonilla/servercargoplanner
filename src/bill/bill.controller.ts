@@ -260,7 +260,7 @@ Obtiene la información detallada de un Bill específico (factura) incluyendo:
   "id_group": "d1de43a7-cfdd-4950-8238-73374038f927",
   "group_hours": 97.15,  // Calculado desde Operation_Worker
   "op_duration": 194.3,  // Suma de todos los group_hours
-  "amount": 0,
+  "amount": 0.00,
   "number_of_workers": 2,
   "total_bill": "0",
   "total_paysheet": "1437376.430",
@@ -268,7 +268,7 @@ Obtiene la información detallada de un Bill específico (factura) incluyendo:
   "paysheetHoursDistribution": { ... },
   "compensatory": {
     "hours": 1.22,
-    "amount": 150000,
+    "amount": 150000.00,
     "percentage": 10.5
   },
   "operation": { ... },
