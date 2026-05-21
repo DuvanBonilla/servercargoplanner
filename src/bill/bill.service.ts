@@ -628,15 +628,15 @@ export class BillService {
       matchingGroupSummary.tariffDetails?.facturation_tariff ?? 0;
     const amount = group.amount ?? amountDb ?? 0;
     
-    // // ✅ LOG PARA DEPURACIÓN
-    // console.log('=== CALCULATE QUANTITY TOTALS ===');
-    // console.log('Grupo:', matchingGroupSummary.groupId);
-    // console.log('paysheetTariff:', paysheetTariff);
-    // console.log('facturationTariff:', facturationTariff);
-    // console.log('amount:', amount);
-    // console.log('totalPaysheet:', amount * paysheetTariff);
-    // console.log('totalFacturation:', amount * facturationTariff);
-    // console.log('=================================');
+    // ✅ LOG PARA DEPURACIÓN
+    console.log('=== CALCULATE QUANTITY TOTALS ===');
+    console.log('Grupo:', matchingGroupSummary.groupId);
+    console.log('paysheetTariff:', paysheetTariff);
+    console.log('facturationTariff:', facturationTariff);
+    console.log('amount:', amount);
+    console.log('totalPaysheet:', amount * paysheetTariff);
+    console.log('totalFacturation:', amount * facturationTariff);
+    console.log('=================================');
     
     return {
       totalPaysheet: amount * paysheetTariff,
@@ -946,15 +946,33 @@ if (!hasSundayReal) {
     // Normalizar fechas usando operationWorker real
 const operationWorker = billDB.billDetails?.[0]?.operationWorker;
 
+if (!operationWorker) {
+  return {
+    hours: 0,
+    amount: 0,
+    percentage: 0,
+    includeInTotal: false,
+    error:
+      'No se encontró operationWorker para calcular compensatorio',
+  };
+}
 
-    // Normalizar fechas usando la función de utilidades
-    // const startDate = billDB.operation_worker?.dateStart
-    const startDate = operationWorker.dateStart
-      ? toLocalDate(operationWorker.dateStart)
-      : undefined;
-    const endDate = operationWorker.dateEnd
-      ? toLocalDate(operationWorker.dateEnd)
-      : undefined;
+// ✅ Normalizar fechas
+const startDate = operationWorker?.dateStart
+  ? toLocalDate(operationWorker.dateStart)
+  : undefined;
+
+const endDate = operationWorker?.dateEnd
+  ? toLocalDate(operationWorker.dateEnd)
+  : undefined;
+
+    // // Normalizar fechas usando la función de utilidades
+    // const startDate = operationWorker.dateStart
+    //   ? toLocalDate(operationWorker.dateStart)
+    //   : undefined;
+    // const endDate = operationWorker.dateEnd
+    //   ? toLocalDate(operationWorker.dateEnd)
+    //   : undefined;
 
     // console.log('🔍 [calculateCompensatoryForBill] Verificación de fechas:', {
     //   billId: billDB.id,

@@ -25,7 +25,7 @@ export class PaginateOperationService {
       page?: number;
       limit?: number;
       filters?: OperationFilterDto;
-      activatePaginated?: boolean;
+      activatePaginated?: boolean; 
       defaultInclude: any;
       transformer: any;
     }

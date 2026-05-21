@@ -95,83 +95,282 @@ export class WorkerService {
    * @returns true si tiene al menos una incapacidad vigente
    * @private
    */
-  private async hasActiveInabilities(workerId: number): Promise<boolean> {
-    try {
-      const now = getColombianDateTime();
-      const today = now.toLocaleString('en-US', { timeZone: 'America/Bogota' });
-      const [month, day, year] = today.split('/');
-      const todayDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), 0, 0, 0, 0));
+  // private async hasActiveInabilities(workerId: number): Promise<boolean> {
+  //   try {
+  //     const now = getColombianDateTime();
+  //     const today = now.toLocaleString('en-US', { timeZone: 'America/Bogota' });
+  //     const [month, day, year] = today.split('/');
+  //     const todayDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), 0, 0, 0, 0));
 
-      const activeInabilities = await this.prisma.inability.findMany({
+  //     const activeInabilities = await this.prisma.inability.findMany({ 
+  //       where: {
+  //         id_worker: workerId,
+  //         dateDisableStart: { lte: todayDate },
+  //         dateDisableEnd: { gte: todayDate },
+  //       },
+  //       select: { id: true },
+  //       take: 1,
+  //     });
+
+  //     return activeInabilities.length > 0;
+  //   } catch (error) {
+  //     console.error(`[WorkerService] Error checking active inabilities for worker ${workerId}:`, error);
+  //     return false;
+  //   }
+  // }
+
+  private async hasActiveInabilities(workerId: number): Promise<boolean> {
+  try {
+    const now = getColombianDateTime();
+
+    const today = now.toLocaleString('en-US', {
+      timeZone: 'America/Bogota',
+    });
+
+    const [month, day, year] = today.split('/');
+
+    const todayDate = new Date(
+      Date.UTC(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day),
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
+
+    const activeInability =
+      await this.prisma.inability.findFirst({
         where: {
           id_worker: workerId,
-          dateDisableStart: { lte: todayDate },
-          dateDisableEnd: { gte: todayDate },
+          dateDisableStart: {
+            lte: todayDate,
+          },
+          dateDisableEnd: {
+            gte: todayDate,
+          },
         },
-        select: { id: true },
-        take: 1,
+        select: {
+          id: true,
+        },
       });
 
-      return activeInabilities.length > 0;
-    } catch (error) {
-      console.error(`[WorkerService] Error checking active inabilities for worker ${workerId}:`, error);
-      return false;
-    }
+    return !!activeInability;
+  } catch (error) {
+    console.error(
+      `[WorkerService] Error checking active inabilities for worker ${workerId}:`,
+      error,
+    );
+
+    return false;
   }
+}
 
-  /**
-   * Determina y actualiza el estado correcto del trabajador basado en permisos/incapacidades
-   * @param workerId ID del trabajador
-   * @private
-   */
-  private async updateWorkerStatus(workerId: number): Promise<void> {
-    try {
-      const worker = await this.prisma.worker.findUnique({
-        where: { id: workerId },
-        select: { id: true, status: true },
+  // /**
+  //  * Determina y actualiza el estado correcto del trabajador basado en permisos/incapacidades
+  //  * @param workerId ID del trabajador
+  //  * @private
+  //  */
+  // private async updateWorkerStatus(workerId: any): Promise<void> {
+  //   try {
+  //     const worker = await this.prisma.worker.findUnique({
+  //       where: { id: workerId },
+  //       select: { id: true, status: true },
+  //     });
+
+  //     if (!worker) return;
+
+  //     // Si está DISABLE (incapacidad permanente) o DEACTIVATED (contrato terminado), no cambiar
+  //     if (worker.status === 'DISABLE' || worker.status === 'DEACTIVATED') return;
+
+  //     // Verificar estado actual basado en permisos/incapacidades
+  //     const hasPermission = await this.hasActivePermissions(workerId);
+  //     const hasInability = await this.hasActiveInabilities(workerId);
+
+  //     let correctStatus: string;
+
+  //     if (hasInability) {
+  //       // Si tiene incapacidad vigente, debe estar en DISABLE
+  //       correctStatus = 'DISABLE';
+  //     } else if (hasPermission) {
+  //       // Si tiene permiso vigente (y no tiene incapacidad), debe estar en PERMISSION
+  //       correctStatus = 'PERMISSION';
+  //     } else {
+  //       // Si no tiene permisos ni incapacidades, debe estar en AVALIABLE
+  //       // (solo si no está ASSIGNED a una operación)
+  //       if (worker.status !== 'ASSIGNED') {
+  //         correctStatus = 'AVALIABLE';
+  //       } else {
+  //         // Si está ASSIGNED, no cambiar (es responsabilidad de otro servicio)
+  //         return;
+  //       }
+  //     }
+
+  //     // Actualizar solo si cambió
+  //     if (worker.status !== correctStatus) {
+  //       // console.log(`[WorkerService] 🔄 Corrigiendo estado del worker ${workerId}: ${worker.status} → ${correctStatus}`);
+  //       await this.prisma.worker.update({
+  //         where: { id: workerId },
+  //         data: { status: correctStatus as any },
+  //       });
+  //     }
+  //   } catch (error) {
+  //     console.error(`[WorkerService] Error updating worker status for ${workerId}:`, error);
+  //     // No throw - queremos que la consulta siga funcionando aunque falle la validación
+  //   }
+  // }
+
+  private async updateWorkersStatus(workers: any[]): Promise<void> {
+  try {
+    if (!workers.length) return;
+
+    // =====================================================
+    // ✅ IDs DE WORKERS
+    // =====================================================
+
+    const workerIds = workers.map((w) => w.id);
+
+    // =====================================================
+    // ✅ FECHA ACTUAL COLOMBIA
+    // =====================================================
+
+    const now = getColombianDateTime();
+
+    const today = now.toLocaleString('en-US', {
+      timeZone: 'America/Bogota',
+    });
+
+    const [month, day, year] = today.split('/');
+
+    const todayDate = new Date(
+      Date.UTC(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day),
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
+
+    // =====================================================
+    // ✅ TRAER TODAS LAS INCAPACIDADES EN 1 QUERY
+    // =====================================================
+
+    const activeInabilities =
+      await this.prisma.inability.findMany({
+        where: {
+          id_worker: {
+            in: workerIds,
+          },
+          dateDisableStart: {
+            lte: todayDate,
+          },
+          dateDisableEnd: {
+            gte: todayDate,
+          },
+        },
+        select: {
+          id_worker: true,
+        },
       });
 
-      if (!worker) return;
+    // =====================================================
+    // ✅ TRAER TODOS LOS PERMISOS EN 1 QUERY
+    // =====================================================
 
-      // Si está DISABLE (incapacidad permanente) o DEACTIVATED (contrato terminado), no cambiar
-      if (worker.status === 'DISABLE' || worker.status === 'DEACTIVATED') return;
+    const activePermissions =
+      await this.prisma.permission.findMany({
+        where: {
+          id_worker: {
+            in: workerIds,
+          },
+          dateDisableEnd: {
+            gte: todayDate,
+          },
+        },
+        select: {
+          id_worker: true,
+        },
+      });
 
-      // Verificar estado actual basado en permisos/incapacidades
-      const hasPermission = await this.hasActivePermissions(workerId);
-      const hasInability = await this.hasActiveInabilities(workerId);
+    // =====================================================
+    // ✅ CONVERTIR A SET PARA BÚSQUEDA RÁPIDA
+    // =====================================================
+
+    const inabilitySet = new Set(
+      activeInabilities.map((i) => i.id_worker),
+    );
+
+    const permissionSet = new Set(
+      activePermissions.map((p) => p.id_worker),
+    );
+
+    // =====================================================
+    // ✅ PREPARAR ACTUALIZACIONES
+    // =====================================================
+
+    const updates: Promise<any>[] = [];
+
+    for (const worker of workers) {
+      // No tocar estados críticos
+      if (
+        worker.status === 'DISABLE' ||
+        worker.status === 'DEACTIVATED'
+      ) {
+        continue;
+      }
+
+      const hasInability = inabilitySet.has(worker.id);
+
+      const hasPermission = permissionSet.has(worker.id);
 
       let correctStatus: string;
 
       if (hasInability) {
-        // Si tiene incapacidad vigente, debe estar en DISABLE
         correctStatus = 'DISABLE';
       } else if (hasPermission) {
-        // Si tiene permiso vigente (y no tiene incapacidad), debe estar en PERMISSION
         correctStatus = 'PERMISSION';
       } else {
-        // Si no tiene permisos ni incapacidades, debe estar en AVALIABLE
-        // (solo si no está ASSIGNED a una operación)
-        if (worker.status !== 'ASSIGNED') {
-          correctStatus = 'AVALIABLE';
-        } else {
-          // Si está ASSIGNED, no cambiar (es responsabilidad de otro servicio)
-          return;
+        if (worker.status === 'ASSIGNED') {
+          continue;
         }
+
+        correctStatus = 'AVALIABLE';
       }
 
-      // Actualizar solo si cambió
+      // Solo actualizar si cambió
       if (worker.status !== correctStatus) {
-        // console.log(`[WorkerService] 🔄 Corrigiendo estado del worker ${workerId}: ${worker.status} → ${correctStatus}`);
-        await this.prisma.worker.update({
-          where: { id: workerId },
-          data: { status: correctStatus as any },
-        });
+        updates.push(
+          this.prisma.worker.update({
+            where: {
+              id: worker.id,
+            },
+            data: {
+              status: correctStatus as any,
+            },
+          }),
+        );
       }
-    } catch (error) {
-      console.error(`[WorkerService] Error updating worker status for ${workerId}:`, error);
-      // No throw - queremos que la consulta siga funcionando aunque falle la validación
     }
+
+    // =====================================================
+    // ✅ EJECUTAR ACTUALIZACIONES EN PARALELO
+    // =====================================================
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+    }
+  } catch (error) {
+    console.error(
+      `[WorkerService] Error updating workers status:`,
+      error,
+    );
   }
+}
 
   /**
    * craer un trabajador
@@ -492,11 +691,18 @@ export class WorkerService {
         areaName: res.jobArea?.name,
       }));
 
-      // ✅ Lazy evaluation: Validar y corregir estado de cada worker en background
-      // No bloqueamos la respuesta, pero iniciamos validación en paralelo
-      Promise.all(result.map((worker) => this.updateWorkerStatus(worker.id))).catch((error) => {
-        console.error('[WorkerService] Error during lazy status validation in findAll:', error);
-      });
+      // // ✅ Lazy evaluation: Validar y corregir estado de cada worker en background
+      // // No bloqueamos la respuesta, pero iniciamos validación en paralelo
+      // Promise.all(result.map((worker) => this.updateWorkerStatus(worker.id))).catch((error) => {
+      //   console.error('[WorkerService] Error during lazy status validation in findAll:', error);
+      // });
+
+      this.updateWorkersStatus(result).catch((error) => {
+  console.error(
+    '[WorkerService] Error during lazy status validation in findAll:',
+    error,
+  );
+});
 
       return result;
     } catch (error) {
@@ -558,9 +764,9 @@ async findOne(dni: string, id_site?: number) {
 
     // ✅ Lazy evaluation: Validar y corregir estado en background
     // No bloqueamos la respuesta, iniciamos validación en paralelo
-    this.updateWorkerStatus(response.id).catch((error) => {
-      console.error(`[WorkerService] Error during lazy status validation for worker ${response.id}:`, error);
-    });
+    // this.updateWorkerStatus(response.id).catch((error) => {
+    //   console.error(`[WorkerService] Error during lazy status validation for worker ${response.id}:`, error);
+    // });
 
     return response;
   } catch (error) {
@@ -623,9 +829,9 @@ async findById(id: number, id_site?: number) {
 
     // ✅ Lazy evaluation: Validar y corregir estado en background
     // No bloqueamos la respuesta, iniciamos validación en paralelo
-    this.updateWorkerStatus(response.id).catch((error) => {
-      console.error(`[WorkerService] Error during lazy status validation for worker ${response.id}:`, error);
-    });
+    // this.updateWorkerStatus(response.id).catch((error) => {
+    //   console.error(`[WorkerService] Error during lazy status validation for worker ${response.id}:`, error);
+    // });
 
     return response;
   } catch (error) {
@@ -884,15 +1090,10 @@ async findById(id: number, id_site?: number) {
     });
 
     // console.log(`[WorkerService] Encontrados ${operationWorkers.length} trabajadores en la operación`);
-
-    for (const { id_worker, dateStart, dateEnd, timeStart, timeEnd } of operationWorkers) {
-      // console.log(`[WorkerService] Procesando worker ${id_worker}:`, {
-      //   dateStart: dateStart?.toISOString(),
-      //   dateEnd: dateEnd?.toISOString(),
-      //   timeStart,
-      //   timeEnd
-      // });
-
+    const updates: any[] = [];
+    for (const { id_worker, dateStart, dateEnd, 
+      timeStart, timeEnd } of operationWorkers) {
+   
       if (!dateStart || !dateEnd || !timeStart || !timeEnd) {
         // console.log(`[WorkerService] ❌ Datos incompletos para worker ${id_worker} - saltando`);
         continue;
@@ -909,15 +1110,23 @@ async findById(id: number, id_site?: number) {
       // console.log(`[WorkerService] diffHours calculadas para worker ${id_worker}:`, diffHours);
       
       if (diffHours > 0) {
-        // console.log(`[WorkerService] ✅ Sumando ${diffHours} horas a worker ${id_worker}`);
-        await this.prisma.worker.update({
-          where: { id: id_worker },
-          data: { hoursWorked: { increment: diffHours } },
-        });
-      } 
-      // else {
-      //   console.log(`[WorkerService] ⚠️ Horas calculadas no válidas (${diffHours}) para worker ${id_worker}`);
-      // }
+  updates.push(
+    this.prisma.worker.update({
+      where: {
+        id: id_worker,
+      },
+      data: {
+        hoursWorked: {
+          increment: diffHours,
+        },
+      },
+    }),
+  );
+}
+if (updates.length > 0) {
+  await this.prisma.$transaction(updates);
+}
+    
     }
     
     // console.log(`[WorkerService] ✅ Finalizado cálculo de horas para operación ${operationId}`);
@@ -928,74 +1137,205 @@ async findById(id: number, id_site?: number) {
    * Este método es útil para corregir inconsistencias cuando una operación se marca como COMPLETED
    * directamente en la BD sin pasar por el flujo normal
    */
-  async fixWorkerStatusForCompletedOperations() {
-    try {
-      // console.log('[WorkerService] 🔍 Verificando workers ASSIGNED sin operaciones activas...');
+  // async fixWorkerStatusForCompletedOperations() {
+  //   try {
+  //     // console.log('[WorkerService] 🔍 Verificando workers ASSIGNED sin operaciones activas...');
 
-      // 1. Obtener todos los workers con status ASSIGNED
-      const assignedWorkers = await this.prisma.worker.findMany({
-        where: { status: 'ASSIGNED' },
-        select: { id: true, dni: true, name: true },
+  //     // 1. Obtener todos los workers con status ASSIGNED
+  //     const assignedWorkers = await this.prisma.worker.findMany({
+  //       where: { status: 'ASSIGNED' },
+  //       select: { id: true, dni: true, name: true },
+  //     });
+
+  //     // console.log(`[WorkerService] Encontrados ${assignedWorkers.length} workers con status ASSIGNED`);
+
+  //     let fixedCount = 0;
+  //     const workersFixed: Array<{ id: number; name: string; dni: string }> = [];
+
+  //     for (const worker of assignedWorkers) {
+  //       // 2. Verificar si el worker tiene operaciones activas (PENDING o INPROGRESS)
+  //       const activeOperations = 
+  //       await this.prisma.operation_Worker.findMany({
+  //         where: {
+  //           id_worker: worker.id,
+  //           operation: {
+  //             status: { in: ['PENDING', 'INPROGRESS'] },
+  //           },
+  //         },
+  //         include: {
+  //           operation: {
+  //             select: { id: true, status: true },
+  //           },
+  //         },
+  //       });
+
+  //       // 3. Si NO tiene operaciones activas, marcarlo como AVAILABLE
+  //       if (activeOperations.length === 0) {
+  //         // console.log(
+  //         //   `[WorkerService] ✅ Worker ${worker.id} (${worker.name}) no tiene operaciones activas. Marcando como AVAILABLE...`,
+  //         // );
+
+  //         await this.prisma.worker.update({
+  //           where: { id: worker.id },
+  //           data: { status: 'AVALIABLE' },
+  //         });
+
+  //         fixedCount++;
+  //         workersFixed.push({
+  //           id: worker.id,
+  //           name: worker.name,
+  //           dni: worker.dni,
+  //         });
+  //       } else {
+  //         // console.log(
+  //         //   `[WorkerService] ℹ️ Worker ${worker.id} (${worker.name}) tiene ${activeOperations.length} operación(es) activa(s):`,
+  //         //   activeOperations.map((op) => `Op ${op.operation.id} (${op.operation.status})`).join(', '),
+  //         // );
+  //       }
+  //     }
+
+  //     const summary = {
+  //       totalAssigned: assignedWorkers.length,
+  //       fixedToAvailable: fixedCount,
+  //       stillAssigned: assignedWorkers.length - fixedCount,
+  //       workersFixed,
+  //     };
+
+  //     // console.log('[WorkerService] 📊 Resumen de corrección:', summary);
+  //     return summary;
+  //   } catch (error) {
+  //     console.error('[WorkerService] ❌ Error verificando estado de workers:', error);
+  //     throw error;
+  //   }
+  // }
+  async fixWorkerStatusForCompletedOperations() {
+  try {
+    // =====================================================
+    // ✅ OBTENER TODOS LOS WORKERS ASSIGNED
+    // =====================================================
+
+    const assignedWorkers =
+      await this.prisma.worker.findMany({
+        where: {
+          status: 'ASSIGNED',
+        },
+        select: {
+          id: true,
+          dni: true,
+          name: true,
+        },
       });
 
-      // console.log(`[WorkerService] Encontrados ${assignedWorkers.length} workers con status ASSIGNED`);
-
-      let fixedCount = 0;
-      const workersFixed: Array<{ id: number; name: string; dni: string }> = [];
-
-      for (const worker of assignedWorkers) {
-        // 2. Verificar si el worker tiene operaciones activas (PENDING o INPROGRESS)
-        const activeOperations = await this.prisma.operation_Worker.findMany({
-          where: {
-            id_worker: worker.id,
-            operation: {
-              status: { in: ['PENDING', 'INPROGRESS'] },
-            },
-          },
-          include: {
-            operation: {
-              select: { id: true, status: true },
-            },
-          },
-        });
-
-        // 3. Si NO tiene operaciones activas, marcarlo como AVAILABLE
-        if (activeOperations.length === 0) {
-          // console.log(
-          //   `[WorkerService] ✅ Worker ${worker.id} (${worker.name}) no tiene operaciones activas. Marcando como AVAILABLE...`,
-          // );
-
-          await this.prisma.worker.update({
-            where: { id: worker.id },
-            data: { status: 'AVALIABLE' },
-          });
-
-          fixedCount++;
-          workersFixed.push({
-            id: worker.id,
-            name: worker.name,
-            dni: worker.dni,
-          });
-        } else {
-          // console.log(
-          //   `[WorkerService] ℹ️ Worker ${worker.id} (${worker.name}) tiene ${activeOperations.length} operación(es) activa(s):`,
-          //   activeOperations.map((op) => `Op ${op.operation.id} (${op.operation.status})`).join(', '),
-          // );
-        }
-      }
-
-      const summary = {
-        totalAssigned: assignedWorkers.length,
-        fixedToAvailable: fixedCount,
-        stillAssigned: assignedWorkers.length - fixedCount,
-        workersFixed,
+    if (assignedWorkers.length === 0) {
+      return {
+        totalAssigned: 0,
+        fixedToAvailable: 0,
+        stillAssigned: 0,
+        workersFixed: [],
       };
-
-      // console.log('[WorkerService] 📊 Resumen de corrección:', summary);
-      return summary;
-    } catch (error) {
-      console.error('[WorkerService] ❌ Error verificando estado de workers:', error);
-      throw error;
     }
+
+    // =====================================================
+    // ✅ IDS DE WORKERS
+    // =====================================================
+
+    const workerIds = assignedWorkers.map(
+      (worker) => worker.id,
+    );
+
+    // =====================================================
+    // ✅ OBTENER TODOS LOS WORKERS
+    // QUE SÍ TIENEN OPERACIONES ACTIVAS
+    // =====================================================
+
+    const activeWorkers =
+      await this.prisma.operation_Worker.findMany({
+        where: {
+          id_worker: {
+            in: workerIds,
+          },
+          operation: {
+            status: {
+              in: ['PENDING', 'INPROGRESS'],
+            },
+          },
+        },
+        select: {
+          id_worker: true,
+        },
+      });
+
+    // =====================================================
+    // ✅ SET PARA BÚSQUEDA RÁPIDA
+    // =====================================================
+
+    const activeWorkerSet = new Set(
+      activeWorkers.map((w) => w.id_worker),
+    );
+
+    // =====================================================
+    // ✅ PREPARAR UPDATES
+    // =====================================================
+
+    const updates: any[] = [];
+
+    const workersFixed: Array<{
+      id: number;
+      name: string;
+      dni: string;
+    }> = [];
+
+    for (const worker of assignedWorkers) {
+      // =================================================
+      // ✅ SI NO TIENE OPERACIONES ACTIVAS
+      // =================================================
+
+      if (!activeWorkerSet.has(worker.id)) {
+        updates.push(
+          this.prisma.worker.update({
+            where: {
+              id: worker.id,
+            },
+            data: {
+              status: 'AVALIABLE',
+            },
+          }),
+        );
+
+        workersFixed.push({
+          id: worker.id,
+          name: worker.name,
+          dni: worker.dni,
+        });
+      }
+    }
+
+    // =====================================================
+    // ✅ EJECUTAR UPDATES EN 1 SOLA TRANSACCIÓN
+    // =====================================================
+
+    if (updates.length > 0) {
+      await this.prisma.$transaction(updates);
+    }
+
+    // =====================================================
+    // ✅ RESUMEN
+    // =====================================================
+
+    return {
+      totalAssigned: assignedWorkers.length,
+      fixedToAvailable: workersFixed.length,
+      stillAssigned:
+        assignedWorkers.length - workersFixed.length,
+      workersFixed,
+    };
+  } catch (error) {
+    console.error(
+      '[WorkerService] ❌ Error verificando estado de workers:',
+      error,
+    );
+
+    throw error;
   }
+}
 }

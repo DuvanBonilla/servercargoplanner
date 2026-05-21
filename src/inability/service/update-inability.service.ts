@@ -18,7 +18,7 @@ export class UpdateInabilityService {
 
 
     // Buscar incapacidades cuya fecha de fin sea <= hoy
-    const candidates = await this.prisma.inability.findMany({
+    const candidates = await this.prisma.inability.findMany({ 
       where: {
         dateDisableEnd: { lte: endOfDay },
       },

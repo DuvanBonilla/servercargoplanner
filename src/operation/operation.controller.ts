@@ -653,7 +653,7 @@ async create(
 
       if (queryParams.dateEnd) {
         filters.dateEnd = queryParams.dateEnd;
-      }
+      } 
 
       if (queryParams.jobAreaId && queryParams.jobAreaId > 0) {
         filters.jobAreaId = queryParams.jobAreaId;

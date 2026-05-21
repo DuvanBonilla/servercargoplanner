@@ -144,10 +144,14 @@ private getAvailableMealTypes(operationDateStart: Date, operationTimeStart: stri
 const operation = validation['operation'];
 
 // ✅ OBTENER LA OPERACIÓN COMPLETA CON timeEnd
-const fullOperation = await this.prisma.operation.findUnique({
-  where: { id: createFeedingDto.id_operation },
-  select: { dateStart: true, timeStrat: true, timeEnd: true }
-});
+// const fullOperation = await this.prisma.operation.findUnique({
+//   where: { id: createFeedingDto.id_operation },
+//   select: { dateStart: true, timeStrat: true, timeEnd: true }
+// });
+
+const fullOperation =
+  validation['operation'];
+
 if (!fullOperation) {
   return { message: 'Operation not found', status: 404 };
 }
@@ -373,33 +377,124 @@ const availableMealTypes = this.getAvailableMealTypes(
   });
 
   // ✅ SI YA TIENE BILL, PERMITIR ALIMENTACIÓN ATRASADA
-  if (!workerBill) {
+  // if (!workerBill) {
 
-    // Consultar comidas faltantes anteriores
-    const missingMeals = await this.getMissingMealsForOperation(
+  //   // Consultar comidas faltantes anteriores
+  //   const missingMeals = await this.getMissingMealsForOperation(
+  //     createFeedingDto.id_operation,
+  //   );
+
+  //   const workerMissing = missingMeals.find(
+  //     (worker) =>
+  //       worker.workerId === createFeedingDto.id_worker &&
+  //       worker.missingMeals.includes(createFeedingDto.type),
+  //   );
+
+  //   if (!workerMissing) {
+  //     const feedingTypeNames = {
+  //       BREAKFAST: 'desayuno',
+  //       LUNCH: 'almuerzo',
+  //       DINNER: 'cena',
+  //       SNACK: 'refrigerio',
+  //     };
+
+  //     return {
+  //       message: `El ${feedingTypeNames[createFeedingDto.type]} no está disponible en este momento.`,
+  //       status: 409,
+  //     };
+  //   }
+  // }
+//   if (!workerBill) {
+
+//   // ✅ VALIDAR SOLO EL TRABAJADOR ACTUAL
+//   const today = new Date();
+
+//   const startOfDay = new Date(
+//     today.getFullYear(),
+//     today.getMonth(),
+//     today.getDate(),
+//     0,
+//     0,
+//     0,
+//     0
+//   );
+
+//   const endOfDay = new Date(
+//     today.getFullYear(),
+//     today.getMonth(),
+//     today.getDate(),
+//     23,
+//     59,
+//     59,
+//     999
+//   );
+
+//   // ✅ Buscar si ya tiene esta comida hoy
+//   const existingMeal =
+//     await this.prisma.workerFeeding.findFirst({
+//       where: {
+//         id_worker: createFeedingDto.id_worker,
+//         type: createFeedingDto.type,
+//         dateFeeding: {
+//           gte: startOfDay,
+//           lte: endOfDay,
+//         },
+//       },
+//       select: {
+//         id: true,
+//       },
+//     });
+
+//   // ✅ Si NO existe alimentación previa
+//   if (!existingMeal) {
+
+//     const feedingTypeNames = {
+//       BREAKFAST: 'desayuno',
+//       LUNCH: 'almuerzo',
+//       DINNER: 'cena',
+//       SNACK: 'refrigerio',
+//     };
+
+//     return {
+//       message:
+//         `El ${feedingTypeNames[createFeedingDto.type]} no está disponible en este momento.`,
+//       status: 409,
+//     };
+//   }
+// }
+if (!workerBill) {
+
+  // ✅ Consultar comidas faltantes anteriores
+  const missingMeals =
+    await this.getMissingMealsForOperation(
       createFeedingDto.id_operation,
     );
 
-    const workerMissing = missingMeals.find(
-      (worker) =>
-        worker.workerId === createFeedingDto.id_worker &&
-        worker.missingMeals.includes(createFeedingDto.type),
-    );
+  const workerMissing = missingMeals.find(
+    (worker) =>
+      worker.workerId === createFeedingDto.id_worker &&
+      worker.missingMeals.includes(createFeedingDto.type),
+  );
 
-    if (!workerMissing) {
-      const feedingTypeNames = {
-        BREAKFAST: 'desayuno',
-        LUNCH: 'almuerzo',
-        DINNER: 'cena',
-        SNACK: 'refrigerio',
-      };
+  // ✅ Si NO tiene esa comida como faltante → bloquear
+  if (!workerMissing) {
 
-      return {
-        message: `El ${feedingTypeNames[createFeedingDto.type]} no está disponible en este momento.`,
-        status: 409,
-      };
-    }
+    const feedingTypeNames = {
+      BREAKFAST: 'desayuno',
+      LUNCH: 'almuerzo',
+      DINNER: 'cena',
+      SNACK: 'refrigerio',
+    };
+
+    return {
+      message:
+        `El ${feedingTypeNames[createFeedingDto.type]} no está disponible en este momento.`,
+      status: 409,
+    };
   }
+}
+
+
 }
 
 
@@ -415,16 +510,31 @@ const availableMealTypes = this.getAvailableMealTypes(
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
 
-      const existingFeeding = await this.prisma.workerFeeding.findFirst({
-        where: {
-          id_worker: createFeedingDto.id_worker,
-          type: createFeedingDto.type,
-          dateFeeding: {
-            gte: startOfDay,
-            lte: endOfDay,
-          },
-        },
-      });
+      // const existingFeeding = await this.prisma.workerFeeding.findFirst({
+      //   where: {
+      //     id_worker: createFeedingDto.id_worker,
+      //     type: createFeedingDto.type,
+      //     dateFeeding: {
+      //       gte: startOfDay,
+      //       lte: endOfDay,
+      //     },
+      //   },
+      // });
+      const existingFeeding =
+  await this.prisma.workerFeeding.findFirst({
+    where: {
+      id_worker: createFeedingDto.id_worker,
+      type: createFeedingDto.type,
+      dateFeeding: {
+        gte: startOfDay,
+        lte: endOfDay,
+      },
+    },
+    select: {
+      id: true,
+      id_operation: true,
+    },
+  });
 
       if (existingFeeding) {
         const feedingTypeNames = {
@@ -704,41 +814,83 @@ const availableMealTypes = this.getAvailableMealTypes(
     if (validation && 'status' in validation && validation.status === 404) {
       return validation;
     }
-    const response = await this.prisma.workerFeeding.findMany({
-      where: {
-        id_operation,
-        ...(id_site && {
-          worker: {
-            id_site,
-          },
-        }),
-      },
-      include: {
-        operation: {
-          select: {
-            id: true,
-            task: {
-              select: {
-                id: true,
-                name: true,
-              }
-            }
-          }
-        },
+    // const response = await this.prisma.workerFeeding.findMany({
+    //   where: {
+    //     id_operation,
+    //     ...(id_site && {
+    //       worker: {
+    //         id_site,
+    //       },
+    //     }),
+    //   },
+    //   include: {
+    //     operation: {
+    //       select: {
+    //         id: true,
+    //         task: {
+    //           select: {
+    //             id: true,
+    //             name: true,
+    //           }
+    //         }
+    //       }
+    //     },
+    //     worker: {
+    //       select: {
+    //         id: true,
+    //         name: true,
+    //       }
+    //     },
+    //     user: {
+    //       select: {
+    //         id: true,
+    //         name: true,
+    //       }
+    //     }
+    //   }
+    // });
+const response =
+  await this.prisma.workerFeeding.findMany({
+    where: {
+      id_operation,
+      ...(id_site && {
         worker: {
-          select: {
-            id: true,
-            name: true,
-          }
+          id_site,
         },
-        user: {
-          select: {
-            id: true,
-            name: true,
-          }
-        }
-      }
-    });
+      }),
+    },
+    select: {
+      id: true,
+      type: true,
+      dateFeeding: true,
+
+      operation: {
+        select: {
+          id: true,
+          task: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+
+      worker: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+
+      user: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
     if (!response || response.length === 0) {
       return { message: 'Feeding not found', status: 404 };
     }
@@ -1021,6 +1173,169 @@ async getMissingMealsForOperation(operationId: number) {
   const mealTypes = ['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK'];
   const result: { workerId: number; workerName: string; missingMeals: string[] }[] = [];
   
+ // =====================================================
+// ✅ WORKERS VÁLIDOS
+// =====================================================
+
+// =====================================================
+// ✅ WORKERS VÁLIDOS
+// =====================================================
+// =====================================================
+// ✅ WORKERS VÁLIDOS
+// =====================================================
+
+const validWorkers = (operation.workers || []).filter(
+  (w) => w && w.id_worker
+);
+
+// =====================================================
+// ✅ IDS DE WORKERS
+// =====================================================
+
+const workerIds: number[] = validWorkers.map(
+  (w) => Number(w.id_worker)
+);
+
+// 🚨 Si no hay workers válidos
+if (workerIds.length === 0) {
+
+  console.log(
+    `[FeedingService] Operación ${operation.id} sin workers válidos`
+  );
+
+  return [];
+}
+
+
+
+
+// 🚨 Si no hay workers válidos
+if (workerIds.length === 0) {
+
+  console.log(
+    `[FeedingService] Operación ${operation.id} sin workers válidos`
+  );
+
+  return [];
+}
+
+
+// 🚨 Si no hay workers válidos
+if (validWorkers.length === 0) {
+
+  console.log(
+    `[FeedingService] Operación ${operation.id} sin workers válidos`
+  );
+
+  return [];
+}
+
+
+const workerBills =
+  await this.prisma.billDetail.findMany({
+    where: {
+      bill: {
+        id_operation: operation.id,
+      },
+      operationWorker: {
+        id_worker: {
+          in: workerIds,
+        },
+      },
+    },
+    select: {
+      operationWorker: {
+        select: {
+          id_worker: true,
+        },
+      },
+    },
+  });
+
+const workerBillSet = new Set(
+  workerBills.map(
+    (b) => b.operationWorker?.id_worker
+  )
+);
+
+// =====================================================
+// ✅ TODAS LAS ALIMENTACIONES
+// =====================================================
+const workerDates =
+  validWorkers
+    .map((w) => {
+
+      const rawDate =
+        w.dateStart ||
+        operation.dateStart;
+
+      const parsedDate =
+        new Date(rawDate);
+
+      return isNaN(
+        parsedDate.getTime()
+      )
+        ? null
+        : parsedDate.getTime();
+
+    })
+    .filter(
+      (value): value is number =>
+        value !== null
+    );
+
+const oldestWorkerDate =
+  workerDates.length > 0
+    ? new Date(
+        Math.min(...workerDates)
+      )
+    : startOfDay;
+
+const allFeedings =
+  await this.prisma.workerFeeding.findMany({
+    where: {
+      id_worker: {
+        in: workerIds,
+      },
+      dateFeeding: {
+        gte: oldestWorkerDate,
+        lte: endOfDay,
+      },
+    },
+    select: {
+      id_worker: true,
+      type: true,
+      dateFeeding: true,
+      id_operation: true,
+    },
+  });
+
+// =====================================================
+// ✅ MAPA DE ALIMENTACIONES
+// =====================================================
+
+const feedingsMap = new Map<
+  number,
+  any[]
+>();
+
+for (const feeding of allFeedings) {
+
+  if (
+    !feedingsMap.has(feeding.id_worker)
+  ) {
+    feedingsMap.set(
+      feeding.id_worker,
+      []
+    );
+  }
+
+  feedingsMap
+    .get(feeding.id_worker)!
+    .push(feeding);
+}
+
+
   for (const opWorker of operation.workers) {
     // ✅ OBTENER FECHAS ESPECÍFICAS DEL TRABAJADOR
     const workerStartDate = opWorker.dateStart || operation.dateStart;
@@ -1029,18 +1344,22 @@ async getMissingMealsForOperation(operationId: number) {
     // ✅ VERIFICAR SI EL GRUPO ESPECÍFICO DEL TRABAJADOR ESTÁ COMPLETADO
     // Un grupo se considera completado si tiene una Bill generada
     // La relación es: Bill → billDetails → BillDetail → operationWorker → Operation_Worker
-    const workerBill = await this.prisma.billDetail.findFirst({
-      where: {
-        bill: {
-          id_operation: operation.id,
-        },
-        operationWorker: {
-          id_worker: opWorker.id_worker,
-        }
-      },
-      select: { id: true },
-    });
-    const isWorkerGroupCompleted = !!workerBill; // true si existe BillDetail para este trabajador en esta operación
+    // const workerBill = await this.prisma.billDetail.findFirst({
+    //   where: {
+    //     bill: {
+    //       id_operation: operation.id,
+    //     },
+    //     operationWorker: {
+    //       id_worker: opWorker.id_worker,
+    //     }
+    //   },
+    //   select: { id: true },
+    // });
+    const isWorkerGroupCompleted =
+  workerBillSet.has(
+    opWorker.id_worker
+  );
+    // const isWorkerGroupCompleted = !!workerBill; // true si existe BillDetail para este trabajador en esta operación
     
     // ✅ NORMALIZAR FECHAS DEL TRABAJADOR
     const workerStartStr = workerStartDate instanceof Date 
@@ -1168,70 +1487,105 @@ async getMissingMealsForOperation(operationId: number) {
     // ✅ BUSCAR COMIDAS REGISTRADAS DEL TRABAJADOR
     const workerStartDay = new Date(workerStartLocal.getFullYear(), workerStartLocal.getMonth(), workerStartLocal.getDate());
     
-    const feedings = await this.prisma.workerFeeding.findMany({
-      where: {
-        id_worker: opWorker.id_worker,
-        dateFeeding: { 
-          gte: workerStartDay, 
-          lte: endOfDay 
-        },
-      },
-      include: {
-        operation: {
-          select: {
-            id: true,
-            task: {
-              select: {
-                name: true
-              }
-            }
-          }
-        }
-      }
-    });
+    // const feedings = await this.prisma.workerFeeding.findMany({
+    //   where: {
+    //     id_worker: opWorker.id_worker,
+    //     dateFeeding: { 
+    //       gte: workerStartDay, 
+    //       lte: endOfDay 
+    //     },
+    //   },
+    //   include: {
+    //     operation: {
+    //       select: {
+    //         id: true,
+    //         task: {
+    //           select: {
+    //             name: true
+    //           }
+    //         }
+    //       }
+    //     }
+    //   }
+    // });
     
+
+
     // ✅ BUSCAR COMIDAS REGISTRADAS EN CUALQUIER OPERACIÓN HOY (para no marcar como faltante lo ya entregado en otra operación)
-    const feedingsAnyOperationToday = await this.prisma.workerFeeding.findMany({
-      where: {
-        id_worker: opWorker.id_worker,
-        dateFeeding: {
-          gte: startOfDay,
-          lte: endOfDay,
-        },
-      },
-      select: {
-        type: true,
-        id_operation: true,
-      }
-    });
+    // const feedingsAnyOperationToday = await this.prisma.workerFeeding.findMany({
+    //   where: {
+    //     id_worker: opWorker.id_worker,
+    //     dateFeeding: {
+    //       gte: startOfDay,
+    //       lte: endOfDay,
+    //     },
+    //   },
+    //   select: {
+    //     type: true,
+    //     id_operation: true,
+    //   }
+    // });
     
     // ✅ CALCULAR COMIDAS FALTANTES
+    
+    const workerFeedings =
+  feedingsMap.get(
+    opWorker.id_worker
+  ) || [];
+    
     let allMissing: string[] = [];
     
-    if (workerIsFirstDay) {   
-      const todayMissing = workerPassedMeals.filter(type => !feedings.some(f => {
-        const feedingDate = new Date(f.dateFeeding);
-        const feedingDay = new Date(feedingDate.getFullYear(), feedingDate.getMonth(), feedingDate.getDate());
-        return f.type === type && feedingDay.getTime() === todayDate.getTime();
-      }));
+    // if (workerIsFirstDay) {   
+    //   const todayMissing = workerPassedMeals.filter(type => !workerFeedings.some(f => {
+    //     const feedingDate = new Date(f.dateFeeding);
+    //     const feedingDay = new Date(
+    //       feedingDate.getFullYear(), 
+    //       feedingDate.getMonth(), 
+    //       feedingDate.getDate());
+    //     return f.type === type && feedingDay.getTime() === todayDate.getTime();
+    //   }));
       
-      // ✅ FILTRAR: No marcar como faltante si ya lo comió en otra operación hoy
-      allMissing = todayMissing.filter(mealType => 
-        !feedingsAnyOperationToday.some(f => f.type === mealType)
+    //   // ✅ FILTRAR: No marcar como faltante si ya lo comió en otra operación hoy
+    //   allMissing = todayMissing.filter(mealType => 
+    //     !workerFeedings.some(f => f.type === mealType)
+    //   );
+    // } 
+    if (workerIsFirstDay) {
+
+  const todayMissing = workerPassedMeals.filter(type =>
+    !workerFeedings.some(f => {
+      const feedingDate = new Date(f.dateFeeding);
+
+      const feedingDay = new Date(
+        feedingDate.getFullYear(),
+        feedingDate.getMonth(),
+        feedingDate.getDate()
       );
-    } else {
+
+      return (
+        f.type === type &&
+        feedingDay.getTime() === todayDate.getTime()
+      );
+    })
+  );
+
+  allMissing = todayMissing;
+}
+    
+    else {
       // Solo las comidas faltantes de hoy
-      const todayMissing = workerPassedMeals.filter(type => !feedings.some(f => {
+      const todayMissing = workerPassedMeals.filter(type => !workerFeedings.some(f => {
         const feedingDate = new Date(f.dateFeeding);
         const feedingDay = new Date(feedingDate.getFullYear(), feedingDate.getMonth(), feedingDate.getDate());
         return f.type === type && feedingDay.getTime() === todayDate.getTime();
       }));
       
+      allMissing = todayMissing;
       // ✅ FILTRAR HOY: No marcar como faltante si ya lo comió en otra operación hoy
-      const todayMissingFiltered = todayMissing.filter(mealType => 
-        !feedingsAnyOperationToday.some(f => f.type === mealType)
-      );
-      
+      const todayMissingFiltered = todayMissing;
+      // const todayMissingFiltered = todayMissing.filter(mealType => 
+      //   !workerFeedings.some(f => f.type === mealType)
+      // );
       // Comidas faltantes de días anteriores
       const previousDaysMissing: string[] = [];
       for (let d = 0; d < workerDaysFromStart; d++) {
@@ -1240,7 +1594,7 @@ async getMissingMealsForOperation(operationId: number) {
         const checkDay = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate());
         
         for (const mealType of mealTypes) {
-          const hasThisMeal = feedings.some(f => {
+          const hasThisMeal = workerFeedings.some(f => {
             const feedingDate = new Date(f.dateFeeding);
             const feedingDay = new Date(feedingDate.getFullYear(), feedingDate.getMonth(), feedingDate.getDate());
             return f.type === mealType && feedingDay.getTime() === checkDay.getTime();

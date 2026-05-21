@@ -34,6 +34,8 @@ export class UpdateOperationWorkerService {
         w.id = ow.id_worker
         AND w.status = 'ASSIGNED'
         AND o.status = 'INPROGRESS'
+        AND ow."timeEnd" IS NOT NULL
+        AND ow."timeEnd" <> ''
         AND (
           (ow."dateEnd" < (CURRENT_DATE AT TIME ZONE 'America/Bogota'))
           OR
@@ -57,9 +59,14 @@ export class UpdateOperationWorkerService {
         AND w.status = 'AVALIABLE'
         AND o.status = 'INPROGRESS'
         AND ow."dateStart" = (CURRENT_DATE AT TIME ZONE 'America/Bogota')
+         AND ow."timeStart" IS NOT NULL
+        AND ow."timeStart" <> ''
         AND (
           (EXTRACT(HOUR FROM (CURRENT_TIME AT TIME ZONE 'America/Bogota')) * 60 + EXTRACT(MINUTE FROM (CURRENT_TIME AT TIME ZONE 'America/Bogota')))
-          - (CAST(split_part(ow."timeStart", ':', 1) AS INTEGER) * 60 + CAST(split_part(ow."timeStart", ':', 2) AS INTEGER))
+          - (
+          CAST(split_part(ow."timeStart", ':', 1) AS INTEGER) * 60 + 
+          CAST(split_part(ow."timeStart", ':', 2) AS INTEGER)
+          )
         ) BETWEEN 0 AND 10
     `);
   }

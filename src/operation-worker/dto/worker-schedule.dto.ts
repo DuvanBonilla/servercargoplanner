@@ -10,7 +10,7 @@ export class WorkerScheduleDto {
   })
   @IsArray()
   @IsNumber({}, { each: true })
-  workerIds: number[]; // Cambiamos de id único a un array de IDs
+  workerIds!: number[]; // Cambiamos de id único a un array de IDs
 
   @ApiProperty({ example: 'ezHU785s2' })
   @IsOptional()
@@ -68,7 +68,7 @@ export class WorkerScheduleDto {
     required: true
   })
   @IsNumber()
-  id_subtask: number;
+  id_subtask!: number;
 
   @ApiProperty({
     description: 'Id de la tarifa asociada a este grupo de trabajadores',
