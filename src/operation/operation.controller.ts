@@ -688,10 +688,10 @@ async create(
       );
       
       // Agregar metadatos útiles para el frontend
-      if (result.pagination && result.pagination.totalItems > 1000) {
+      if (result.pagination && result.pagination.totalItems > 20) {
         result.pagination['performanceHint'] = {
           message: 'Dataset grande detectado. Considera usar filtros para reducir el conjunto de datos.',
-          recommendedPageSize: Math.min(100, adjustedLimit),
+          recommendedPageSize: Math.min(20, adjustedLimit),
           totalDataSizeCategory: result.pagination.totalItems > 5000 ? 'very-large' : 'large'
         };
       }
