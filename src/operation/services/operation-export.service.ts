@@ -7,6 +7,7 @@ import {ExportOperationsDto,ExportReportType,} from '../dto/export-operations.dt
 
 interface ExportScope {
 	userId: number;
+	username?: string;
 	siteId?: number;
 	subsiteId?: number;
 }
@@ -69,12 +70,17 @@ export class OperationExportService {
 					subSite: { select: { id: true, name: true } },
 					jobArea: { select: { id: true, name: true } },
 					client: { select: { id: true, name: true } },
+					user: { select: { id: true, name: true } },
 					inChargeOperation: {
 						select: {
 							id_user: true,
 							user: { select: { id: true, name: true, username: true } },
 						},
 					},
+					Bill:{
+						select: {
+							user: { select: { id: true, name: true} },},
+						},
 					workers: {
 						select: {
 							id: true,
@@ -338,11 +344,13 @@ export class OperationExportService {
 
 		for (const op of operations) {
 			const opBills = billsByOperation.get(op.id) || [];
+			const billUser = op.Bill || []; // Asumimos que la información relevante para el resumen general se puede tomar del primer bill asociado, si existe
 			const workersByGroup = this.groupWorkersByIdGroup(op.workers || []);
 
 			if (!workersByGroup.length) {
-				rows.push({
+				rows.push({ ///HOJA1 RTD
 					"Operacion": op.id,
+					"userId": op.userId.name,
 					"Fecha Inicio Op.": this.combineDateTime(op.dateStart, op.timeStrat),
 					"Fecha Fin Op.": this.combineDateTime(op.dateEnd, op.timeEnd),
 					Semana: this.isoWeek(op.dateStart),
@@ -363,6 +371,8 @@ export class OperationExportService {
 					"Area": op.jobArea?.name || 'Sin area',
 					Cliente: op.client?.name || 'Sin cliente',
 					Estado: this.statusLabel(op.status),
+					'Creado por': op.user.name,
+					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
 				});
 				continue;
 			}
@@ -372,7 +382,7 @@ export class OperationExportService {
 				const schedule = group.firstWorker;
 				const quantity = this.groupQuantity(groupBills, group.workers.length, group.unitMeasure);
              
-				 // EDITAR 
+				 // HOJA 2 RTD
 				rows.push({
 					"Operacion": op.id,
 					"Fecha Inicio Op.": this.combineDateTime(
@@ -407,6 +417,8 @@ export class OperationExportService {
 					Area: op.jobArea?.name || 'Sin area',
 					Cliente: op.client?.name || 'Sin cliente',
 					Estado: this.statusLabel(op.status),
+					'Creado por': op.user.name,
+					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
 				});
 			}
 		}
@@ -439,9 +451,10 @@ export class OperationExportService {
 
 		for (const op of operations) {
 			const opBills = billsByOperation.get(op.id) || [];
+			const billUser = op.Bill || [];
             
 			if (!op.workers?.length) {
-				rows.push({
+				rows.push({ //HOJA1 
 					"Operacion": op.id,
 					Inicio: this.combineDateTime(op.dateStart, op.timeStrat),
 					Fin: this.combineDateTime(op.dateEnd, op.timeEnd),
@@ -471,6 +484,8 @@ export class OperationExportService {
 					Area: op.jobArea?.name || 'Sin area',
 					Cliente: op.client?.name || 'Sin cliente',
 					Estado: this.statusLabel(op.status),
+					'Creado por': op.user.name,
+					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
 				});
 				continue;
 			}
@@ -524,7 +539,7 @@ export class OperationExportService {
 						);
 
 											//EDITAR 
-				rows.push({
+				rows.push({ //HOJA 2 
 					"Operacion": op.id,
 					Inicio: this.combineDateTime(
 						ow.dateStart || op.dateStart,
@@ -560,6 +575,8 @@ export class OperationExportService {
 					Area: op.jobArea?.name || 'Sin area',
 					Cliente: op.client?.name || 'Sin cliente',
 					Estado: this.statusLabel(op.status),
+					'Creado por': op.user.name,
+					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
 				});
 			}
 		}
@@ -609,11 +626,11 @@ export class OperationExportService {
 
 		this.applyColumnFormats(sheet, headers, {
 			dateTimeHeaders: new Set(['Fecha Inicio Op.',
-  'Fecha Fin Op.',
-  'Inicio',
-  'Fin',
-  'Fecha Inicio',
-  'Fecha Fin']),
+			'Fecha Fin Op.',
+			'Inicio',
+			'Fin',
+			'Fecha Inicio',
+			'Fecha Fin']),
 			decimalHeaders: new Set([
 				'Cantidad',
 				'Total Nomina',
@@ -839,6 +856,7 @@ export class OperationExportService {
 	  private buildProgrammingGeneralRows(operations: any[]) {
 		return (operations || []).map((op) => {
 			const groups = this.getProgrammingGroups(op);
+			const billUser = op.Bill || [];
 			const workersCount = groups.reduce((acc: number, g: any) => acc + (g.workers?.length || 0), 0);
 			const tasks = Array.from(
 				new Set(
@@ -862,6 +880,8 @@ export class OperationExportService {
 				Tarea: tasks || 'Sin tarea',
 				'Total Trabajadores': workersCount,
 				Turnos: groups.length,
+				'Creado por': op.user.name,
+				Usuario: billUser[0]?.user?.name || 'usuario no identificado',
 			};
 		});
 	}
@@ -872,6 +892,7 @@ export class OperationExportService {
 
 		for (const op of operations || []) {
 			const groups = this.getProgrammingGroups(op);
+			const billUser = op.Bill || [];
 			if (!groups.length) {
 				rows.push({
 					"Operacion": op.id,
@@ -888,6 +909,8 @@ export class OperationExportService {
 					Turno: '',
 					'DNI Trabajador': 0,
 					'Nombre Trabajador': 'Sin trabajadores',
+					'Creado por': op.user.name,
+					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
 				});
 				continue;
 			}
@@ -927,6 +950,8 @@ export class OperationExportService {
 						Turno: turno,
 						'DNI Trabajador': Number(worker.dni || 0),
 						'Nombre Trabajador': worker.name || '',
+						'Creado por': op.user.name,
+						Usuario: billUser[0]?.user?.name || 'usuario no identificado',
 					});
 				}
 			}

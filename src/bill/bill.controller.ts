@@ -143,14 +143,7 @@ export class BillController {
     @CurrentUser('siteId') siteId: number,
     @CurrentUser('subsiteId') subsiteId: number,
     @Query(new ValidationPipe({ transform: true, whitelist: true })) filters: FilterBillDto,
-  ) {
-    // console.log('🔍 [Bill Controller] Parámetros recibidos:', {
-    //   siteId,
-    //   subsiteId,
-    //   filters,
-    //   query_raw: filters
-    // });
-    
+  ) {   
     return await this.billService.findAllPaginatedWithFilters({
       ...filters,
       siteId,

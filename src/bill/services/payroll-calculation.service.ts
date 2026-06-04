@@ -147,8 +147,21 @@ export class PayrollCalculationService {
       'FOD',
     );
 
-    const totalAmount =
-      baseAmount + additionalHoursResult.amount + holidayResult.amount;
+    // const totalAmount =
+    //   baseAmount + additionalHoursResult.amount + holidayResult.amount;
+
+    let totalAmount = 0;
+
+// ✅ SOLO PARA JORNAL FESTIVO
+if (isHolidayOrSunday) {
+  totalAmount =
+    holidayResult.amount +
+    additionalHoursResult.amount;
+} else {
+  totalAmount =
+    baseAmount +
+    additionalHoursResult.amount;
+}
 
     return {
       baseAmount,

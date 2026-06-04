@@ -452,7 +452,7 @@ export class FeedingService {
       }
       return response;
     } catch (error) {
-      throw new Error(error);
+      throw new Error(String(error));
     }
   }
 
@@ -536,7 +536,7 @@ export class FeedingService {
         missingMealsIncluded: allMissingMealTypes,
       };
     } catch (error) {
-      throw new Error(error);
+      throw new Error(String(error));
     }
   }
 
@@ -609,7 +609,7 @@ export class FeedingService {
         userName: feeding.user?.name || null,
       }));
     } catch (error) {
-      throw new Error(error.message || String(error));
+      throw new Error(String(error));
     }
   }
 
@@ -658,7 +658,7 @@ export class FeedingService {
         userName: response.user?.name || null,
       };
     } catch (error) {
-      throw new Error(error);
+      throw new Error(String(error));
     }
   }
 
@@ -744,9 +744,12 @@ export class FeedingService {
           },
         },
       });
+      // if (!response || response.length === 0) {
+      //   return { message: 'Feeding not found', status: 404 };
+      // }
       if (!response || response.length === 0) {
-        return { message: 'Feeding not found', status: 404 };
-      }
+    return [];
+}
       return response.map((feeding) => ({
         ...feeding,
         serviceName: feeding.operation?.task?.name || null,
@@ -754,7 +757,7 @@ export class FeedingService {
         userName: feeding.user?.name || null,
       }));
     } catch (error) {
-      throw new Error(error);
+      throw new Error(String(error));
     }
   }
 
@@ -1045,7 +1048,7 @@ export class FeedingService {
       });
       return response;
     } catch (error) {
-      throw new Error(error);
+      throw new Error(String(error));
     }
   }
 
@@ -1074,7 +1077,7 @@ export class FeedingService {
       });
       return response;
     } catch (error) {
-      throw new Error(error);
+      throw new Error(String(error));
     }
   }
 

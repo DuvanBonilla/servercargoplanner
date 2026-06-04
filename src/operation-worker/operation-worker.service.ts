@@ -333,7 +333,7 @@ export class OperationWorkerService {
           status: 'COMPLETED',
           dateEnd: finalDateEnd,
           timeEnd: finalTimeEnd,
-          op_duration: opDuration
+          op_duration: opDuration 
         },
       });
 
@@ -464,7 +464,7 @@ export class OperationWorkerService {
     });
 
     // 2. Verificar si todos los grupos están completados y actualizar operación si es necesario
-    await this.completeOperationIfAllGroupsFinished(id_operation);
+    // await this.completeOperationIfAllGroupsFinished(id_operation);
 
     return updateResult;
   }

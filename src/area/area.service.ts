@@ -38,7 +38,7 @@ export class AreaService {
       return response;
     } catch (error) {
       console.error('Error creating area:', error);
-      throw new Error(error.message || String(error));
+      throw new Error( String(error));
     }
   }
 
@@ -85,7 +85,7 @@ export class AreaService {
 
     return response;
   } catch (error) {
-    throw new Error(error.message || String(error));
+    throw new Error(String(error));
   }
 }
 
@@ -127,7 +127,7 @@ export class AreaService {
       }
       return response;
     } catch (error) {
-      throw new Error(error.message || String(error));
+      throw new Error(String(error));
     }
   }
 
@@ -194,7 +194,7 @@ export class AreaService {
       return response;
     } catch (error) {
       console.error('Error updating area:', error);
-      throw new Error(error.message || String(error));
+      throw new Error(String(error));
     }
   }
 
@@ -224,7 +224,7 @@ export class AreaService {
       });
       return response;
     } catch (error) {
-      throw new Error(error.message || String(error));
+      throw new Error(String(error));
     }
   }
 }

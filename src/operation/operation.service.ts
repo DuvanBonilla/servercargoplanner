@@ -466,11 +466,19 @@ export class OperationService {
       ...directFields
     } = updateOperationDto;
 
+//     console.log("================================");
+// console.log("UPDATE DTO RECIBIDO");
+// console.log(JSON.stringify(updateOperationDto, null, 2));
+// console.log("DIRECT FIELDS");
+// console.log(JSON.stringify(directFields, null, 2));
+// console.log("================================");
+
     // ✅ VERIFICAR SI LA OPERACIÓN ESTÁ COMPLETADA ANTES DE PROCESAR TRABAJADORES
     const currentOperation = await this.prisma.operation.findUnique({
       where: { id },
       select: { status: true },
     });
+
 
     const isCompletedOperation = currentOperation?.status === 'COMPLETED';
 
@@ -488,7 +496,7 @@ export class OperationService {
       
       // ✅ SI ES OPERACIÓN COMPLETADA Y HAY CAMBIOS EN TRABAJADORES, RECALCULAR FACTURA
       if (isCompletedOperation) {
-        // console.log('[OperationService] 🔄 Operación COMPLETED detectada, procesando cambios en trabajadores...');
+        console.log('[OperationService] 🔄 Operación COMPLETED detectada, procesando cambios en trabajadores...');
         await this.processWorkersOperationsV2(id, workers, true); // ✅ Pasar flag isCompleted
         
         // Buscar y recalcular factura
@@ -548,11 +556,14 @@ export class OperationService {
     if (Object.keys(operationUpdateData).length > 0) {
       // console.log('[OperationService] Actualizando datos básicos de la operación');
       // console.log('[OperationService] Datos a actualizar:', operationUpdateData);
+
       
-      await this.prisma.operation.update({
-        where: { id },
-        data: operationUpdateData,
-      });
+//       console.log("OPERATION UPDATE DATA");
+// console.log(JSON.stringify(operationUpdateData, null, 2));
+//       await this.prisma.operation.update({
+//         where: { id },
+//         data: operationUpdateData,
+//       });
     }
     // ✅ RECALCULAR op_duration siempre que haya cambios en fechas u horas
 const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;

@@ -598,257 +598,257 @@ for (const operation of pendingOperations) {
     }
   }
 
-  async updateCompletedOperations() {
-    try {
-      // this.logger.debug('Checking for operations to update to COMPLETED...');
+//   async updateCompletedOperations() {
+//     try {
+//       // this.logger.debug('Checking for operations to update to COMPLETED...');
 
-      // Usar hora colombiana en lugar de hora del servidor
-      const now = getColombianDateTime();
+//       // Usar hora colombiana en lugar de hora del servidor
+//       const now = getColombianDateTime();
 
-      // Crear fecha de inicio (hoy a medianoche hora colombiana)
-      const startOfDay = getColombianStartOfDay(now);
+//       // Crear fecha de inicio (hoy a medianoche hora colombiana)
+//       const startOfDay = getColombianStartOfDay(now);
 
-      // Crear fecha de fin (mañana a medianoche hora colombiana)
-      const endOfDay = getColombianEndOfDay(now);
+//       // Crear fecha de fin (mañana a medianoche hora colombiana)
+//       const endOfDay = getColombianEndOfDay(now);
 
-      // this.logger.debug(`Colombian time now: ${now.toISOString()}`);
-      // this.logger.debug(
-      //   `Searching operations for date: ${startOfDay.toISOString()} to ${endOfDay.toISOString()}`,
-      // );
+//       // this.logger.debug(`Colombian time now: ${now.toISOString()}`);
+//       // this.logger.debug(
+//       //   `Searching operations for date: ${startOfDay.toISOString()} to ${endOfDay.toISOString()}`,
+//       // );
 
-      // Buscar todas las operaciones con estado INPROGRESS para hoy que tengan fecha de finalización
-      const inProgressOperations = await this.prisma.operation.findMany({
-        where: {
-          dateEnd: {
-            gte: startOfDay, // Mayor o igual que hoy a medianoche (hora colombiana)
-            lt: endOfDay, // Menor que mañana a medianoche (hora colombiana)
-          },
-          status: 'INPROGRESS',
-          timeEnd: {
-            not: null, // Asegurarse de que tienen una hora de finalización
-          },
-        },
-      });
+//       // Buscar todas las operaciones con estado INPROGRESS para hoy que tengan fecha de finalización
+//       const inProgressOperations = await this.prisma.operation.findMany({
+//         where: {
+//           dateEnd: {
+//             gte: startOfDay, // Mayor o igual que hoy a medianoche (hora colombiana)
+//             lt: endOfDay, // Menor que mañana a medianoche (hora colombiana)
+//           },
+//           status: 'INPROGRESS',
+//           timeEnd: {
+//             not: null, // Asegurarse de que tienen una hora de finalización
+//           },
+//         },
+//       });
 
-      // this.logger.debug(
-      //   `Found ${inProgressOperations.length} in-progress operations with end time`,
-      // );
+//       // this.logger.debug(
+//       //   `Found ${inProgressOperations.length} in-progress operations with end time`,
+//       // );
 
-      let updatedCount = 0;
-      let releasedWorkersCount = 0;
-      let billsCreatedCount = 0;
+//       let updatedCount = 0;
+//       let releasedWorkersCount = 0;
+//       let billsCreatedCount = 0;
 
-      for (const operation of inProgressOperations) {
-        // Verificar que tenemos todos los datos necesarios
-        if (!operation.dateEnd || !operation.timeEnd) {
-          // this.logger.warn(
-          //   `Operation ${operation.id} has missing end date or time`,
-          // );
-          continue;
-        }
+//       for (const operation of inProgressOperations) {
+//         // Verificar que tenemos todos los datos necesarios
+//         if (!operation.dateEnd || !operation.timeEnd) {
+//           // this.logger.warn(
+//           //   `Operation ${operation.id} has missing end date or time`,
+//           // );
+//           continue;
+//         }
 
-        // Crear la fecha de finalización completa combinando dateEnd y timeEnd
-        // const dateEndStr = operation.dateEnd.toISOString().split('T')[0];
-        // const endDateTime = new Date(`${dateEndStr}T${operation.timeEnd}`);
+//         // Crear la fecha de finalización completa combinando dateEnd y timeEnd
+//         // const dateEndStr = operation.dateEnd.toISOString().split('T')[0];
+//         // const endDateTime = new Date(`${dateEndStr}T${operation.timeEnd}`);
 
-        const [hours, minutes] = operation.timeEnd.split(':').map(Number);
-const endDateTime = new Date(operation.dateEnd);
-endDateTime.setHours(hours, minutes, 0, 0);
+//         const [hours, minutes] = operation.timeEnd.split(':').map(Number);
+// const endDateTime = new Date(operation.dateEnd);
+// endDateTime.setHours(hours, minutes, 0, 0);
 
-        // Verificar si han pasado 10 minutos desde la hora de finalización (usando hora colombiana)
-        const minutesDiff = differenceInMinutes(now, endDateTime);
-        // this.logger.debug(
-        //   `Operation ${operation.id}: ${minutesDiff} minutes since end time (Colombian time)`,
-        // );
+//         // Verificar si han pasado 10 minutos desde la hora de finalización (usando hora colombiana)
+//         const minutesDiff = differenceInMinutes(now, endDateTime);
+//         // this.logger.debug(
+//         //   `Operation ${operation.id}: ${minutesDiff} minutes since end time (Colombian time)`,
+//         // );
 
-        // Si han pasado 1 minutos desde la hora de finalización
-        if (minutesDiff >= 1) {
-          // Obtener fecha y hora de finalización en zona horaria colombiana
-          const colombianEndTime = getColombianDateTime();
-          const colombianTimeString = getColombianTimeString();
+//         // Si han pasado 1 minutos desde la hora de finalización
+//         if (minutesDiff >= 1) {
+//           // Obtener fecha y hora de finalización en zona horaria colombiana
+//           const colombianEndTime = getColombianDateTime();
+//           const colombianTimeString = getColombianTimeString();
 
-          // Paso 1: Obtener los trabajadores de esta operación desde la tabla intermedia
-          const operationWorkers = await this.prisma.operation_Worker.findMany({
-            where: { id_operation: operation.id },
-            select: { 
-              worker: true,
-              id_worker: true, 
-              id_group: true 
-        },
-          });
+//           // Paso 1: Obtener los trabajadores de esta operación desde la tabla intermedia
+//           const operationWorkers = await this.prisma.operation_Worker.findMany({
+//             where: { id_operation: operation.id },
+//             select: { 
+//               worker: true,
+//               id_worker: true, 
+//               id_group: true 
+//         },
+//           });
 
-          const workerIds = operationWorkers.map((ow) => ow.id_worker);
-          // this.logger.debug(
-          //   `Found ${workerIds.length} workers for operation ${operation.id}`,
-          // );
+//           const workerIds = operationWorkers.map((ow) => ow.id_worker);
+//           // this.logger.debug(
+//           //   `Found ${workerIds.length} workers for operation ${operation.id}`,
+//           // );
 
-          // Paso 2: Actualizar el estado de los trabajadores a AVALIABLE
-          if (workerIds.length > 0) {
-            const result = await this.prisma.worker.updateMany({
-              where: {
-                id: { in: workerIds },
-                status: { not: 'AVALIABLE' },
-              },
-              data: { status: 'AVALIABLE' },
-            });
+//           // Paso 2: Actualizar el estado de los trabajadores a AVALIABLE
+//           if (workerIds.length > 0) {
+//             const result = await this.prisma.worker.updateMany({
+//               where: {
+//                 id: { in: workerIds },
+//                 status: { not: 'AVALIABLE' },
+//               },
+//               data: { status: 'AVALIABLE' },
+//             });
 
-            releasedWorkersCount += result.count;
-            // this.logger.debug(
-            //   `Released ${result.count} workers from operation ${operation.id}`,
-            // );
-          }
-// Paso 3: Calcular op_duration antes de actualizar a COMPLETED
-          let opDuration = 0;
-          if (operation.dateStart && operation.timeStrat && operation.dateEnd && operation.timeEnd) {
-            const start = new Date(operation.dateStart);
-            const [sh, sm] = operation.timeStrat.split(':').map(Number);
-            start.setHours(sh, sm, 0, 0);
+//             releasedWorkersCount += result.count;
+//             // this.logger.debug(
+//             //   `Released ${result.count} workers from operation ${operation.id}`,
+//             // );
+//           }
+// // Paso 3: Calcular op_duration antes de actualizar a COMPLETED
+//           let opDuration = 0;
+//           if (operation.dateStart && operation.timeStrat && operation.dateEnd && operation.timeEnd) {
+//             const start = new Date(operation.dateStart);
+//             const [sh, sm] = operation.timeStrat.split(':').map(Number);
+//             start.setHours(sh, sm, 0, 0);
 
-            const end = new Date(operation.dateEnd);
-            const [eh, em] = operation.timeEnd.split(':').map(Number);
-            end.setHours(eh, em, 0, 0);
+//             const end = new Date(operation.dateEnd);
+//             const [eh, em] = operation.timeEnd.split(':').map(Number);
+//             end.setHours(eh, em, 0, 0);
 
-            const diffMs = end.getTime() - start.getTime();
-            opDuration = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100; // 2 decimales
-            opDuration = opDuration > 0 ? opDuration : 0;
+//             const diffMs = end.getTime() - start.getTime();
+//             opDuration = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100; // 2 decimales
+//             opDuration = opDuration > 0 ? opDuration : 0;
             
-            // this.logger.debug(
-            //   `Calculated op_duration for operation ${operation.id}: ${opDuration} hours`,
-            // );
-          }
+//             // this.logger.debug(
+//             //   `Calculated op_duration for operation ${operation.id}: ${opDuration} hours`,
+//             // );
+//           }
 
-          // Paso 4: Actualizar el estado de la operación a COMPLETED con op_duration
-          const response = await this.prisma.operation.update({
-            where: { id: operation.id },
-            data: { status: 'COMPLETED',
-             op_duration: opDuration
-             },
-          });
+//           // Paso 4: Actualizar el estado de la operación a COMPLETED con op_duration
+//           const response = await this.prisma.operation.update({
+//             where: { id: operation.id },
+//             data: { status: 'COMPLETED',
+//              op_duration: opDuration
+//              }, 
+//           });
 
-          // Paso 5: Crear factura automáticamente clalculando compensatorio
-         try {
-            // // Obtener grupos únicos de la operación con información completa
-            // const operationWorkersWithDetails = await this.prisma.operation_Worker.findMany({
-            //   where: { id_operation: operation.id },
-            //   include: {
-            //     worker: true,
-            //   },
-            // });
+//           // Paso 5: Crear factura automáticamente clalculando compensatorio
+//          try {
+//             // // Obtener grupos únicos de la operación con información completa
+//             // const operationWorkersWithDetails = await this.prisma.operation_Worker.findMany({
+//             //   where: { id_operation: operation.id },
+//             //   include: {
+//             //     worker: true,
+//             //   },
+//             // });
 
-            const uniqueGroups = [
-              ...new Set(operationWorkers.map((ow) => ow.id_group)),
-            ];
+//             const uniqueGroups = [
+//               ...new Set(operationWorkers.map((ow) => ow.id_group)),
+//             ];
 
-            //this.logger.debug(
-            //   `Creando factura para operación ${operation.id} con op_duration: ${opDuration} horas`,
-            // );
+//             //this.logger.debug(
+//             //   `Creando factura para operación ${operation.id} con op_duration: ${opDuration} horas`,
+//             // );
 
-            // Crear grupos para la factura con op_duration para calcular compensatorio
-            const billGroups = uniqueGroups.map((groupId) => {
-              const groupWorkers = operationWorkers.filter((ow) => ow.id_group === groupId);
+//             // Crear grupos para la factura con op_duration para calcular compensatorio
+//             const billGroups = uniqueGroups.map((groupId) => {
+//               const groupWorkers = operationWorkers.filter((ow) => ow.id_group === groupId);
               
-              return {
-                id: String(groupId),
-                amount: Number(0),
-                group_hours: new Decimal(opDuration), // ✅ USAR op_duration REAL EN LUGAR DE 0
-                pays: groupWorkers.map((ow) => ({
-                  id_worker: ow.id_worker,
-                  pay: 0,
-                })),
-                paysheetHoursDistribution: {
-                  HOD: 0,
-                  HON: 0,
-                  HED: 0,
-                  HEN: 0,
-                  HFOD: 0,
-                  HFON: 0,
-                  HFED: 0,
-                  HFEN: 0,
-                },
-                billHoursDistribution: {
-                  HOD: 0,
-                  HON: 0,
-                  HED: 0,
-                  HEN: 0,
-                  HFOD: 0,
-                  HFON: 0,
-                  HFED: 0,
-                  HFEN: 0,
-                },
-              };
-            });
+//               return {
+//                 id: String(groupId),
+//                 amount: Number(0),
+//                 group_hours: new Decimal(opDuration), // ✅ USAR op_duration REAL EN LUGAR DE 0
+//                 pays: groupWorkers.map((ow) => ({
+//                   id_worker: ow.id_worker,
+//                   pay: 0,
+//                 })),
+//                 paysheetHoursDistribution: {
+//                   HOD: 0,
+//                   HON: 0,
+//                   HED: 0,
+//                   HEN: 0,
+//                   HFOD: 0,
+//                   HFON: 0,
+//                   HFED: 0,
+//                   HFEN: 0,
+//                 },
+//                 billHoursDistribution: {
+//                   HOD: 0,
+//                   HON: 0,
+//                   HED: 0,
+//                   HEN: 0,
+//                   HFOD: 0,
+//                   HFON: 0,
+//                   HFED: 0,
+//                   HFEN: 0,
+//                 },
+//               };
+//             });
 
-            const createBillDto = {
-              id_operation: operation.id,
-              groups: billGroups,
-            };
+//             const createBillDto = {
+//               id_operation: operation.id,
+//               groups: billGroups,
+//             };
 
-            // this.logger.debug(
-            //  `DTO de factura con op_duration: ${JSON.stringify({ op_duration: opDuration, groupsCount: billGroups.length })}`,
-            // );
+//             // this.logger.debug(
+//             //  `DTO de factura con op_duration: ${JSON.stringify({ op_duration: opDuration, groupsCount: billGroups.length })}`,
+//             // );
 
-            // Llamar al servicio de facturación (userId 1 para sistema automático)
-            await this.billService.create(createBillDto, 1);
+//             // Llamar al servicio de facturación (userId 1 para sistema automático)
+//             await this.billService.create(createBillDto, 1);
 
-            billsCreatedCount++;
-            // this.logger.debug(
-            //   `Factura creada automáticamente para operación ${operation.id} con compensatorio calculado`,
-            // );
-          } catch (billError) {
-            this.logger.error(
-            `Error creando factura para operación ${operation.id}:`,
-              billError,
-            );
-            // No interrumpir el proceso por error en facturación
-          }
+//             billsCreatedCount++;
+//             // this.logger.debug(
+//             //   `Factura creada automáticamente para operación ${operation.id} con compensatorio calculado`,
+//             // );
+//           } catch (billError) {
+//             this.logger.error(
+//             `Error creando factura para operación ${operation.id}:`,
+//               billError,
+//             );
+//             // No interrumpir el proceso por error en facturación
+//           }
 
-          // Paso 4: Actualizar la fecha y hora de finalización en la tabla intermedia (con hora colombiana)
-          await this.prisma.operation_Worker.updateMany({
-            where: {
-              id_operation: operation.id,
-              dateEnd: null,
-              timeEnd: null,
-            },
-            data: {
-              dateEnd: colombianEndTime, // Usar hora colombiana
-              timeEnd: colombianTimeString, // Usar hora colombiana en formato HH:MM
-            },
-          });
+//           // Paso 4: Actualizar la fecha y hora de finalización en la tabla intermedia (con hora colombiana)
+//           await this.prisma.operation_Worker.updateMany({
+//             where: {
+//               id_operation: operation.id,
+//               dateEnd: null,
+//               timeEnd: null,
+//             },
+//             data: {
+//               dateEnd: colombianEndTime, // Usar hora colombiana
+//               timeEnd: colombianTimeString, // Usar hora colombiana en formato HH:MM
+//             },
+//           });
 
-          //paso 5: actulizar el estado de cliente programming a COMPLETED
-          if (response.id_clientProgramming) {
-            await this.prisma.clientProgramming.update({
-              where: { id: response.id_clientProgramming },
-              data: { status: 'COMPLETED' },
-            });
-            // this.logger.debug(
-            //   `Updated client programming ${response.id_clientProgramming} to COMPLETED status`,
-            // );
-          }
+//           //paso 5: actulizar el estado de cliente programming a COMPLETED
+//           if (response.id_clientProgramming) {
+//             await this.prisma.clientProgramming.update({
+//               where: { id: response.id_clientProgramming },
+//               data: { status: 'COMPLETED' },
+//             });
+//             // this.logger.debug(
+//             //   `Updated client programming ${response.id_clientProgramming} to COMPLETED status`,
+//             // );
+//           }
 
-          updatedCount++;
-        }
-      }
+//           updatedCount++;
+//         }
+//       }
 
-      // if (updatedCount > 0) {
-      //   this.logger.debug(
-      //     `Updated ${updatedCount} operations to COMPLETED status`,
-      //   );
-      // }
+//       // if (updatedCount > 0) {
+//       //   this.logger.debug(
+//       //     `Updated ${updatedCount} operations to COMPLETED status`,
+//       //   );
+//       // }
 
-      return { updatedCount,
-        billsCreatedCount,
-        releasedWorkersCount
-       };
-    } catch (error) {
-      this.logger.error('❌ Error crítico updating completed operations:', error);
-      // No lanzar el error, solo loggearlo para evitar que el servidor se caiga
-      return { 
-        updatedCount: 0,
-        billsCreatedCount: 0,
-        releasedWorkersCount: 0,
-        error: (error as Error).message 
-      };
-    }
-  }
+//       return { updatedCount,
+//         billsCreatedCount,
+//         releasedWorkersCount
+//        };
+//     } catch (error) {
+//       this.logger.error('❌ Error crítico updating completed operations:', error);
+//       // No lanzar el error, solo loggearlo para evitar que el servidor se caiga
+//       return { 
+//         updatedCount: 0,
+//         billsCreatedCount: 0,
+//         releasedWorkersCount: 0,
+//         error: (error as Error).message 
+//       };
+//     }
+//   }
 }

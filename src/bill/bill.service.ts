@@ -3399,7 +3399,7 @@ const endDate = operationWorker?.dateEnd
       // console.log(`[BillService] 🎯 Completando operación ${operationId} después de generar facturas...`);
       
       // 1. Verificar si todos los grupos tienen fecha de finalización
-      const allGroupsCompleted = await this.areAllGroupsCompleted(operationId);
+      const allGroupsCompleted = await this.areAllGroupsCompleted(operationId); 
       
       if (!allGroupsCompleted) {
         // console.log(`[BillService] ⏳ Operación ${operationId}: No todos los grupos están completados aún`);
@@ -3442,24 +3442,110 @@ const endDate = operationWorker?.dateEnd
       // No lanzar error para no interrumpir la creación de facturas
     }
   }
-
+ 
   /**
    * Verifica si todos los grupos de una operación están completados
    */
-  private async areAllGroupsCompleted(operationId: number): Promise<boolean> {
-    const incompleteWorkers = await this.prisma.operation_Worker.count({
+  // private async areAllGroupsCompleted(operationId: number): Promise<boolean> {
+  //   const incompleteWorkers = await this.prisma.operation_Worker.count({
+  //     where: {
+  //       id_operation: operationId,
+  //       OR: [
+  //         { dateEnd: null },
+  //         { timeEnd: null }
+  //       ]
+  //     }
+  //   });
+
+  //   return incompleteWorkers === 0;
+  // }
+//   private async areAllGroupsCompleted(
+//   operationId: number,
+// ): Promise<boolean> {
+
+//   const operationGroups =
+//     await this.prisma.operation_Worker.findMany({
+//       where: {
+//         id_operation: operationId,
+//       },
+//       select: {
+//         id_group: true,
+//       },
+//       distinct: ['id_group'],
+//     });
+
+//   const billGroups =
+//     await this.prisma.bill.findMany({
+//       where: {
+//         id_operation: operationId,
+//       },
+//       select: {
+//         id_group: true,
+//       },
+//       distinct: ['id_group'],
+//     });
+
+//   const operationGroupIds = operationGroups
+//     .map(g => String(g.id_group))
+//     .filter(Boolean);
+
+//   const billGroupIds = billGroups
+//     .map(g => String(g.id_group))
+//     .filter(Boolean);
+
+//   console.log('========================');
+//   console.log('operationGroupIds:', operationGroupIds);
+//   console.log('billGroupIds:', billGroupIds);
+//   console.log('========================');
+
+//   const missingGroups =
+//     operationGroupIds.filter(
+//       groupId => !billGroupIds.includes(groupId)
+//     );
+
+//   console.log('missingGroups:', missingGroups);
+
+//   return missingGroups.length === 0;
+// }
+private async areAllGroupsCompleted(
+  operationId: number,
+): Promise<boolean> {
+
+  const operationGroups =
+    await this.prisma.operation_Worker.findMany({
       where: {
         id_operation: operationId,
-        OR: [
-          { dateEnd: null },
-          { timeEnd: null }
-        ]
-      }
+        id_worker: { not: -1 },
+        id_group: { not: null },
+      },
+      select: {
+        id_group: true,
+      },
+      distinct: ['id_group'],
     });
 
-    return incompleteWorkers === 0;
-  }
+  const billGroups =
+    await this.prisma.bill.findMany({
+      where: {
+        id_operation: operationId,
+        id_group: { not: null },
+      },
+      select: {
+        id_group: true,
+      },
+      distinct: ['id_group'],
+    });
 
+  const billGroupIds = new Set(
+    billGroups.map(g => String(g.id_group))
+  );
+
+  const missingGroups = operationGroups
+    .map(g => String(g.id_group))
+    .filter(groupId => !billGroupIds.has(groupId));
+
+  return missingGroups.length === 0;
+}
   /**
    * Encuentra la fecha y hora más reciente de finalización de todos los grupos
    */
@@ -4529,7 +4615,9 @@ async exportBillsToExcelStream(
     'Usuario', //39 - Usuario
     'Creado por', //40 - Creado por (usuario de la operación)
     'Observaciones', //41 - Observaciones
-    'Estado', //42 - Estado
+    'Zona', //42 - Zona (jobArea)
+    'Estado', //43 - Estado
+    'Cliente', //44 - Cliente
   ];
 //Encabezados para hoja "RTD" (Registro de Detalle de Factura para cada trabajador)
   const headersRTD = [ // 41 columnas
@@ -4573,7 +4661,9 @@ async exportBillsToExcelStream(
     'Usuario',
     'Creado por',
     'Observaciones',
+    'Zona',
     'Estado',
+    'Cliente',
   ];
 
   this.configureWorksheetHeader(worksheetData, headersDatos); // Configurar encabezados y estilos para hoja "Datos"
@@ -4650,7 +4740,11 @@ this.applyDynamicWidths(worksheetRTD, headersRTD);
         task: {
           select: { name: true },
         },
-      },
+        zone: true,
+        client:{
+          select: { name: true },
+        },
+      }
     },
 
     // 📦 DETAILS
@@ -4942,7 +5036,9 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
       bill.user?.name ?? '', //39 Usuario
       bill.operation?.user?.name ?? '', //40 Creado por (usuario de la operación)
       bill.observation ?? '', //41 Observaciones
+      bill.operation?.zone ?? '', //43 Zona (zona de la operación)
       estadoTexto, //42 Estado
+      bill.operation?.client?.name ?? '', //44 Cliente
     ]);
 
     this.styleRow(row, rowIndexData);
@@ -5034,7 +5130,9 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
         bill.user?.name ?? '', //38- Usuario
         bill.operation.user?.name ?? '', //39- Creado por (usuario de la operación)
         bill.observation ?? '', //40- Observación
+        bill.operation?.zone ?? '', //42- Zona
         estadoTexto, //41- Estado
+        bill.operation?.client?.name ?? '', //43- Cliente
       ]);
 
       // ===== FORMATOS RTD ===
