@@ -554,16 +554,16 @@ export class OperationService {
 
     // Update operation
     if (Object.keys(operationUpdateData).length > 0) {
-      // console.log('[OperationService] Actualizando datos básicos de la operación');
-      // console.log('[OperationService] Datos a actualizar:', operationUpdateData);
+     console.log('[OperationService] Actualizando datos básicos de la operación');
+       console.log('[OperationService] Datos a actualizar:', operationUpdateData);
 
       
 //       console.log("OPERATION UPDATE DATA");
 // console.log(JSON.stringify(operationUpdateData, null, 2));
-//       await this.prisma.operation.update({
-//         where: { id },
-//         data: operationUpdateData,
-//       });
+       await this.prisma.operation.update({
+         where: { id },
+        data: operationUpdateData,
+      });
     }
     // ✅ RECALCULAR op_duration siempre que haya cambios en fechas u horas
 const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
