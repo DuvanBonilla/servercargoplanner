@@ -881,7 +881,7 @@ export class OperationExportService {
 				'Total Trabajadores': workersCount,
 				Turnos: groups.length,
 				'Creado por': op.user.name,
-				Usuario: billUser[0]?.user?.name || 'usuario no identificado',
+				Usuario: billUser[0]?.user?.name || 'usuario no identificado', //usuario que genera la Bill
 			};
 		});
 	}
