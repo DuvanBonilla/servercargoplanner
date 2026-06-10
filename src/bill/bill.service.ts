@@ -226,7 +226,8 @@ export class BillService {
       matchingGroupSummary,
       group,
     );
-    
+              // console.log('método processSimpleHoursGroups - Facturación:', result);
+
     const billData = this.prepareHoursBillData(
       result,
       createBillDto.id_operation,
@@ -470,10 +471,12 @@ export class BillService {
         totalFacturation = factResult;
       } else if (facturationUnit === 'HORAS') {
         const factResult =
+          
           await this.hoursCalculationService.processHoursGroups(
             matchingGroupSummary,
             group,
           );
+          // console.log('método calculateAlternativeServiceTotals - Facturación:', factResult);
         totalFacturation = factResult.totalFinalFacturation;
       } else {
         const factResult = this.payrollCalculationService.processJornalGroups(
@@ -497,6 +500,9 @@ export class BillService {
       matchingGroupSummary,
       group,
     );
+
+                  // console.log('método calculateAlternativeServiceTotals - Nómina:', paysheetResult);
+
 
   totalPaysheet = paysheetResult.totalFinalPayroll;
 
@@ -536,17 +542,17 @@ export class BillService {
       ? hasSundayInRange(startDate, endDate)
       : false;
 
-  console.log(
-    '🔍 [calculateAlternativeServiceTotals] Validación domingo:',
-    {
-      groupId: matchingGroupSummary.groupId,
-      startDate:
-        startDate?.toISOString().split('T')[0],
-      endDate:
-        endDate?.toISOString().split('T')[0],
-      hasSundayReal,
-    },
-  );
+  // console.log(
+  //   '🔍 [calculateAlternativeServiceTotals] Validación domingo:',
+  //   {
+  //     groupId: matchingGroupSummary.groupId,
+  //     startDate:
+  //       startDate?.toISOString().split('T')[0],
+  //     endDate:
+  //       endDate?.toISOString().split('T')[0],
+  //     hasSundayReal,
+  //   },
+  // );
 
   // =========================================================
   // ✅ CÁLCULO DEL COMPENSATORIO
@@ -574,16 +580,16 @@ export class BillService {
     workerCount *
     paysheetTariff;
 
-  console.log(
-    '📊 [Compensatorio Servicio Alternativo]',
-    {
-      groupId: matchingGroupSummary.groupId,
-      groupDuration,
-      compensatoryHours,
-      compensatoryAmount,
-      hasSundayReal,
-    },
-  );
+  // console.log(
+  //   '📊 [Compensatorio Servicio Alternativo]',
+  //   {
+  //     groupId: matchingGroupSummary.groupId,
+  //     groupDuration,
+  //     compensatoryHours,
+  //     compensatoryAmount,
+  //     hasSundayReal,
+  //   },
+  // );
 
   // =========================================================
   // ✅ SOLO SUMAR SI NO ES DOMINGO
@@ -592,9 +598,9 @@ export class BillService {
   if (!hasSundayReal) {
     totalPaysheet += compensatoryAmount;
 
-    console.log(
-      '✅ Compensatorio SUMADO al total_paysheet',
-    );
+    // console.log(
+    //   '✅ Compensatorio SUMADO al total_paysheet',
+    // );
   } else {
     console.log(
       '🚫 Compensatorio NO sumado por domingo',
@@ -610,7 +616,7 @@ export class BillService {
     } else {
       const amount = group.amount || 0;
       totalPaysheet = amount * paysheetTariff;
-      console.log('Amount:', amount, 'Paysheet Tariff:', paysheetTariff);
+      // console.log('Amount:', amount, 'Paysheet Tariff:', paysheetTariff);
     }
 
     return { totalFacturation, totalPaysheet };
@@ -629,14 +635,14 @@ export class BillService {
     const amount = group.amount ?? amountDb ?? 0;
     
     // ✅ LOG PARA DEPURACIÓN
-    console.log('=== CALCULATE QUANTITY TOTALS ===');
-    console.log('Grupo:', matchingGroupSummary.groupId);
-    console.log('paysheetTariff:', paysheetTariff);
-    console.log('facturationTariff:', facturationTariff);
-    console.log('amount:', amount);
-    console.log('totalPaysheet:', amount * paysheetTariff);
-    console.log('totalFacturation:', amount * facturationTariff);
-    console.log('=================================');
+    // console.log('=== CALCULATE QUANTITY TOTALS ===');
+    // console.log('Grupo:', matchingGroupSummary.groupId);
+    // console.log('paysheetTariff:', paysheetTariff);
+    // console.log('facturationTariff:', facturationTariff);
+    // console.log('amount:', amount);
+    // console.log('totalPaysheet:', amount * paysheetTariff);
+    // console.log('totalFacturation:', amount * facturationTariff);
+    // console.log('=================================');
     
     return {
       totalPaysheet: amount * paysheetTariff,
@@ -2076,6 +2082,8 @@ const endDate = operationWorker?.dateEnd
       );
     }
 
+
+
     // ✅ Recalcular group_hours automáticamente después de editar la Bill
     await this.recalculateGroupHoursFromWorkerDates(
       billDb.id_operation,
@@ -2365,7 +2373,7 @@ const endDate = operationWorker?.dateEnd
 
       let finalNumberOfHours: number | undefined = undefined;
 
-      // Procesar billHoursDistribution (FACTURACIÓN)
+      // Procesar billHoursDistribution (TOTAL FACTURACIÓN)
       if (group.billHoursDistribution) {
         // Calcular el total de horas de facturación
         const billTotalHours = Object.values(
@@ -2425,6 +2433,8 @@ const endDate = operationWorker?.dateEnd
       });
     }
   }
+
+
   private async recalculateBillTotals(
     id: number,
     group: UpdateBillDto,
@@ -2434,6 +2444,15 @@ const endDate = operationWorker?.dateEnd
     amountDb: number,
     billDb?: any,
   ) {
+    // console.log('=== NUEVO RECALCULO ===');
+
+// console.log(
+//   'group.billHoursDistribution',
+//   JSON.stringify(group.billHoursDistribution, null, 2),
+// );
+
+// console.trace('STACK RECALCULO');
+
     let totalAmount = 0;
     let totalPaysheet = 0;
     let numberOfWorkers = 0;
@@ -2470,8 +2489,15 @@ const endDate = operationWorker?.dateEnd
       matchingGroupSummary.group_hours = Number(currentBill.group_hours) || matchingGroupSummary.group_hours || 0;
     }
 
+//     console.log('MATCHING GROUP SUMMARY', {
+//   groupId: matchingGroupSummary.groupId,
+//   full_tariff: matchingGroupSummary.full_tariff,
+//   tariffDetails: matchingGroupSummary.tariffDetails,
+// });
+
     const { totalPaysheetGroup, totalFacturationGroup } =
-      await this.calculateGroupTotalsForUpdate(
+
+      await this.calculateGroupTotalsForUpdate( 
         matchingGroupSummary,
         group,
         amountDb,
@@ -2560,6 +2586,8 @@ const endDate = operationWorker?.dateEnd
       
       // console.log(`🔧 [calculateGroupTotalsForUpdate] HORAS - workerCount: ${matchingGroupSummary.workerCount}`);
 
+      
+
 
 
       const result = await this.hoursCalculationService.processHoursGroups(
@@ -2567,6 +2595,9 @@ const endDate = operationWorker?.dateEnd
         group,
         billDb?.status,
       );
+
+      // console.log('método calculateGroupTotalsForUpdate:', result);
+
       totalPaysheetGroup = result.totalFinalPayroll;
       totalFacturationGroup = result.totalFinalFacturation;
     } else if (
@@ -3218,16 +3249,16 @@ const endDate = operationWorker?.dateEnd
               })),
             };
 
-            // Llamar directamente a recalculateBillTotals
-            await this.recalculateBillTotals(
-              bill.id,
-              updateBillDto,
-              validateOperationID,
-              bill.id_user,
-              id_operation,
-              Number(bill.amount),
-              bill,
-            );
+            // // Llamar directamente a recalculateBillTotals
+            // await this.recalculateBillTotals(
+            //   bill.id,
+            //   updateBillDto,
+            //   validateOperationID,
+            //   bill.id_user,
+            //   id_operation,
+            //   Number(bill.amount),
+            //   bill,
+            // );
 
             // console.log(`[BillService] ✅ Recálculo completo finalizado para Bill ${bill.id}`);
           }

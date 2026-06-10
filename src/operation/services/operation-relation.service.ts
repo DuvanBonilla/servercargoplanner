@@ -289,7 +289,7 @@ export class OperationRelationService {
 
   try {
     const currentWorkers = await this.operationWorkerService.getWorkersFromOperation(operationId);
-console.log('Trabajadores actuales en BD:', currentWorkers);
+// console.log('Trabajadores actuales en BD:', currentWorkers);
     let currentWorkerIds: number[] = [];
     if (Array.isArray(currentWorkers)) {
       currentWorkerIds = currentWorkers.map(w => w.id);
@@ -306,8 +306,8 @@ console.log('Trabajadores actuales en BD:', currentWorkers);
     const newWorkerIds = [...simpleWorkers, ...scheduledWorkerIds];
 
     // LOGS PARA DEPURAR
-    console.log('Trabajadores actuales:', currentWorkerIds);
-    console.log('Nuevos trabajadores:', newWorkerIds);
+    // console.log('Trabajadores actuales:', currentWorkerIds);
+    // console.log('Nuevos trabajadores:', newWorkerIds);
 
     const toRemove = currentWorkerIds.filter(id => !newWorkerIds.includes(id));
     const toAdd = newWorkerIds.filter(id => !currentWorkerIds.includes(id));

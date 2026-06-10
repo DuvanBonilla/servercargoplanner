@@ -138,6 +138,16 @@ export class HoursCalculationService {
     const gfmt = groupSummary as any;
     const combinedGroupData = {
       ...groupSummary,
+        full_tariff:
+    groupSummary.full_tariff ??
+    gfmt.tariffDetails?.full_tariff ??
+    'NO',
+
+  compensatory:
+    groupSummary.compensatory ??
+    gfmt.tariffDetails?.compensatory ??
+    'NO',
+
       billHoursDistribution: group.billHoursDistribution,
       paysheetHoursDistribution: group.paysheetHoursDistribution,
       amount: group.amount,
@@ -145,18 +155,10 @@ export class HoursCalculationService {
       hours: groupSummary.hours ?? gfmt.tariffDetails?.hours ?? 0,
       facturation_tariff: groupSummary.facturation_tariff ?? gfmt.tariffDetails?.facturation_tariff ?? 0,
       paysheet_tariff: groupSummary.paysheet_tariff ?? gfmt.tariffDetails?.paysheet_tariff ?? 0,
-    };
 
-  //   // ✅ AGREGAR LOGS PARA VERIFICAR op_duration
-  // console.log('=== VERIFICACIÓN OP_DURATION ===');
-  // console.log('groupSummary.op_duration:', groupSummary.op_duration);
-  // console.log('gfmt.op_duration:', gfmt.op_duration);
-  // console.log('combinedGroupData después de merge:', {
-  //   op_duration: combinedGroupData.op_duration,
-  //   dateRange: combinedGroupData.dateRange
-  // });
-   
-    // Obtener fechas para validaciones
+    };
+    console.log('FULL TARIFF FINAL', combinedGroupData.full_tariff);
+   // Obtener fechas para validaciones
   let startDate: Date | null = null;
   let endDate: Date | null = null;
   
@@ -164,38 +166,18 @@ export class HoursCalculationService {
     startDate = toLocalDate(groupSummary.dateRange.start);
     endDate = toLocalDate(groupSummary.dateRange.end);
 
-    // console.log('=== ANÁLISIS DE FECHAS ===');
-    // console.log('startDate:', startDate.toISOString(), 'Día:', startDate.getDay());
-    // console.log('endDate:', endDate.toISOString(), 'Día:', endDate.getDay());
-
-    const diasSemana = getDayNamesInRange(startDate, endDate);
+   const diasSemana = getDayNamesInRange(startDate, endDate);
     const tieneDomingo = hasSundayInRange(startDate, endDate);
     const horasLimite = await this.getWeeklyHoursLimit(startDate, endDate);
-    
-    // console.log('Días de la semana en la operación:', diasSemana);
-    // console.log('¿Tiene domingo?', tieneDomingo);
-    // console.log('Horas límite semanales:', horasLimite);
-    // console.log('¿Calcular compensatorio?', this.shouldCalculateCompensatory(startDate, endDate));
-    // console.log('=== FIN ANÁLISIS FECHAS ===');
   }
+  
 
   const result = await this.calculateHoursGroupResult(combinedGroupData, billStatus, startDate, endDate);
+  
   return result;
 }
 
   private async calculateHoursGroupResult(combinedGroupData: any, billStatus?: string, startDate?: Date | null, endDate?: Date | null) {
-  // console.log('🔍 calculateHoursGroupResult - Parámetros recibidos:', {
-  //   billStatus,
-  //   'combinedGroupData.group_hours': combinedGroupData?.group_hours,
-  //   'combinedGroupData.op_duration': combinedGroupData?.op_duration,
-  //   startDate,
-  //   endDate
-  // });
-  // ✅ USAR group_hours EN LUGAR DE op_duration PARA COMPENSATORIO
-  // console.log('=== CÁLCULO COMPENSATORIO CORREGIDO ===');
-  // console.log('group_hours disponible:', combinedGroupData.group_hours);
-  // console.log('op_duration (solo informativo):', combinedGroupData.op_duration);
-  
   // ✅ USAR group_hours para el compensatorio (duración específica del grupo)
   // Si no está disponible group_hours, usar las horas de distribución como fallback
   const groupDuration = combinedGroupData.group_hours || 0;
@@ -346,13 +328,20 @@ export class HoursCalculationService {
   // console.log('totalFinalPayroll:', totalFinalPayroll);
   // console.log('=== FIN TOTALES FINALES ===');
 
-  if (combinedGroupData.full_tariff === 'YES') {
-    const sumHours = (
+  if (combinedGroupData.full_tariff === 'YES') { ////FULL TARIFA: se calcula el total de HORAS DE FACTURACION MÁS NÓ HORAS DEL GRUPO
+    const sumHours = ( 
       Object.values(combinedGroupData.billHoursDistribution) as number[]
     ).reduce((a: number, b: number) => a + b, 0);
     totalFinalFacturation =
       facturationTariff * sumHours * workerCount;
   }
+//   console.log('FULL TARIFF:', combinedGroupData.full_tariff);
+
+// console.log('FACT HOURS:', combinedGroupData.billHoursDistribution);
+
+// console.log('FACTURATION TARIFF:', facturationTariff);
+
+// console.log('WORKER COUNT:', workerCount);
 
   return {
     groupId: combinedGroupData.groupId,

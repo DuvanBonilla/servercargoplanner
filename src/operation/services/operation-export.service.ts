@@ -350,7 +350,7 @@ export class OperationExportService {
 			if (!workersByGroup.length) {
 				rows.push({ ///HOJA1 RTD
 					"Operacion": op.id,
-					"userId": op.userId.name,
+					"userId": op.user?.name,
 					"Fecha Inicio Op.": this.combineDateTime(op.dateStart, op.timeStrat),
 					"Fecha Fin Op.": this.combineDateTime(op.dateEnd, op.timeEnd),
 					Semana: this.isoWeek(op.dateStart),
@@ -371,8 +371,8 @@ export class OperationExportService {
 					"Area": op.jobArea?.name || 'Sin area',
 					Cliente: op.client?.name || 'Sin cliente',
 					Estado: this.statusLabel(op.status),
-					'Creado por': op.user.name,
-					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
+					'Creado por': op.user?.name,
+					Usuario: billUser[0]?.user?.name || ' ',
 				});
 				continue;
 			}
@@ -417,8 +417,8 @@ export class OperationExportService {
 					Area: op.jobArea?.name || 'Sin area',
 					Cliente: op.client?.name || 'Sin cliente',
 					Estado: this.statusLabel(op.status),
-					'Creado por': op.user.name,
-					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
+					'Creado por': op.user?.name,
+					Usuario: billUser[0]?.user?.name || ' ',
 				});
 			}
 		}
@@ -484,8 +484,8 @@ export class OperationExportService {
 					Area: op.jobArea?.name || 'Sin area',
 					Cliente: op.client?.name || 'Sin cliente',
 					Estado: this.statusLabel(op.status),
-					'Creado por': op.user.name,
-					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
+					'Creado por': op.user?.name,
+					Usuario: billUser[0]?.user?.name || ' ',
 				});
 				continue;
 			}
@@ -575,8 +575,8 @@ export class OperationExportService {
 					Area: op.jobArea?.name || 'Sin area',
 					Cliente: op.client?.name || 'Sin cliente',
 					Estado: this.statusLabel(op.status),
-					'Creado por': op.user.name,
-					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
+					'Creado por': op.user?.name,
+					Usuario: billUser[0]?.user?.name || ' ',
 				});
 			}
 		}
@@ -880,8 +880,8 @@ export class OperationExportService {
 				Tarea: tasks || 'Sin tarea',
 				'Total Trabajadores': workersCount,
 				Turnos: groups.length,
-				'Creado por': op.user.name,
-				Usuario: billUser[0]?.user?.name || 'usuario no identificado', //usuario que genera la Bill
+				'Creado por': op.user?.name,
+				Usuario: billUser[0]?.user?.name || ' ', //usuario que genera la Bill
 			};
 		});
 	}
@@ -909,8 +909,8 @@ export class OperationExportService {
 					Turno: '',
 					'DNI Trabajador': 0,
 					'Nombre Trabajador': 'Sin trabajadores',
-					'Creado por': op.user.name,
-					Usuario: billUser[0]?.user?.name || 'usuario no identificado',
+					'Creado por': op.user?.name,
+					Usuario: billUser[0]?.user?.name || ' ',
 				});
 				continue;
 			}
@@ -950,8 +950,8 @@ export class OperationExportService {
 						Turno: turno,
 						'DNI Trabajador': Number(worker.dni || 0),
 						'Nombre Trabajador': worker.name || '',
-						'Creado por': op.user.name,
-						Usuario: billUser[0]?.user?.name || 'usuario no identificado',
+						'Creado por': op.user?.name,
+						Usuario: billUser[0]?.user?.name || ' ',
 					});
 				}
 			}
