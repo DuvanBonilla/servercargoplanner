@@ -71,12 +71,12 @@ export class CancelledOperationsCleanupService {
           deletedCount++;
           // this.logger.log(` Operación eliminada: ID ${operation.id} (Estado: ${operation.status})`);
         } catch (error) {
-          if (error.message.includes('no se puede eliminar porque tiene')) {
+          if (String(error).includes('no se puede eliminar porque tiene')) {
             skippedCount++;
             this.logger.warn(`Operación omitida: ID ${operation.id} - ${(error as Error).message}`);
           } else {
             errorCount++;
-            this.logger.error(` Error eliminando operación ID ${operation.id} (Estado: ${operation.status}):`, error.message);
+            this.logger.error(` Error eliminando operación ID ${operation.id} (Estado: ${operation.status}):`, String(error));
           }
         }
       }
@@ -88,8 +88,8 @@ export class CancelledOperationsCleanupService {
       // this.logger.log(`    ${operationsToDelete.length} total procesadas`);
 
     } catch (error) {
-      this.logger.error(' Error durante la limpieza de operaciones:', error.message);
-      this.logger.error('Stack trace:', error.stack);
+      this.logger.error(' Error durante la limpieza de operaciones:', String(error));
+      this.logger.error('Stack trace:', String(error));
     }
   }
 
@@ -222,11 +222,11 @@ export class CancelledOperationsCleanupService {
         await this.deleteOperationWithDependencies(operation.id);
         deletedCount++;
       } catch (error) {
-        if (error.message.includes('no se puede eliminar porque tiene')) {
+        if (String(error).includes('no se puede eliminar porque tiene')) {
           skippedCount++;
         } else {
           errorCount++;
-          this.logger.error(`Error eliminando operación ID ${operation.id}:`, error.message);
+          this.logger.error(`Error eliminando operación ID ${operation.id}:`, String(error));
         }
       }
     }

@@ -1,11 +1,11 @@
 /** Colombia es siempre UTC-5, sin horario de verano (DST). */
-const COLOMBIA_OFFSET_MS = 5 * 60 * 60 * 1000;
+// const COLOMBIA_OFFSET_MS = 5 * 60 * 60 * 1000;
 
-export const getColombianDateTime = (): Date => {
+export const getColombianDateTime = (): Date => { 
   // Aritmética UTC pura: evita el anti-patrón new Date(toLocaleString(...))
   // que en algunas configuraciones aplica el offset histórico LMT de Bogotá
   // (-4:56:16 en lugar de -5:00:00), causando un desfase de ~4 minutos.
-  return new Date(Date.now() - COLOMBIA_OFFSET_MS);
+  return new Date(Date.now());
 };
 
 // Función para obtener solo la hora en formato HH:MM

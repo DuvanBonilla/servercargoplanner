@@ -5,6 +5,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { ValidationService } from 'src/common/validation/validation.service';
 import { FilterInabilityDto } from './dto/filter-inability';
 import { getColombianDateTime } from 'src/common/utils/dateColombia';
+import { isPermissionActive } from 'src/common/utils/permission.utils';
 
 @Injectable()
 export class InabilityService {
@@ -99,64 +100,64 @@ export class InabilityService {
   /**
    * Verifica si un permiso está vigente considerando fecha + hora EN ZONA COLOMBIA
    * VIGENTE = AHORA (Colombia time) está entre dateDisableStart+timeStart y dateDisableEnd+timeEnd (inclusive)
-   */
-  private isPermissionActive(permission: any): boolean {
-    const now = getColombianDateTime(); // NOW en zona Colombia
+  //  */
+  // private isPermissionActive(permission: any): boolean {
+  //   const now = getColombianDateTime(); // NOW en zona Colombia
     
-    // Extraer YYYY-MM-DD de las fechas
-    let startY: number, startM: number, startD: number;
-    let endY: number, endM: number, endD: number;
+  //   // Extraer YYYY-MM-DD de las fechas
+  //   let startY: number, startM: number, startD: number;
+  //   let endY: number, endM: number, endD: number;
 
-    try {
-      let startDateStr: string;
-      if (permission.dateDisableStart instanceof Date) {
-        startDateStr = permission.dateDisableStart.toISOString().slice(0, 10);
-      } else {
-        startDateStr = String(permission.dateDisableStart).slice(0, 10);
-      }
-      const startParts = startDateStr.split('-').map(Number);
-      startY = startParts[0];
-      startM = startParts[1];
-      startD = startParts[2];
+  //   try {
+  //     let startDateStr: string;
+  //     if (permission.dateDisableStart instanceof Date) {
+  //       startDateStr = permission.dateDisableStart.toISOString().slice(0, 10);
+  //     } else {
+  //       startDateStr = String(permission.dateDisableStart).slice(0, 10);
+  //     }
+  //     const startParts = startDateStr.split('-').map(Number);
+  //     startY = startParts[0];
+  //     startM = startParts[1];
+  //     startD = startParts[2];
 
-      let endDateStr: string;
-      if (permission.dateDisableEnd instanceof Date) {
-        endDateStr = permission.dateDisableEnd.toISOString().slice(0, 10);
-      } else {
-        endDateStr = String(permission.dateDisableEnd).slice(0, 10);
-      }
-      const endParts = endDateStr.split('-').map(Number);
-      endY = endParts[0];
-      endM = endParts[1];
-      endD = endParts[2];
-    } catch (err) {
-      console.error(`[InabilityService] Error parsing permission dates:`, err);
-      return false;
-    }
+  //     let endDateStr: string;
+  //     if (permission.dateDisableEnd instanceof Date) {
+  //       endDateStr = permission.dateDisableEnd.toISOString().slice(0, 10);
+  //     } else {
+  //       endDateStr = String(permission.dateDisableEnd).slice(0, 10);
+  //     }
+  //     const endParts = endDateStr.split('-').map(Number);
+  //     endY = endParts[0];
+  //     endM = endParts[1];
+  //     endD = endParts[2];
+  //   } catch (err) {
+  //     console.error(`[InabilityService] Error parsing permission dates:`, err);
+  //     return false;
+  //   }
 
-    // Construir el datetime de INICIO
-    const timeStartStr = permission.timeStart || '00:00';
-    const [hhStart, mmStart] = timeStartStr.split(':').map(Number);
+  //   // Construir el datetime de INICIO
+  //   const timeStartStr = permission.timeStart || '00:00';
+  //   const [hhStart, mmStart] = timeStartStr.split(':').map(Number);
     
-    const tempStartDateTime = new Date(startY, startM - 1, startD, hhStart, mmStart, 0, 0);
-    const startDateTime = new Date(
-      tempStartDateTime.toLocaleString('en-US', { timeZone: 'America/Bogota' }),
-    );
+  //   const tempStartDateTime = new Date(startY, startM - 1, startD, hhStart, mmStart, 0, 0);
+  //   const startDateTime = new Date(
+  //     tempStartDateTime.toLocaleString('en-US', { timeZone: 'America/Bogota' }),
+  //   );
 
-    // Construir el datetime de FIN
-    const timeEndStr = permission.timeEnd || '23:59';
-    const [hhEnd, mmEnd] = timeEndStr.split(':').map(Number);
+  //   // Construir el datetime de FIN
+  //   const timeEndStr = permission.timeEnd || '23:59';
+  //   const [hhEnd, mmEnd] = timeEndStr.split(':').map(Number);
     
-    const tempEndDateTime = new Date(endY, endM - 1, endD, hhEnd, mmEnd, 59, 999);
-    const endDateTime = new Date(
-      tempEndDateTime.toLocaleString('en-US', { timeZone: 'America/Bogota' }),
-    );
+  //   const tempEndDateTime = new Date(endY, endM - 1, endD, hhEnd, mmEnd, 59, 999);
+  //   const endDateTime = new Date(
+  //     tempEndDateTime.toLocaleString('en-US', { timeZone: 'America/Bogota' }),
+  //   );
 
-    // VIGENTE si: inicio <= ahora <= fin (todos en zona Colombia)
-    const isActive = startDateTime <= now && now <= endDateTime;
+  //   // VIGENTE si: inicio <= ahora <= fin (todos en zona Colombia)
+  //   const isActive = startDateTime <= now && now <= endDateTime;
     
-    return isActive;
-  }
+  //   return isActive;
+  // }
 
   async create(createInabilityDto: CreateInabilityDto, id_site?: number, userRole: string = 'ADMIN') {
     try {
@@ -469,7 +470,7 @@ export class InabilityService {
           where: { id_worker: workerId },
         });
 
-        const hasActivePermissions = allPermissions.some(p => this.isPermissionActive(p));
+        const hasActivePermissions = allPermissions.some(p => isPermissionActive(p));
         // console.log(`[InabilityService] REMOVE: ¿Hay permisos vigentes AHORA? ${hasActivePermissions}`);
 
         const newStatus: 'AVALIABLE' | 'PERMISSION' = hasActivePermissions ? 'PERMISSION' : 'AVALIABLE';

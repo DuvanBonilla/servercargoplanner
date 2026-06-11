@@ -356,7 +356,7 @@ export class OperationRelationService {
   } catch (error) {
     console.error('Error processing worker updates:', error);
     return {
-      error: error.message,
+      error: String(error),
       status: 500,
     };
   }

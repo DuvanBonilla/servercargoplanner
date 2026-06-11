@@ -466,13 +466,6 @@ export class OperationService {
       ...directFields
     } = updateOperationDto;
 
-//     console.log("================================");
-// console.log("UPDATE DTO RECIBIDO");
-// console.log(JSON.stringify(updateOperationDto, null, 2));
-// console.log("DIRECT FIELDS");
-// console.log(JSON.stringify(directFields, null, 2));
-// console.log("================================");
-
     // ✅ VERIFICAR SI LA OPERACIÓN ESTÁ COMPLETADA ANTES DE PROCESAR TRABAJADORES
     const currentOperation = await this.prisma.operation.findUnique({
       where: { id },
@@ -481,14 +474,6 @@ export class OperationService {
 
 
     const isCompletedOperation = currentOperation?.status === 'COMPLETED';
-
-    // Process workers
-    // if (workers) {
-    //   console.log('[OperationService] Procesando workers con nuevo flujo V2');
-    //   await this.processWorkersOperationsV2(id, workers);
-    // }
-
-    //Process workers
 
     // Process workers
     if (workers) {
@@ -578,14 +563,6 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         select: { dateStart: true, timeStrat: true, dateEnd: true, timeEnd: true, status: true, op_duration: true },
       });
 
-      // console.log('[OperationService] 📊 Operación leída de BD:');
-      // console.log('   - dateStart:', updatedOp?.dateStart);
-      // console.log('   - timeStrat:', updatedOp?.timeStrat);
-      // console.log('   - dateEnd:', updatedOp?.dateEnd);
-      // console.log('   - timeEnd:', updatedOp?.timeEnd);
-      // console.log('   - op_duration actual:', updatedOp?.op_duration);
-      // console.log('   - status:', updatedOp?.status);
-
       if (updatedOp && updatedOp.dateStart && updatedOp.timeStrat && updatedOp.dateEnd && updatedOp.timeEnd) {
         const oldOpDuration = updatedOp.op_duration;
         const newOpDuration = this.calculateOperationDuration(
@@ -594,12 +571,6 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           updatedOp.dateEnd,
           updatedOp.timeEnd,
         );
-
-        // console.log(`[OperationService] 📐 Cálculo de duración:`);
-        // console.log(`   - Duración anterior: ${oldOpDuration} horas`);
-        // console.log(`   - Duración nueva: ${newOpDuration} horas`);
-        // console.log(`   - ¿Cambió?: ${oldOpDuration !== newOpDuration}`);
-
         await this.prisma.operation.update({
           where: { id },
           data: { op_duration: newOpDuration },
@@ -638,14 +609,6 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           }
         }
       } 
-      // else {
-      //   console.log('[OperationService] ⚠️ No se puede calcular op_duration:');
-      //   console.log('   - Operación existe:', !!updatedOp);
-      //   console.log('   - dateStart existe:', !!updatedOp?.dateStart);
-      //   console.log('   - timeStrat existe:', !!updatedOp?.timeStrat);
-      //   console.log('   - dateEnd existe:', !!updatedOp?.dateEnd);
-      //   console.log('   - timeEnd existe:', !!updatedOp?.timeEnd);
-      // }
     } 
     // else {
     //   console.log('[OperationService] ℹ️ No se detectaron cambios en fechas/horas, no se recalcula op_duration');

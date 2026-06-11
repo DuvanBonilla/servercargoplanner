@@ -4,6 +4,7 @@ import { UpdateWorkerDto } from './dto/update-worker.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ValidationService } from 'src/common/validation/validation.service';
 import { getColombianDateTime } from 'src/common/utils/dateColombia';
+import { isPermissionActive } from 'src/common/utils/permission.utils';
 
 /**
  * Servicio para gestionar trabajadores
@@ -294,6 +295,12 @@ export class WorkerService {
         },
         select: {
           id_worker: true,
+          dateDisableStart: true,
+          dateDisableEnd: true,
+          timeStart: true,
+          timeEnd: true,
+
+
         },
       });
 
@@ -305,9 +312,20 @@ export class WorkerService {
       activeInabilities.map((i) => i.id_worker),
     );
 
-    const permissionSet = new Set(
-      activePermissions.map((p) => p.id_worker),
-    );
+    // const permissionSet = new Set(
+    //   activePermissions.map((p) => p.id_worker),
+    // );
+    const permissionSet = new Set<number>();
+
+for (const permission of activePermissions) {
+
+  if (
+    isPermissionActive(permission)
+  ) {
+    permissionSet.add(permission.id_worker);
+  }
+}
+
 
     // =====================================================
     // ✅ PREPARAR ACTUALIZACIONES
@@ -510,7 +528,7 @@ export class WorkerService {
       // Si no hay conflictos post-creación, retornar el trabajador creado
       return response;
     } catch (error) {
-      throw new Error(error.message || String(error));
+      throw new Error(String(error));
     }
   }
   /**
@@ -971,7 +989,7 @@ async findById(id: number, id_site?: number) {
       //console.log(`[WorkerService] ✅ Worker ${id} actualizado exitosamente`);
       return response;
     } catch (error) {
-      throw new Error(error);
+      throw new Error(String(error));
     }
   }
   /**
@@ -986,7 +1004,7 @@ async findById(id: number, id_site?: number) {
       });
       return response;
     } catch (error) {
-      throw new Error(error);
+      throw new Error(String(error));
     }
   }
 
