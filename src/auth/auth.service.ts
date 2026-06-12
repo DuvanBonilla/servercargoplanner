@@ -118,7 +118,7 @@ export class AuthService {
       return {
         decoded: null,
         valid: false,
-        error: String(error),
+       error: error.message,
       };
     }
   }
