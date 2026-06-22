@@ -540,19 +540,7 @@ export class FeedingService {
     }
   }
 
-  // async findAll(id_site?: number) {
-  //   try {
-  //     const response = await this.prisma.workerFeeding.findMany({
-  //       where: { worker: { id_site } },
-  //     });
-  //     if (!response || response.length === 0) {
-  //       return { message: 'No worker feeding records found', status: 404 };
-  //     }
-  //     return response;
-  //   } catch (error) {
-  //     throw new Error(error);
-  //   }
-  // }
+ 
 
   async findAll(id_site?: number, id_subsite?: number | null) {
     try {
@@ -571,7 +559,7 @@ export class FeedingService {
         };
       }
 
-      const response = await this.prisma.workerFeeding.findMany({
+      const response = await this.prisma.workerFeeding.findMany({ 
         where: whereClause,
         include: {
           operation: {
@@ -785,6 +773,32 @@ export class FeedingService {
         },
       },
     });
+    const workerIds = ops.flatMap(op =>
+  op.workers.map(w => w.id_worker),
+);
+
+const allFeedings = await this.prisma.workerFeeding.findMany({
+  where: {
+    id_worker: {
+      in: workerIds,
+    },
+  },
+  select: {
+    id_worker: true,
+    type: true,
+    dateFeeding: true,
+  },
+});
+
+const feedingsByWorker = new Map<number, typeof allFeedings>();
+
+for (const feeding of allFeedings) {
+  if (!feedingsByWorker.has(feeding.id_worker)) {
+    feedingsByWorker.set(feeding.id_worker, []);
+  }
+
+  feedingsByWorker.get(feeding.id_worker)!.push(feeding);
+}
     const now = new Date(),
       td = new Date(now.getFullYear(), now.getMonth(), now.getDate()),
       m = {
@@ -818,13 +832,16 @@ export class FeedingService {
             sp = st[0] * 60 + st[1],
             todayM = now.getHours() * 60 + now.getMinutes();
           ss.setHours(0, 0, 0, 0);
-          const feeds = await this.prisma.workerFeeding.findMany({
-            where: {
-              id_worker: w.id_worker,
-              dateFeeding: { gte: ss, lte: ed },
-            },
-            select: { type: true, dateFeeding: true },
-          });
+          // const feeds = await this.prisma.workerFeeding.findMany({
+          //   where: {
+          //     id_worker: w.id_worker,
+          //     dateFeeding: { gte: ss, lte: ed },
+          //   },
+          //   select: { type: true, dateFeeding: true },
+          // });
+          const feeds = (feedingsByWorker.get(w.id_worker) || []).filter(
+  (f) => f.dateFeeding >= ss && f.dateFeeding <= ed,
+);
           const missingMeals: { type: string; date: string }[] = [];
           for (let d = new Date(ss); d <= ed; d.setDate(d.getDate() + 1)) {
             const day = new Date(d),
@@ -888,67 +905,6 @@ export class FeedingService {
     ).then((r) => r.filter((o) => o.workers.length));
   }
 
-  //  async findByOperation(id_operation: number, id_site?: number) {
-  //   try {
-  //     const validation = await this.validation.validateAllIds({
-  //       id_operation,
-  //     });
-  //     // Si la operación no existe, retorna array vacío
-  //     if (validation && 'status' in validation && validation.status === 404) {
-  //       return [];
-  //     }
-
-  //     // Construir el filtro de manera dinámica
-  //     const whereClause: any = { id_operation };
-  //     if (id_site) {
-  //       whereClause.worker = { id_site };
-  //     }
-
-  //     const response = await this.prisma.workerFeeding.findMany({
-  //       where: whereClause,
-  //       include: {
-  //         operation: {
-  //           select: {
-  //             id: true,
-  //             task: {
-  //               select: {
-  //                 id: true,
-  //                 name: true, // nombre del servicio/tarea
-  //               }
-  //             }
-  //           }
-  //         },
-  //         worker: {
-  //           select: {
-  //             id: true,
-  //             name: true,
-  //           }
-  //         }
-  //       }
-  //     });
-
-  //     // Si no hay registros, retorna array vacío
-  //     if (!response || response.length === 0) {
-  //       return [];
-  //     }
-
-  //     // Filtrar registros donde la operación no fue encontrada o no tiene nombre de servicio/tarea
-  //     const filtered = response.filter(
-  //       feeding =>
-  //         feeding.operation &&
-  //         feeding.operation.task &&
-  //         feeding.operation.task.name
-  //     );
-
-  //     return filtered.map(feeding => ({
-  //       ...feeding,
-  //       serviceName: feeding.operation?.task?.name || null,
-  //       workerName: feeding.worker?.name || null,
-  //     }));
-  //   } catch (error) {
-  //     throw new Error(error.message || String(error));
-  //   }
-  // }
   async update(
     id: number,
     updateFeedingDto: UpdateFeedingDto,
@@ -1085,8 +1041,6 @@ export class FeedingService {
    * Retorna las alimentaciones faltantes por trabajador en una operación para el día actual
    */
   async getMissingMealsForOperation(operationId: number) {
-    // console.log(`🔍 [DEBUG] === INICIANDO getMissingMealsForOperation para operación ${operationId} ===`);
-
     // Obtener la operación y sus trabajadores
     const operation = await this.prisma.operation.findUnique({
       where: {
@@ -1109,14 +1063,6 @@ export class FeedingService {
       // console.log(`❌ [DEBUG] Operación ${operationId} tiene estado '${operation.status}' - no mostrar comidas faltantes`);
       return [];
     }
-
-    // console.log(`📋 [DEBUG] Operación encontrada:`);
-    // console.log(`   ------------------ ID: ${operation.id}`);
-    // console.log(`   ------------ Fecha inicio: ${operation.dateStart}`);
-    // console.log(`   -------------- Hora inicio: ${operation.timeStrat}`);
-    // console.log(`   ------------- Estado: ${operation.status}`);
-    // console.log(`   ------------- Trabajadores: ${operation.workers.length}`);
-
     // ✅ VALIDACIÓN ADICIONAL: Si está PENDING, verificar si debería estar activa
     if (operation.status === 'PENDING') {
       const now = new Date();
@@ -1130,12 +1076,6 @@ export class FeedingService {
 
       // Si la operación debería haber empezado hace más de 1 minuto pero sigue PENDING
       if (minutesDiff > 1) {
-        // console.log(`⚠️ [DEBUG] Operación ${operationId} debería estar INPROGRESS (${minutesDiff} min de retraso) pero está PENDING`);
-        // Opcional: Actualizar automáticamente el estado aquí
-        // await this.prisma.operation.update({
-        //   where: { id: operationId },
-        //   data: { status: 'INPROGRESS' }
-        // });
       } else if (minutesDiff < 0) {
         // console.log(`⏰ [DEBUG] Operación ${operationId} aún no ha empezado (falta ${Math.abs(minutesDiff)} min)`);
         return []; // No mostrar comidas faltantes para operaciones futuras
@@ -1143,11 +1083,7 @@ export class FeedingService {
     }
 
     const today = new Date();
-    const startOfDay = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate(),
-    );
+ 
     const endOfDay = new Date(
       today.getFullYear(),
       today.getMonth(),
@@ -1176,6 +1112,34 @@ export class FeedingService {
     };
 
     const mealTypes = ['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK'];
+    const workerIds = operation.workers.map(w => w.id_worker);
+
+const allFeedings = await this.prisma.workerFeeding.findMany({
+  where: {
+    id_worker: {
+      in: workerIds,
+    },
+    dateFeeding: {
+      lte: endOfDay,
+    },
+  },
+  select: {
+    id_worker: true,
+    type: true,
+    dateFeeding: true,
+  },
+});
+
+const feedingsByWorker = new Map<number, typeof allFeedings>();
+
+for (const feeding of allFeedings) {
+  if (!feedingsByWorker.has(feeding.id_worker)) {
+    feedingsByWorker.set(feeding.id_worker, []);
+  }
+
+  feedingsByWorker.get(feeding.id_worker)!.push(feeding);
+}
+
     const result: {
       workerId: number;
       workerName: string;
@@ -1196,21 +1160,19 @@ export class FeedingService {
       const workerStartLocal = new Date(wYear, wMonth - 1, wDay);
 
       // ✅ FECHA EFECTIVA DE FIN (mínimo entre dateEnd del trabajador y hoy)
-      let workerEffectiveEnd = todayDate;
-      if (workerEndDate) {
-        const workerEndStr =
-          workerEndDate instanceof Date
-            ? workerEndDate.toISOString().split('T')[0]
-            : String(workerEndDate).split('T')[0];
-        const [weYear, weMonth, weDay] = workerEndStr.split('-').map(Number);
-        const workerEndLocal = new Date(weYear, weMonth - 1, weDay);
+     if (workerEndDate) {
+  const workerEndStr =
+    workerEndDate instanceof Date
+      ? workerEndDate.toISOString().split('T')[0]
+      : String(workerEndDate).split('T')[0];
 
-        if (workerEndLocal < todayDate) {
-          // Si el trabajador ya terminó, no tiene comidas faltantes
-          continue;
-        }
-        workerEffectiveEnd = workerEndLocal;
-      }
+  const [weYear, weMonth, weDay] = workerEndStr.split('-').map(Number);
+  const workerEndLocal = new Date(weYear, weMonth - 1, weDay);
+
+  if (workerEndLocal < todayDate) {
+    continue;
+  }
+}
 
       // ✅ CALCULAR COMIDAS QUE DEBERÍAN HABER PASADO PARA ESTE TRABAJADOR
       const workerIsFirstDay =
@@ -1219,13 +1181,6 @@ export class FeedingService {
         (todayDate.getTime() - workerStartLocal.getTime()) /
           (24 * 60 * 60 * 1000),
       );
-
-      // console.log(`🔍 [DEBUG] ${opWorker.worker.name}:`);
-      // console.log(`   workerStartLocal: ${workerStartLocal.toISOString()}`);
-      // console.log(`   todayDate: ${todayDate.toISOString()}`);
-      // console.log(`   workerIsFirstDay: ${workerIsFirstDay}`);
-      // console.log(`   workerDaysFromStart: ${workerDaysFromStart}`);
-
       // Obtener hora de inicio del trabajador
       const [wHours, wMinutes] = (opWorker.timeStart || operation.timeStrat)
         .split(':')
@@ -1233,9 +1188,6 @@ export class FeedingService {
       const workerStartTime = new Date(workerStartLocal);
       workerStartTime.setHours(wHours, wMinutes, 0, 0);
       const workerStartTotalMinutes = wHours * 60 + wMinutes;
-
-      // console.log(`   Hora inicio: ${wHours}:${wMinutes} (${workerStartTotalMinutes} min)`);
-      // console.log(`   Hora actual: ${currentHour}:${currentMinutes} (${currentTotalMinutes} min)`);
 
       let workerPassedMeals: string[] = [];
 
@@ -1274,12 +1226,6 @@ export class FeedingService {
           }
         }
       } else if (todayDate.getTime() > workerStartLocal.getTime()) {
-        // ✅ DÍAS POSTERIORES: Solo comidas que YA PASARON HOY
-        // console.log(`🎯 [DEBUG] ${opWorker.worker.name} - DÍAS POSTERIORES`);
-        // console.log(`   Fecha inicio trabajador: ${workerStartLocal.toISOString().split('T')[0]}`);
-        // console.log(`   Fecha hoy: ${todayDate.toISOString().split('T')[0]}`);
-        // console.log(`   Hora actual: ${currentHour}:${currentMinutes} (${currentTotalMinutes} minutos)`);
-
         // Comidas que ya pasaron HOY (solo las que terminaron)
         for (const mealType of mealTypes) {
           const schedule = mealSchedule[mealType];
@@ -1292,8 +1238,6 @@ export class FeedingService {
             }
           }
         }
-
-        // console.log(`   Comidas que YA PASARON hoy: [${workerPassedMeals.join(', ')}]`);
       }
 
       // ✅ Si no han pasado comidas para este trabajador, continuar con el siguiente
@@ -1307,29 +1251,9 @@ export class FeedingService {
         workerStartLocal.getMonth(),
         workerStartLocal.getDate(),
       );
-
-      const feedings = await this.prisma.workerFeeding.findMany({
-        where: {
-          id_worker: opWorker.id_worker,
-          dateFeeding: {
-            gte: workerStartDay,
-            lte: endOfDay,
-          },
-        },
-        include: {
-          operation: {
-            select: {
-              id: true,
-              task: {
-                select: {
-                  name: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
+      const feedings =
+  (feedingsByWorker.get(opWorker.id_worker) || [])
+    .filter(f => f.dateFeeding >= workerStartDay);
       // ✅ CALCULAR COMIDAS FALTANTES
       let allMissing: { type: string; date: string }[] = [];
 
@@ -1429,8 +1353,6 @@ export class FeedingService {
         }
 
         allMissing = [...todayMissing, ...previousDaysMissing];
-        // console.log(`📊 [DEBUG] ${opWorker.worker.name} - Faltantes HOY: [${todayMissing.join(', ')}]`);
-        // console.log(`📊 [DEBUG] ${opWorker.worker.name} - Faltantes ANTERIORES: [${previousDaysMissing.join(', ')}]`);
       }
 
       if (allMissing.length > 0) {
@@ -1452,16 +1374,6 @@ export class FeedingService {
         });
       }
     }
-
-    // console.log(`📊 ------------------[DEBUG] === RESULTADO FINAL ===`);
-    // console.log(`📊 ----------------[DEBUG] Operación ${operationId} - Trabajadores con comidas faltantes: ${result.length}`);
-    // console.log(`📊 ----------------[DEBUG] Detalle:`);
-    // result.forEach(worker => {
-    //   console.log(`  -------------------- - ${worker.workerName}: [${worker.missingMeals.join(', ')}]`);
-    // });
-    // console.log(`📊 ----------------[DEBUG] === FIN getMissingMealsForOperation ===`);
-
-    // console.log(`📊 [DEBUG] Total trabajadores con comidas faltantes: ${result.length}`);
     return result;
   }
 }

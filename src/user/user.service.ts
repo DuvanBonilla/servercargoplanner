@@ -231,6 +231,7 @@ export class UserService {
    * @returns respuesta de la busqueda del usuario
    */
   async findByUsername(username: string) {
+      console.log('INICIO findByUsername');
     try {
       const response = await this.prisma.user.findUnique({
         where: {
@@ -244,6 +245,7 @@ export class UserService {
           },
         },
       });
+        console.log('FIN findByUsername');
       return response;
     } catch (error) {
       throw new Error(error);
