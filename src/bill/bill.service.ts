@@ -212,17 +212,6 @@ export class BillService {
     );
     if (!group) continue;
 
-    // ✅ VERIFICAR QUE op_duration ESTÉ EN EL SUMMARY
-    // console.log('=== GRUPO INDIVIDUAL ===');
-    // console.log('matchingGroupSummary.op_duration:', matchingGroupSummary.op_duration);
-// console.log('ANTES DE CALCULAR', {
-//   groupId: matchingGroupSummary.groupId,
-//   op_duration: matchingGroupSummary.op_duration,
-//   groupHoursDto: group.group_hours,
-// });
-
-// console.log('GROUP DTO', JSON.stringify(group, null, 2));
-
     const result = await this.hoursCalculationService.processHoursGroups(
       matchingGroupSummary,
       group,
@@ -235,7 +224,17 @@ export class BillService {
       userId,
       group,
       matchingGroupSummary, // ✅ Agregar este parámetro
+      
     );
+
+//     console.log("============== COMPARACIÓN ==============");
+// console.log({
+//     resultTotalPayroll: result.totalFinalPayroll,
+//     billDataTotalPayroll: billData.total_paysheet,
+// });
+result.totalFinalPayroll = Number(billData.total_paysheet);
+result.totalFinalFacturation = Number(billData.total_bill);
+
     const billSaved = await this.prisma.bill.create({
       data: {
         ...billData,
@@ -1297,40 +1296,6 @@ for (const worker of uniqueWorkers) {
         `Total original: ${workers.length}, Únicos: ${uniqueWorkers.length}`
       );
     }
-
-    // for (const worker of uniqueWorkers) {
-    //   const operationWorker = await this.findOperationWorker(
-    //     worker.id,
-    //     operationId,
-    //     group.id,
-    //   );
-    //   const groupDto = this.getGroupDto([group], result.groupId);
-
-    //   const totalPaysheetWorker = this.calculateTotalWorker(
-    //     result.totalFinalPayroll,
-    //     groupDto,
-    //     worker,
-    //     uniqueWorkers,
-    //   );
-
-    //   const totalFacturactionWorker = this.calculateTotalWorker(
-    //     result.totalFinalFacturation,
-    //     groupDto,
-    //     worker,
-    //     uniqueWorkers,
-    //   );
-
-    //   const payWorker = groupDto.pays.find((p) => p.id_worker === worker.id);
-
-    //   await this.createBillDetail({
-    //     id_bill: billId,
-    //     id_operation_worker: operationWorker.id,
-    //     pay_rate: payWorker?.pay || 1,
-    //     pay_unit: payWorker?.pay || 1,
-    //     total_bill: totalFacturactionWorker,
-    //     total_paysheet: totalPaysheetWorker,
-    //   });
-    // }
     const operationWorkers = await this.prisma.operation_Worker.findMany({
   where: {
     id_operation: operationId,
@@ -1351,6 +1316,15 @@ const operationWorkerMap = new Map(
 );
 
 const groupDto = this.getGroupDto([group], result.groupId);
+
+// console.log("=========== PROCESS HOURS BILL DETAILS ===========");
+// console.log({
+//   totalFinalPayroll: result.totalFinalPayroll,
+//   totalFinalFacturation: result.totalFinalFacturation,
+//   workerCount: uniqueWorkers.length,
+//   totalEsperadoPorWorker:
+//     result.totalFinalPayroll / uniqueWorkers.length,
+// });
 
 for (const worker of uniqueWorkers) {
   const operationWorker = operationWorkerMap.get(worker.id); 
