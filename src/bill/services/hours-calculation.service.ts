@@ -154,6 +154,7 @@ export class HoursCalculationService {
       paysheet_tariff: groupSummary.paysheet_tariff ?? gfmt.tariffDetails?.paysheet_tariff ?? 0,
 
     };
+
     console.log('FULL TARIFF FINAL', combinedGroupData.full_tariff);
     // Obtener fechas para validaciones
     let startDate: Date | null = null;
@@ -192,28 +193,28 @@ export class HoursCalculationService {
       ? groupDuration
       : (combinedGroupData.paysheetHoursDistribution.HOD + combinedGroupData.paysheetHoursDistribution.HON);
 
-    // console.log('🔍 HORAS BASE COMPENSATORIO', {
-    //   groupId: combinedGroupData.groupId,
+    console.log('🔍 HORAS BASE COMPENSATORIO', {
+      groupId: combinedGroupData.groupId,
 
-    //   groupDuration,
+      groupDuration,
 
-    //   HOD_PAYSHEET:
-    //     combinedGroupData.paysheetHoursDistribution?.HOD,
+      HOD_PAYSHEET:
+        combinedGroupData.paysheetHoursDistribution?.HOD,
 
-    //   HON_PAYSHEET:
-    //     combinedGroupData.paysheetHoursDistribution?.HON,
+      HON_PAYSHEET:
+        combinedGroupData.paysheetHoursDistribution?.HON,
 
-    //   HOD_BILL:
-    //     combinedGroupData.billHoursDistribution?.HOD,
+      HOD_BILL:
+        combinedGroupData.billHoursDistribution?.HOD,
 
-    //   HON_BILL:
-    //     combinedGroupData.billHoursDistribution?.HON,
+      HON_BILL:
+        combinedGroupData.billHoursDistribution?.HON,
 
-    //   totalPaysheetHours,
+      totalPaysheetHours,
 
-    //   usandoGroupDuration:
-    //     groupDuration > 0,
-    // });
+      usandoGroupDuration:
+        groupDuration > 0,
+    });
 
     // Calcular horas compensatorias (pasando billStatus y fechas)
     const compBill = await this.calculateCompensatoryHours(
