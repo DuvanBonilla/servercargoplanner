@@ -2550,6 +2550,15 @@ for (const worker of uniqueWorkers) {
       
       console.log(`🔧 [calculateGroupTotalsForUpdate] HORAS - workerCount: ${matchingGroupSummary.workerCount}`);
 
+          //INPORTANTE: PARA RECALCULAR LAS FECHAS SÍ ES DOMINGO O FESTIVO
+      //reconstruye el dateRange para que traiga de nuevo las fechas de inicio y fin del grupo, si no las carga por defecto
+      if (!matchingGroupSummary.dateRange) {
+    matchingGroupSummary.dateRange = {
+        start: matchingGroupSummary.schedule?.dateStart,
+        end: matchingGroupSummary.schedule?.dateEnd,
+    };
+}
+
       const result = await this.hoursCalculationService.processHoursGroups(
         matchingGroupSummary,
         group,
