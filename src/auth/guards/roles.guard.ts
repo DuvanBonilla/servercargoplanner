@@ -2,6 +2,8 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@
 import { Reflector } from '@nestjs/core';
 import { Role } from '@prisma/client';
 import { AuthService } from '../auth.service'; // AGREGAR IMPORT
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -11,6 +13,17 @@ export class RolesGuard implements CanActivate {
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
+    // Verificar si la ruta está marcada como pública
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    // Si es pública, permitir acceso sin validar roles
+    if (isPublic) {
+      return true;
+    }
+
     // Obtener los roles requeridos del decorador @Roles
     const requiredRoles = this.reflector.getAllAndOverride<Role[]>('roles', [
       context.getHandler(),

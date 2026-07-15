@@ -160,7 +160,7 @@ export class TariffService {
         dataToUpdate.id_facturation_unit = null;
       }
 
-      // Filtrar campos que no se pueden actualizar
+      // Campos actualizar
       const allowedFields = [
         'code',
         'id_subtask',
@@ -192,7 +192,8 @@ export class TariffService {
         'FAC_FED',
         'FAC_FEN',
         'id_user',
-        'status'
+        'status',
+        'isSpecial',
       ];
 
       // Filtrar solo los campos permitidos

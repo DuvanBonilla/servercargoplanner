@@ -38,6 +38,8 @@ model User {
   WorkerFeeding     WorkerFeeding[]
   Configuration     Configuration[]
   Bill              Bill[]
+  zones             Zone[]
+
 }
 
 model JobArea {
@@ -52,6 +54,19 @@ model JobArea {
   id_site    Int              @default(1)
   id_subsite Int?
   subSite    SubSite?         @relation(fields: [id_subsite], references: [id])
+}
+
+model Zone {
+  id         Int              @id @default(autoincrement())
+  name       String
+  id_user    Int              // usuario que creó el registro (auditoría, no se usa para filtrar)
+  status     StatusActivation @default(ACTIVE)
+  user       User             @relation(fields: [id_user], references: [id])
+  Site       Site             @relation(fields: [id_site], references: [id])
+  id_site    Int              @default(1)
+  id_subsite Int?
+  subSite    SubSite?         @relation(fields: [id_subsite], references: [id])
+  operations Operation[]
 }
 
 model Worker {
@@ -93,15 +108,16 @@ model Operation {
   timeEnd              String?
   id_user              Int
   id_area              Int
-  id_task              Int?   
+  id_task              Int?  
   id_client            Int
   motorShip            String?
-  zone                 Int
+  id_zone              Int?                // referencia opcional al catálogo Zone
   createAt             DateTime            @default(now())
   updateAt             DateTime            @default(now()) @updatedAt
   id_clientProgramming Int?
   op_duration          Float?              @default(0)
   inChargeOperation    InChargeOperation[]
+  confirmation         OperationConfirmation?
   jobArea              JobArea             @relation(fields: [id_area], references: [id])
   clientProgramming    ClientProgramming?  @relation(fields: [id_clientProgramming], references: [id])
   client               Client              @relation(fields: [id_client], references: [id])
@@ -113,6 +129,7 @@ model Operation {
   id_site              Int                 @default(1)
   id_subsite           Int?
   subSite              SubSite?            @relation(fields: [id_subsite], references: [id])
+  zone                 Zone?               @relation(fields: [id_zone], references: [id])
   Bill                 Bill[]
 }
 
@@ -177,6 +194,25 @@ model Client {
   operations Operation[]
   CostCenter CostCenter[]
   SubTask    SubTask[]
+  emails     ClientEmail[]
+}
+model ClientEmail {
+  id        Int              @id @default(autoincrement())
+  id_client Int
+
+  email     String
+  type      ClientEmailType
+  name      String?
+
+   status    StatusActivation @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  client    Client           @relation(fields: [id_client], references: [id], onDelete: Cascade)
+
+  @@unique([id_client, email, type])
+  @@index([id_client])
+  @@index([type])
 }
 
 model CalledAttention {
@@ -276,6 +312,7 @@ model Site {
   SubSite           SubSite[]
   id_user           Int?                 @default(36)
   user              User?                @relation("SiteCreator", fields: [id_user], references: [id])
+  zones             Zone[]
 }
 
 model SubSite {
@@ -292,6 +329,7 @@ model SubSite {
   ClientProgramming ClientProgramming[]
   CostCenter        CostCenter[]
   SubTask           SubTask[]
+  Zone              Zone[]
 }
 
 model CostCenter {
@@ -321,6 +359,35 @@ model UnitOfMeasure {
   Tariff    Tariff[] @relation("FacturationUnit")
   paysheetUnit Tariff[] @relation("PaysheetUnit")
 }
+model OperationConfirmation {
+  id            Int       @id @default(autoincrement())
+  id_operation  Int       @unique
+
+  operation     Operation @relation(fields: [id_operation], references: [id])
+
+  ipAddress             String?
+  device                String?
+  clientObservation     String?
+  supervisorObservation String?
+  fileCodeRegistered Boolean   @default(false)
+
+  confirmedAt   DateTime?
+
+  tokens        Token[]
+}
+
+model Token {
+  id               Int                     @id @default(autoincrement())
+  id_confirmation  Int
+  type             TokenType                @default(CONFIRMATION)
+
+  confirmation     OperationConfirmation   @relation(fields: [id_confirmation], references: [id])
+
+  tokenHash        String                  @unique
+  createdAt        DateTime                @default(now())
+  status           TokenStatus             @default(ACTIVE)
+  usedAt           DateTime?
+}
 
 model Tariff {
   id                    Int                @id @default(autoincrement())
@@ -337,6 +404,7 @@ model Tariff {
   facturation_tariff    Decimal            @db.Decimal(15, 3)
   full_tariff           YES_NO
   compensatory          YES_NO
+  isSpecial             YES_NO             @default(NO)
   alternative_paid_service   YES_NO
   group_tariff          YES_NO             @default(NO)
   settle_payment        YES_NO             @default(NO)
@@ -418,6 +486,7 @@ model Bill {
   billDetails       BillDetail[]
   group_hours       Decimal?  @db.Decimal(15, 3)
   observation       String?
+  fileCode          String?
   dateStart_group DateTime? @db.Date
   timeStart_group String?
   dateEnd_group   DateTime? @db.Date
@@ -490,9 +559,18 @@ enum Status {
 enum StatusOperation {
   PENDING
   INPROGRESS
+  TO_APPROVED
+  APPROVED
+  REJECTED
   COMPLETED
   CANCELED
   DEACTIVATED
+}
+enum TokenStatus {
+ACTIVE
+CONFIRMED
+REJECTED
+EXPIRED
 }
 
 enum Failures {
@@ -514,6 +592,18 @@ enum StatusActivation {
 }
 
 enum BillStatus {
+  TO_APPROVED
   ACTIVE
   COMPLETED
+}
+
+enum ClientEmailType {
+  LIQUIDATION
+  SUPERVISOR
+}
+
+
+enum TokenType {
+ CONFIRMATION
+ LIQUIDATION
 }

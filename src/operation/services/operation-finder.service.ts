@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { Prisma, StatusOperation } from '@prisma/client';
+import { Prisma, StatusOperation, YES_NO } from '@prisma/client';
 import { OperationTransformerService } from './operation-transformer.service';
 import { OperationFilterDto } from '../dto/fliter-operation.dto';
 import { PaginateOperationService } from 'src/common/services/pagination/operation/paginate-operation.service';
@@ -29,7 +29,7 @@ export class OperationFinderService {
     private transformer: OperationTransformerService,
     private paginationService: PaginateOperationService,
     private tariffTransformer: TariffTransformerService,
-  ) {}
+  ) { }
 
   /**
    * Obtiene todas las operaciones con información detallada
@@ -46,9 +46,17 @@ export class OperationFinderService {
         include: this.defaultInclude,
       });
 
-      return response.map((op) =>
-        this.transformer.transformOperationResponse(op),
-      );
+
+      return response.map((op) => {
+        const transformed = this.transformer.transformOperationResponse(op);
+        const isSpecial =
+          op?.workers?.some((w) => w.tariff?.isSpecial === YES_NO.YES) ?? false; //operation a aprobar por parte del cliente
+
+        return {
+          ...transformed,
+          isSpecial,
+        };
+      });
     } catch (error) {
       console.error('Error getting all operations:', error);
       throw new Error((error as Error).message);
@@ -66,16 +74,39 @@ export class OperationFinderService {
       if (typeof id_site === 'number') where.id_site = id_site;
       if (typeof id_subsite === 'number') where.id_subsite = id_subsite;
 
+      const findOneInclude = {
+        ...this.defaultInclude,
+        confirmation: {  //confirmacion de las operaciones aprobadas por parte del cliente
+          select: {
+            id: true,
+            id_operation: true,
+            clientObservation: true,
+            confirmedAt: true,
+            ipAddress: true,
+            device: true,
+          },
+        },
+      };
+
       const response = await this.prisma.operation.findFirst({
         where,
-        include: this.defaultInclude,
+        include: findOneInclude,
       });
 
       if (!response) {
         return { message: 'Operation not found', status: 404 };
       }
+      //
+      const transformed = this.transformer.transformOperationResponse(response);
+      // Verificar si algún trabajador tiene una tarifa especial
+      const isSpecial =
+        response.workers?.some((w) => w.tariff?.isSpecial === YES_NO.YES) ?? false;
 
-      return this.transformer.transformOperationResponse(response);
+      return {
+        ...transformed,
+        isSpecial,
+      };
+
     } catch (error) {
       console.error(`Error finding operation with ID ${id}:`, error);
       throw new Error((error as Error).message);
@@ -158,7 +189,7 @@ export class OperationFinderService {
           lte: endDate
         }
       };
-      
+
       if (typeof id_site === 'number') where.id_site = id_site;
       if (typeof id_subsite === 'number') where.id_subsite = id_subsite;
 
@@ -171,7 +202,7 @@ export class OperationFinderService {
       });
 
       // console.log(`[OperationFinderService] Operaciones encontradas: ${response.length}`);
-      
+
       // if (response.length > 0) {
       //   response.forEach(op => {
       //     console.log(`  - ID: ${op.id}, Status: ${op.status}, dateStart: ${op.dateStart}, dateEnd: ${op.dateEnd}`);
@@ -251,87 +282,87 @@ export class OperationFinderService {
 
   /// Encuentra operaciones asociadas a un trabajador específico con paginación
   async findByWorker(
-  idWorker: number,
-  idSite?: number,
-  page = 1,
-  limit?: number,
-  statuses: string[] = ['INPROGRESS'],
-) {
-  const worker = await this.prisma.worker.findUnique({
-    where: { id: idWorker },
-    select: { id: true, id_site: true },
-  });
-
-  if (!worker) return { message: 'Worker not found', status: 404 };
-  if (idSite !== undefined && worker.id_site !== idSite) {
-    return { message: 'Not authorized to access this worker', status: 403 };
-  }
-
-  const where: any = {
-    status: { in: statuses as any[] },
-    workers: { some: { id_worker: idWorker } },
-    ...(typeof idSite === 'number' ? { id_site: idSite } : {}),
-  };
-
-  // Sin límite: devolver todo
-  if (!limit || limit <= 0) {
-    const items = await this.prisma.operation.findMany({
-      where,
-      orderBy: { dateStart: 'desc' },
-      select: {
-        id: true,
-        status: true,
-        dateStart: true,
-        motorShip: true,
-        zone: true,
-        task: { select: { id: true, name: true } },
-        client: { select: { id: true, name: true } },
-        jobArea: { select: { id: true, name: true } },
-      },
+    idWorker: number,
+    idSite?: number,
+    page = 1,
+    limit?: number,
+    statuses: string[] = ['INPROGRESS'],
+  ) {
+    const worker = await this.prisma.worker.findUnique({
+      where: { id: idWorker },
+      select: { id: true, id_site: true },
     });
+
+    if (!worker) return { message: 'Worker not found', status: 404 };
+    if (idSite !== undefined && worker.id_site !== idSite) {
+      return { message: 'Not authorized to access this worker', status: 403 };
+    }
+
+    const where: any = {
+      status: { in: statuses as any[] },
+      workers: { some: { id_worker: idWorker } },
+      ...(typeof idSite === 'number' ? { id_site: idSite } : {}),
+    };
+
+    // Sin límite: devolver todo
+    if (!limit || limit <= 0) {
+      const items = await this.prisma.operation.findMany({
+        where,
+        orderBy: { dateStart: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          dateStart: true,
+          motorShip: true,
+          zone: { select: { id: true, name: true } },
+          task: { select: { id: true, name: true } },
+          client: { select: { id: true, name: true } },
+          jobArea: { select: { id: true, name: true } },
+        },
+      });
+
+      return {
+        items,
+        pagination: {
+          totalItems: items.length,
+          currentPage: 1,
+          totalPages: 1,
+          itemsPerPage: items.length,
+        },
+      };
+    }
+
+    const skip = (page - 1) * limit;
+    const [items, totalItems] = await this.prisma.$transaction([
+      this.prisma.operation.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { dateStart: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          dateStart: true,
+          motorShip: true,
+          zone: { select: { id: true, name: true } },
+          task: { select: { id: true, name: true } },
+          client: { select: { id: true, name: true } },
+          jobArea: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.operation.count({ where }),
+    ]);
 
     return {
       items,
       pagination: {
-        totalItems: items.length,
-        currentPage: 1,
-        totalPages: 1,
-        itemsPerPage: items.length,
+        totalItems,
+        currentPage: page,
+        totalPages: Math.ceil(totalItems / limit),
+        itemsPerPage: limit,
       },
     };
   }
-
-  const skip = (page - 1) * limit;
-  const [items, totalItems] = await this.prisma.$transaction([
-    this.prisma.operation.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { dateStart: 'desc' },
-      select: {
-        id: true,
-        status: true,
-        dateStart: true,
-        motorShip: true,
-        zone: true,
-        task: { select: { id: true, name: true } },
-        client: { select: { id: true, name: true } },
-        jobArea: { select: { id: true, name: true } },
-      },
-    }),
-    this.prisma.operation.count({ where }),
-  ]);
-
-  return {
-    items,
-    pagination: {
-      totalItems,
-      currentPage: page,
-      totalPages: Math.ceil(totalItems / limit),
-      itemsPerPage: limit,
-    },
-  };
-}
   /**
    * Actualiza la información de la operación para incluir detalles completos de tarifa
    * @param operationId ID de la operación
@@ -388,7 +419,7 @@ export class OperationFinderService {
         const firstWorkerRecord = operation.workers.find(
           (w) => w.id_worker === firstWorkerInGroup.id && w.id_group === group.groupId
         );
-        
+
         if (!firstWorkerRecord) {
           console.warn(`[FinderService] No se encontró registro para worker ${firstWorkerInGroup.id} en grupo ${group.groupId}`);
           return;
@@ -403,23 +434,23 @@ export class OperationFinderService {
         group.tariffDetails =
           originalWorkers.length > 0 && originalWorkers[0].tariff
             ? {
-                ...this.tariffTransformer.transformTariffResponse(
-                  originalWorkers[0].tariff as unknown as ITransformTariff,
-                ),
-                paysheet_tariff: Number(
-                  (originalWorkers[0].tariff as any).paysheet_tariff ?? 0,
-                ),
-                facturation_tariff: Number(
-                  (originalWorkers[0].tariff as any).facturation_tariff ?? 0,
-                ),
-                // ✅ AGREGAR ID ÚNICO PARA VERIFICAR INDEPENDENCIA
-                _uniqueId: `${group.groupId}_${correctTariffId}_${Date.now()}`,
-              }
-            : { 
-              paysheet_tariff: 0, 
+              ...this.tariffTransformer.transformTariffResponse(
+                originalWorkers[0].tariff as unknown as ITransformTariff,
+              ),
+              paysheet_tariff: Number(
+                (originalWorkers[0].tariff as any).paysheet_tariff ?? 0,
+              ),
+              facturation_tariff: Number(
+                (originalWorkers[0].tariff as any).facturation_tariff ?? 0,
+              ),
+              // ✅ AGREGAR ID ÚNICO PARA VERIFICAR INDEPENDENCIA
+              _uniqueId: `${group.groupId}_${correctTariffId}_${Date.now()}`,
+            }
+            : {
+              paysheet_tariff: 0,
               facturation_tariff: 0,
               _uniqueId: `${group.groupId}_default_${Date.now()}`,
-              };
+            };
 
         // ✅ PROPAGAR op_duration DE LA OPERACIÓN AL GRUPO
         group.op_duration = operation.op_duration;
@@ -440,8 +471,8 @@ export class OperationFinderService {
       //   paysheet_tariff: g.tariffDetails?.paysheet_tariff,
       //   facturation_tariff: g.tariffDetails?.facturation_tariff
       // })
-    // ));
-    //   console.log('=== FIN OPERATION FINDER ===');
+      // ));
+      //   console.log('=== FIN OPERATION FINDER ===');
 
       return transformedOperation;
     } catch (error) {

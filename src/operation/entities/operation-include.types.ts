@@ -15,6 +15,12 @@ export interface OperationIncludeConfig {
       name: boolean;
     };
   };
+   zone: {
+    select: {
+      id: boolean;
+      name: boolean;
+    };
+  };
   // SubTask: {
   //   select: {
   //     id: boolean;
@@ -125,12 +131,12 @@ export function createOperationInclude(): OperationIncludeConfig {
         name: true,
       },
     },
-    // SubTask: {
-    //   select: {
-    //     id: true,
-    //     name: true,
-    //   },
-    // },
+     zone: {
+      select: {
+        id: true,
+        name: true,
+      },
+    },
     task: {
       select: {
         id: true,

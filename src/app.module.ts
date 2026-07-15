@@ -39,6 +39,8 @@ import { BillModule } from './bill/bill.module';
 import { PermissionModule } from './permission/permission.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AppController } from './app.controller';
+import { ClientEmailModule } from './client-email/client-email.module';
+import { ZoneModule } from './zone/zone.module';
 
 @Module({
   imports: [
@@ -76,6 +78,8 @@ import { AppController } from './app.controller';
     ConfigurationModule,
     BillModule,
     PermissionModule,
+    ClientEmailModule,
+    ZoneModule,
   ],
   providers: [
     DocsAuthMiddleware

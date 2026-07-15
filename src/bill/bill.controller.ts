@@ -110,7 +110,7 @@ export class BillController {
   })
   @ApiQuery({ name: 'search', required: false, description: 'Búsqueda por operación, código o subservicio', example: ' ' })
   @ApiQuery({ name: 'jobAreaId', required: false, type: Number, description: 'ID del área de trabajo', example: 1 })
-  @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'COMPLETED'], description: 'Estado de la factura', example: 'ACTIVE' })
+  @ApiQuery({ name: 'status', required: false, enum: ['ACTIVE', 'COMPLETED', 'TO_APPROVED'], description: 'Estado de la factura', example: 'ACTIVE' })
   @ApiQuery({ name: 'dateStart', required: false, type: String, description: 'Fecha de inicio (YYYY-MM-DD)', example: '2026-03-08' })
   @ApiQuery({ name: 'dateEnd', required: false, type: String, description: 'Fecha de fin (YYYY-MM-DD)', example: '2026-03-14' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Número de página', example: 1 })
@@ -187,7 +187,7 @@ export class BillController {
   })
   @ApiQuery({ name: 'search', required: false, type: String, description: 'Término de búsqueda' })
   @ApiQuery({ name: 'jobAreaId', required: false, type: Number, description: 'ID del área de trabajo' })
-  @ApiQuery({ name: 'status', required: false, enum: Status, description: 'Estado de la factura (ACTIVE, COMPLETED)' })
+  @ApiQuery({ name: 'status', required: false, enum: Status, description: 'Estado de la factura (ACTIVE, COMPLETED,TO_APPROVED)' })
   @ApiQuery({ name: 'dateStart', required: false, type: String, description: 'Fecha de inicio (YYYY-MM-DD)' })
   @ApiQuery({ name: 'dateEnd', required: false, type: String, description: 'Fecha de fin (YYYY-MM-DD)' })
   async getSearchStats(
@@ -395,7 +395,7 @@ SIN PAGINACIÓN: descarga todos los registros que coincidan con los filtros
 @ApiQuery({
   name: 'status',
   required: false,
-  enum: ['ACTIVE', 'COMPLETED'],
+  enum: ['ACTIVE', 'COMPLETED','TO_APPROVED'],
   description: 'Estado de la factura'
 })
 @ApiQuery({

@@ -1,10 +1,14 @@
-import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException, HttpException, HttpStatus,
+  Injectable, Logger, NotFoundException
+} from '@nestjs/common';
 import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { OperationWorkerService } from 'src/operation-worker/operation-worker.service';
 // import { BillService } from 'src/bill/bill.service';
-import { StatusComplete, StatusOperation } from '@prisma/client';
+import { BillStatus, StatusComplete, StatusOperation, TokenStatus, YES_NO } from '@prisma/client';
 import { OperationFinderService } from './services/operation-finder.service';
 import { OperationRelationService } from './services/operation-relation.service';
 import { OperationFilterDto } from './dto/fliter-operation.dto';
@@ -12,6 +16,11 @@ import { WorkerService } from 'src/worker/worker.service';
 import { RemoveWorkerFromOperationService } from '../operation-worker/service/remove-worker-from-operation/remove-worker-from-operation.service';
 import { ModuleRef } from '@nestjs/core';
 import { getWeekNumber } from 'src/common/utils/dateType';
+import { OperationNotFoundException } from './exceptions/operation-not-found.exception';
+import { TokenGenerationFailedException } from './exceptions/token-generation-failed.exception';
+import { formatColombianDate, getColombianDateTime } from 'src/common/utils/dateColombia';
+import { OperationTokenService } from './services/operation-token.service';
+import { OperationEmailService } from './services/operation-email.service';
 // ... otras importaciones
 /**
  * Servicio para gestionar operaciones
@@ -19,6 +28,9 @@ import { getWeekNumber } from 'src/common/utils/dateType';
  */
 @Injectable()
 export class OperationService {
+  private readonly logger = new Logger(OperationService.name);
+  // Duración del token en minutos
+  private static readonly TOKEN_VALIDITY_MINUTES = 15;
   constructor(
     private prisma: PrismaService,
     private operationWorkerService: OperationWorkerService,
@@ -27,8 +39,10 @@ export class OperationService {
     private workerService: WorkerService,
     private removeWorkerService: RemoveWorkerFromOperationService,
     private moduleRef: ModuleRef,
+    private operationTokenService: OperationTokenService,
+    private operationEmailService: OperationEmailService,
     // private billService: BillService,
-  ) {}
+  ) { }
   /**
    * Obtiene todas las operaciones
    * @returns Lista de operaciones con relaciones incluidas
@@ -100,9 +114,10 @@ export class OperationService {
   ) {
     return await this.finderService.findByUser(id_user, id_site, id_subsite);
   }
+
   /**
-   * Obtener operaciones con paginación y filtros opcionales
-   */
+  * Obtener operaciones con paginación y filtros opcionales
+  */
   async findAllPaginated(
     page: number = 1,
     limit: number = 10,
@@ -116,6 +131,1701 @@ export class OperationService {
       activatePaginated,
     );
   }
+
+  /**
+   * Determina si una subtarea es especial.
+   * Se considera especial si tiene al menos una tarifa con isSpecial = YES.
+   */
+
+  // Determina si la operación tiene alguna tarifa especial (Tariff.isSpecial = YES).
+  async isOperationSpecial(
+    operationId: number,
+    operation?: { id: number } | null,
+  ): Promise<boolean> {
+    if (!operationId || operationId <= 0) {
+      throw new BadRequestException('operationId inválido');
+    }
+
+    const operationExists =
+      operation ||
+      (await this.prisma.operation.findUnique({
+        where: { id: operationId },
+        select: { id: true },
+      }));
+
+    if (!operationExists) {
+      throw new OperationNotFoundException(operationId);
+    }
+
+    const specialTariffCount = await this.prisma.operation_Worker.count({
+      where: {
+        id_operation: operationId,
+        tariff: {
+          isSpecial: YES_NO.YES,
+        },
+      },
+    });
+
+    return specialTariffCount > 0;
+  }
+
+  /**
+   * Completar una operación según si es especial o no.
+   * - No especial: COMPLETED
+   * - Especial: TO_APPROVED + creación de confirmación
+   */
+  // async completeOperation(operationId: number) {
+  //   if (!operationId || operationId <= 0) {
+  //     throw new BadRequestException('operationId inválido');
+  //   }
+
+  //   const operation = await this.prisma.operation.findUnique({
+  //     where: { id: operationId },
+  //     select: { id: true, status: true, id_user: true },
+  //   });
+
+  //   if (!operation) {
+  //     throw new OperationNotFoundException(operationId);
+  //   }
+
+  //   const isSpecial = await this.isOperationSpecial(operationId, operation);
+
+  //   if (!isSpecial) {
+  //     const now = getColombianDateTime();
+  //     const [hh, mm] = getColombianTimeString().split(':');
+
+  //     const updatedOperation = await this.prisma.operation.update({
+  //       where: { id: operationId },
+  //       data: {
+  //         status: StatusOperation.COMPLETED,
+  //         dateEnd: now,
+  //         timeEnd: `${hh}:${mm}`,
+  //       },
+  //     });
+
+  //     await this.operationWorkerService.completeClientProgramming(operationId);
+  //     await this.operationWorkerService.releaseAllWorkersFromOperation(
+  //       operationId,
+  //     );
+  //     await this.workerService.addWorkedHoursOnOperationEnd(operationId);
+
+  //     this.logger.log(
+  //       `Operacion ${operationId} completada en estado ${StatusOperation.COMPLETED}`,
+  //     );
+
+  //     return {
+  //       operation: updatedOperation,
+  //       isSpecial: false,
+  //       movedTo: StatusOperation.COMPLETED,
+  //     };
+  //   }
+
+  //   const allGroupsCompleted =
+  //     await this.operationWorkerService.hasAllGroupsCompleted(operationId);
+
+  //   if (!allGroupsCompleted) {
+  //     throw new ConflictException(
+  //       'No se puede completar la operacion especial: todos los grupos deben tener fecha y hora de finalizacion',
+  //     );
+  //   }
+
+  //   await this.ensurePreBillsForSpecialOperation(
+  //     operationId,
+  //     operation.id_user ?? 1,
+  //   );
+
+  //   const updatedOperation = await this.prisma.operation.update({
+  //     where: { id: operationId },
+  //     data: { status: StatusOperation.TO_APPROVED },
+  //   });
+
+  //   const confirmationData = await this.createConfirmation(
+  //     operationId,
+  //     operation,
+  //   );
+  //   const tokenTtlMinutes = this.getTokenValidityMinutes();
+  //   const emailTarget = await this.resolveClientConfirmationEmail(operationId);
+
+  //   let emailNotification: {
+  //     sent: boolean;
+  //     to: string | null;
+  //     reason?: string;
+  //     messageId?: string;
+  //   } = {
+  //     sent: false,
+  //     to: emailTarget,
+  //   };
+
+  //   if (emailTarget) {
+  //     const emailResult =
+  //       await this.operationEmailService.sendSpecialOperationConfirmationEmail({
+  //         to: emailTarget,
+  //         operationId,
+  //         confirmationLink: confirmationData.link,
+  //         tokenTtlMinutes,
+  //       });
+
+  //     emailNotification = {
+  //       sent: emailResult.sent,
+  //       to: emailTarget,
+  //       reason: emailResult.reason,
+  //       messageId: emailResult.messageId,
+  //     };
+  //   } else {
+  //     emailNotification = {
+  //       sent: false,
+  //       to: null,
+  //       reason:
+  //         'No se encontro correo valido del cliente. Configure CONFIRMATION_DEFAULT_EMAIL o ajuste datos del cliente.',
+  //     };
+  //     this.logger.warn(
+  //       `Operacion ${operationId} no tiene correo destino valido para enviar confirmacion`,
+  //     );
+  //   }
+
+  //   this.logger.log(
+  //     `Operacion ${operationId} movida a ${StatusOperation.TO_APPROVED} y confirmacion ${confirmationData.confirmation.id} creada/reutilizada`,
+  //   );
+
+  //   return {
+  //     operation: updatedOperation,
+  //     confirmation: confirmationData.confirmation,
+  //     token: confirmationData.token,
+  //     link: confirmationData.link,
+  //     emailNotification,
+  //     isSpecial: true,
+  //     movedTo: StatusOperation.TO_APPROVED,
+  //   };
+  // }
+
+  //Crea o reutiliza la confirmación de una operación especial y genera token.
+  async createConfirmation(
+    operationId: number,
+    operation?: { id: number } | null,
+  ) {
+    if (!operationId || operationId <= 0) {
+      throw new BadRequestException('operationId inválido');
+    }
+
+    const operationExists =
+      operation ||
+      (await this.prisma.operation.findUnique({
+        where: { id: operationId },
+        select: { id: true },
+      }));
+
+    if (!operationExists) {
+      throw new OperationNotFoundException(operationId);
+    }
+
+    const isSpecial = await this.isOperationSpecial(
+      operationId,
+      operationExists,
+    );
+    if (!isSpecial) {
+      throw new ConflictException(
+        'La operación no es especial y no requiere confirmación',
+      );
+    }
+
+    const confirmation = await this.prisma.operationConfirmation.upsert({
+      where: { id_operation: operationId },
+      update: {},
+      create: { id_operation: operationId },
+    });
+
+    this.logger.log(
+      `Confirmacion ${confirmation.id} creada/reutilizada para operacion ${operationId}`,
+    );
+
+    // Si ya existe un token activo, se expira para garantizar que el link nuevo sea el único válido.
+    const activeToken = await this.prisma.token.findFirst({
+      where: {
+        id_confirmation: confirmation.id,
+        status: TokenStatus.ACTIVE,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        tokenHash: true,
+        createdAt: true,
+        status: true,
+      },
+    });
+
+    if (activeToken) {
+      await this.prisma.token.update({
+        where: { id: activeToken.id },
+        data: { status: TokenStatus.EXPIRED },
+      });
+
+      this.logger.log(
+        `Token activo ${activeToken.id} expirado para emitir uno nuevo (confirmacion ${confirmation.id}, operacion ${operationId})`,
+      );
+    }
+
+    // createdToken guarda metadatos persistidos; rawTokenValue es solo para responder el link.
+    let createdToken: {
+      id: number;
+      tokenHash: string;
+      createdAt: Date;
+      status: TokenStatus;
+    } | null = null;
+    let rawTokenValue: string | null = null;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const tokenValue = this.operationTokenService.generateTokenValue();
+      // Hash determinístico para búsqueda segura sin exponer token plano en BD.
+      const tokenHash = this.operationTokenService.hashTokenValue(tokenValue);
+
+      try {
+        createdToken = await this.prisma.token.create({
+          data: {
+            id_confirmation: confirmation.id,
+            tokenHash,
+            status: TokenStatus.ACTIVE,
+          },
+          select: {
+            id: true,
+            tokenHash: true,
+            createdAt: true,
+            status: true,
+          },
+        });
+        rawTokenValue = tokenValue;
+        break;
+      } catch (error: any) {
+        const isUniqueTokenError = error?.code === 'P2002';
+        if (!isUniqueTokenError) {
+          this.logger.error(
+            `Error persistiendo token para operacion ${operationId}: ${error?.message || 'unknown error'} (code: ${error?.code || 'N/A'})`,
+          );
+          throw new TokenGenerationFailedException(
+            operationId,
+            `Error de base de datos al persistir token: ${error?.message || 'unknown error'}`,
+          );
+        }
+
+        if (attempt === 4) {
+          throw new TokenGenerationFailedException(
+            operationId,
+            'No se pudo persistir un token unico para la confirmacion tras multiples reintentos',
+          );
+        }
+      }
+    }
+
+    if (!createdToken) {
+      throw new TokenGenerationFailedException(
+        operationId,
+        'No se pudo generar token de confirmacion',
+      );
+    }
+
+    // Defensa adicional: si por alguna razón no existe token plano, no devolvemos link inválido.
+    if (!rawTokenValue) {
+      throw new TokenGenerationFailedException(
+        operationId,
+        'No se pudo recuperar el token de confirmacion generado',
+      );
+    }
+
+    this.logger.log(
+      `Token ${createdToken.id} creado para confirmacion ${confirmation.id} (operacion ${operationId})`,
+    );
+
+    const link =
+      this.operationTokenService.buildConfirmationLink(rawTokenValue);
+
+    this.logger.warn(
+      `LINK_CONFIRMACION_PORTAL operacion=${operationId} confirmation=${confirmation.id} link=${link}`,
+    );
+
+    return {
+      operationId,
+      confirmation,
+      token: createdToken,
+      link,
+    };
+  }
+
+  /**
+   * Obtiene el link de confirmación para una operación especial
+   * Si no existe confirmación aún, la crea
+   */
+  async getConfirmationLinkForSpecialOperation(operationId: number) {
+    if (!operationId || operationId <= 0) {
+      throw new BadRequestException('operationId inválido');
+    }
+
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: { id: true, status: true, id_user: true },
+    });
+
+    if (!operation) {
+      throw new OperationNotFoundException(operationId);
+    }
+
+    const isSpecial = await this.isOperationSpecial(operationId, operation);
+
+    if (!isSpecial) {
+      throw new ConflictException(
+        'La operación no es especial y no tiene link de confirmación',
+      );
+    }
+
+    if (operation.status !== StatusOperation.TO_APPROVED) {
+      throw new ConflictException(
+        `La operación no está en estado TO_APPROVED (estado actual: ${operation.status}). No tiene link de confirmación.`,
+      );
+    }
+
+    await this.ensurePreBillsForSpecialOperation(
+      operationId,
+      operation.id_user ?? 1,
+    );
+
+    // Obtener o crear la confirmación
+    const confirmationData = await this.createConfirmation(
+      operationId,
+      operation,
+    );
+
+    const tokenCreatedAt = confirmationData.token.createdAt;
+    const tokenExpiresAt = this.getTokenExpiresAt(tokenCreatedAt);
+    const remainingSeconds = Math.max(
+      0,
+      Math.floor((tokenExpiresAt.getTime() - Date.now()) / 1000),
+    );
+
+    return {
+      operationId,
+      link: confirmationData.link,
+      status: operation.status,
+      tokenCreatedAt,
+      tokenExpiresAt,
+      remainingSeconds,
+      tokenStatus: confirmationData.token.status,
+    };
+  }
+
+  /**
+   * Reenvía una operación especial RECHAZADA de vuelta a TO_APPROVED.
+   * Invalida los tokens anteriores, genera uno nuevo y reenvía el correo al cliente.
+   * Sólo aplica a operaciones especiales (isSpecial = YES) en estado REJECTED.
+   */
+  async resubmitRejectedOperation(operationId: number, supervisorObservation?: string | null) {
+    if (!operationId || operationId <= 0) {
+      throw new BadRequestException('operationId inválido');
+    }
+
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: { id: true, status: true, id_user: true },
+    });
+
+    if (!operation) {
+      throw new OperationNotFoundException(operationId);
+    }
+
+    if (operation.status !== StatusOperation.REJECTED) {
+      throw new ConflictException(
+        `La operación ${operationId} no está en estado REJECTED (estado actual: ${operation.status})`,
+      );
+    }
+
+    const isSpecial = await this.isOperationSpecial(operationId, operation);
+    if (!isSpecial) {
+      throw new ConflictException(
+        `La operación ${operationId} no es especial y no puede ser reenviada a aprobación por este flujo`,
+      );
+    }
+
+    // Expirar todos los tokens activos de la confirmación anterior
+    const existingConfirmation = await this.prisma.operationConfirmation.findUnique({
+      where: { id_operation: operationId },
+      select: { id: true },
+    });
+
+    if (existingConfirmation) {
+      await this.prisma.token.updateMany({
+        where: {
+          id_confirmation: existingConfirmation.id,
+          status: TokenStatus.ACTIVE,
+        },
+        data: { status: TokenStatus.EXPIRED },
+      });
+      this.logger.log(
+        `Tokens anteriores expirados para confirmación ${existingConfirmation.id} (operación ${operationId})`,
+      );
+    }
+
+    // Cambiar estado a TO_APPROVED
+    const updatedOperation = await this.prisma.operation.update({
+      where: { id: operationId },
+      data: { status: StatusOperation.TO_APPROVED },
+    });
+
+    // Crear / reutilizar confirmación y generar nuevo token
+    const confirmationData = await this.createConfirmation(operationId, operation);
+
+    // Guardar nota interna del supervisor si se proporcionó
+    if (supervisorObservation?.trim()) {
+      await this.prisma.operationConfirmation.update({
+        where: { id: confirmationData.confirmation.id },
+        data: { supervisorObservation: supervisorObservation.trim() },
+      });
+    }
+
+    const tokenTtlMinutes = this.getTokenValidityMinutes();
+    const emailTarget = await this.resolveClientConfirmationEmail(operationId);
+
+    let emailNotification: {
+      sent: boolean;
+      to: string | null;
+      reason?: string;
+      messageId?: string;
+    } = { sent: false, to: emailTarget };
+
+    if (emailTarget) {
+      const emailResult =
+        await this.operationEmailService.sendSpecialOperationConfirmationEmail({
+          to: emailTarget,
+          operationId,
+          confirmationLink: confirmationData.link,
+          tokenTtlMinutes,
+        });
+      emailNotification = {
+        sent: emailResult.sent,
+        to: emailTarget,
+        reason: emailResult.reason,
+        messageId: emailResult.messageId,
+      };
+    } else {
+      emailNotification = {
+        sent: false,
+        to: null,
+        reason:
+          'No se encontró correo válido del cliente. Configure CONFIRMATION_DEFAULT_EMAIL o ajuste datos del cliente.',
+      };
+      this.logger.warn(
+        `Operación ${operationId} reenviada a aprobación sin correo destino válido`,
+      );
+    }
+
+    this.logger.log(
+      `Operación ${operationId} reenviada de REJECTED a TO_APPROVED. Confirmación: ${confirmationData.confirmation.id}`,
+    );
+
+    return {
+      operation: updatedOperation,
+      confirmation: confirmationData.confirmation,
+      token: confirmationData.token,
+      link: confirmationData.link,
+      emailNotification,
+      movedTo: StatusOperation.TO_APPROVED,
+    };
+  }
+
+  /**
+   * Envía el correo de confirmación de una operación especial a un destinatario
+   * escrito manualmente (por ahora no se obtiene de la base de datos).
+   * Reutiliza el token activo (mismo enlace que el QR) y NO envía QR, solo el link.
+   */
+  async sendConfirmationEmailManually(
+    operationId: number,
+    params: { to: string; subject?: string; body?: string },
+  ) {
+    if (!operationId || operationId <= 0) {
+      throw new BadRequestException('operationId inválido');
+    }
+
+    const to = (params?.to || '').trim();
+    if (!this.isValidEmail(to)) {
+      throw new BadRequestException(
+        'Debe proporcionar un correo destino válido',
+      );
+    }
+
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: { id: true, status: true, id_user: true },
+    });
+
+    if (!operation) {
+      throw new OperationNotFoundException(operationId);
+    }
+
+    const isSpecial = await this.isOperationSpecial(operationId, operation);
+    if (!isSpecial) {
+      throw new ConflictException(
+        'La operación no es especial y no tiene enlace de confirmación',
+      );
+    }
+
+    // Reutiliza/crea el token activo: produce el mismo enlace que muestra el QR.
+    const confirmationData = await this.createConfirmation(
+      operationId,
+      operation,
+    );
+    const tokenTtlMinutes = this.getTokenValidityMinutes();
+
+    const emailResult =
+      await this.operationEmailService.sendSpecialOperationConfirmationEmail({
+        to,
+        operationId,
+        confirmationLink: confirmationData.link,
+        tokenTtlMinutes,
+        subject: params?.subject,
+        bodyMessage: params?.body,
+      });
+
+    if (!emailResult.sent) {
+      throw new ConflictException(
+        emailResult.reason || 'No se pudo enviar el correo de confirmación',
+      );
+    }
+
+    this.logger.log(
+      `Correo de confirmación enviado manualmente para operación ${operationId} a ${to}`,
+    );
+
+    return {
+      operationId,
+      sent: true,
+      to,
+      messageId: emailResult.messageId,
+      link: confirmationData.link,
+    };
+  }
+
+  /**
+   * Confirma una operación especial mediante token.
+   * - APPROVE -> activa prefactura, mueve a APPROVED y luego a COMPLETED automáticamente
+   * - REJECT -> operación entra a REJECTED
+   */
+  async confirmOperation(
+    token: string,
+    action: 'APPROVE' | 'REJECT',
+    ipAddress?: string | null,
+    device?: string | null,
+    clientObservation?: string | null,
+    supervisorObservation?: string | null,
+  ) {
+    // Sincroniza estado en BD: todo token ACTIVE vencido por tiempo pasa a EXPIRED.
+    await this.expireActiveTokensByTime();
+
+    if (!token || !token.trim()) {
+      throw new BadRequestException('Token de confirmacion requerido');
+    }
+
+    if (!['APPROVE', 'REJECT'].includes(action)) {
+      throw new BadRequestException('Accion invalida. Use APPROVE o REJECT');
+    }
+
+    const tokenRecord = await this.findTokenRecordByClientToken(token, {
+      include: {
+        confirmation: {
+          include: {
+            operation: {
+              select: { id: true, status: true, id_user: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!tokenRecord) {
+      throw new BadRequestException('Token de confirmacion invalido');
+    }
+
+    if (
+      tokenRecord.status === TokenStatus.CONFIRMED ||
+      tokenRecord.status === TokenStatus.REJECTED
+    ) {
+      throw new BadRequestException('Token de confirmacion ya utilizado');
+    }
+
+    if (tokenRecord.status === TokenStatus.EXPIRED) {
+      throw new BadRequestException('Token de confirmacion expirado');
+    }
+
+    // Expira por fecha de creación + 1 hora y persiste el estado EXPIRED.
+    if (this.isTokenExpired(tokenRecord.createdAt)) {
+      await this.prisma.token.update({
+        where: { id: tokenRecord.id },
+        data: { status: TokenStatus.EXPIRED },
+      });
+      throw new BadRequestException('Token de confirmacion expirado');
+    }
+
+    const operation = tokenRecord.confirmation?.operation;
+    if (!operation) {
+      throw new OperationNotFoundException(-1);
+    }
+
+    if (operation.status !== StatusOperation.TO_APPROVED) {
+      throw new ConflictException(
+        `La operacion ${operation.id} no esta pendiente de confirmacion`,
+      );
+    }
+
+    const approvedStatus = 'APPROVED' as StatusOperation;
+    const newStatus =
+      action === 'APPROVE' ? approvedStatus : StatusOperation.REJECTED;
+    const now = getColombianDateTime();
+
+    if (action === 'APPROVE') {
+      await this.ensurePreBillsForSpecialOperation(
+        operation.id,
+        operation.id_user ?? 1,
+      );
+    }
+
+    const tokenFinalStatus =
+      action === 'APPROVE' ? TokenStatus.CONFIRMED : TokenStatus.REJECTED;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updatedOperation = await tx.operation.update({
+        where: { id: operation.id },
+        data: { status: newStatus },
+      });
+
+      const updatedConfirmation = await tx.operationConfirmation.update({
+        where: { id: tokenRecord.id_confirmation },
+        data: {
+          confirmedAt: now,
+          ipAddress: ipAddress || null,
+          device: device || null,
+          clientObservation: clientObservation?.trim() ? clientObservation.trim() : null,
+          supervisorObservation: supervisorObservation?.trim() ? supervisorObservation.trim() : null,
+        },
+      });
+
+      await tx.token.update({
+        where: { id: tokenRecord.id },
+        data: {
+          status: tokenFinalStatus,
+          usedAt: now,
+        },
+      });
+
+      await tx.token.updateMany({
+        where: {
+          id_confirmation: tokenRecord.id_confirmation,
+          id: { not: tokenRecord.id },
+          status: TokenStatus.ACTIVE,
+        },
+        data: {
+          status: TokenStatus.EXPIRED,
+        },
+      });
+
+      return { updatedOperation, updatedConfirmation };
+    });
+
+    this.logger.log(
+      `Operacion ${operation.id} confirmada con accion ${action}. Nuevo estado: ${newStatus}`,
+    );
+
+    if (action === 'APPROVE') {
+      const completedOperation =
+        await this.autoCompleteConfirmedSpecialOperation(operation.id);
+
+      // Dispatch liquidation email without blocking the response.
+      this.sendLiquidationEmailForOperation(operation.id).catch((err) =>
+        this.logger.error(
+          `Error enviando email de liquidacion para operacion ${operation.id}: ${err?.message || err}`,
+        ),
+      );
+
+      return {
+        operation: completedOperation,
+        confirmation: result.updatedConfirmation,
+        action,
+        movedTo: StatusOperation.COMPLETED,
+      };
+    }
+
+    return {
+      operation: result.updatedOperation,
+      confirmation: result.updatedConfirmation,
+      action,
+      movedTo: newStatus,
+    };
+  }
+
+  async submitRadicado(token: string, fileCode: string) {
+    const normalizedToken = token?.trim();
+    const normalizedFileCode = fileCode?.trim();
+
+    if (!normalizedToken) {
+      throw new BadRequestException('Token de liquidacion requerido');
+    }
+
+    if (!normalizedFileCode) {
+      throw new BadRequestException('Numero de radicado requerido');
+    }
+
+    const tokenRecord = await this.findTokenRecordByClientToken(normalizedToken, {
+      include: {
+        confirmation: {
+          include: {
+            operation: { select: { id: true, status: true } },
+          },
+        },
+      },
+    });
+
+    if (!tokenRecord) {
+      throw new BadRequestException('Token de liquidacion invalido');
+    }
+
+    if (tokenRecord.type !== 'LIQUIDATION') {
+      throw new BadRequestException('Token de liquidacion invalido');
+    }
+
+    if (tokenRecord.status === TokenStatus.CONFIRMED) {
+      throw new BadRequestException('El radicado ya fue registrado para esta operacion');
+    }
+
+    if (tokenRecord.status !== TokenStatus.ACTIVE) {
+      throw new BadRequestException('Token de liquidacion invalido o expirado');
+    }
+
+    const confirmation = tokenRecord.confirmation;
+    if (!confirmation?.operation) {
+      throw new OperationNotFoundException(-1);
+    }
+
+    const now = getColombianDateTime();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.operationConfirmation.update({
+        where: { id: confirmation.id },
+        data: { fileCodeRegistered: true },
+      });
+
+      await tx.token.update({
+        where: { id: tokenRecord.id },
+        data: { status: TokenStatus.CONFIRMED, usedAt: now },
+      });
+
+      await tx.bill.updateMany({
+        where: { id_operation: confirmation.operation.id, status: 'TO_APPROVED' as BillStatus },
+        data: { status: BillStatus.ACTIVE, fileCode: normalizedFileCode },
+      });
+    });
+
+    this.logger.log(
+      `Radicado "${normalizedFileCode}" registrado para operacion ${confirmation.operation.id}`,
+    );
+
+    return {
+      operationId: confirmation.operation.id,
+      fileCode: normalizedFileCode,
+    };
+  }
+
+  async getLiquidationPreviewByToken(token: string) {
+    const normalizedToken = token?.trim();
+    if (!normalizedToken) {
+      throw new BadRequestException('Token de liquidacion requerido');
+    }
+
+    const tokenRecord = await this.findTokenRecordByClientToken(normalizedToken, {
+      include: {
+        confirmation: {
+          include: {
+            operation: {
+              select: {
+                id: true,
+                status: true,
+                dateStart: true,
+                dateEnd: true,
+                timeStrat: true,
+                timeEnd: true,
+                motorShip: true,
+                zone: {
+                  select: {
+                    name: true,
+                  },
+                },
+                jobArea: { select: { name: true } },
+                client: { select: { name: true } },
+                task: { select: { name: true } },
+                Site: { select: { name: true } },
+                subSite: { select: { name: true } },
+                Bill: {
+                  select: {
+                    id_group: true,
+                    amount: true,
+                    number_of_hours: true,
+                    group_hours: true,
+                  },
+                },
+                clientProgramming: {
+                  select: { service_request: true },
+                },
+                workers: {
+                  select: {
+                    id_worker: true,
+                    id_group: true,
+                    dateStart: true,
+                    dateEnd: true,
+                    timeStart: true,
+                    timeEnd: true,
+                    SubTask: { select: { name: true } },
+                    tariff: {
+                      select: {
+                        pay_units: true,
+                        unitOfMeasure: { select: { name: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!tokenRecord || !tokenRecord.confirmation?.operation) {
+      throw new BadRequestException('Token de liquidacion invalido');
+    }
+
+    if (tokenRecord.type !== 'LIQUIDATION') {
+      throw new BadRequestException('Token de liquidacion invalido');
+    }
+
+    const canSubmit = tokenRecord.status === TokenStatus.ACTIVE;
+    const operation = tokenRecord.confirmation.operation;
+
+    const groupMap = new Map<string, { workerIds: Set<number>; totalHoursWorked: number; subservices: Set<string>; unitNames: Set<string>; totalQuantity: number }>();
+
+    for (const row of operation.workers || []) {
+      const groupId = (row.id_group || 'SIN_GRUPO').trim();
+      if (!groupMap.has(groupId)) {
+        groupMap.set(groupId, { workerIds: new Set(), totalHoursWorked: 0, subservices: new Set(), unitNames: new Set(), totalQuantity: 0 });
+      }
+      const g = groupMap.get(groupId)!;
+      g.workerIds.add(row.id_worker);
+      if (row.SubTask?.name) g.subservices.add(row.SubTask.name);
+      if (row.tariff?.unitOfMeasure?.name) g.unitNames.add(row.tariff.unitOfMeasure.name);
+      if (row.tariff?.pay_units) g.totalQuantity += Number(row.tariff.pay_units);
+      if (row.dateStart && row.dateEnd) {
+        const diffMs = new Date(row.dateEnd).getTime() - new Date(row.dateStart).getTime();
+        if (diffMs > 0) g.totalHoursWorked += diffMs / 3_600_000;
+      }
+    }
+
+    const groups = Array.from(groupMap.entries()).map(([groupId, g]) => ({
+      groupId,
+      workersCount: g.workerIds.size,
+      totalHoursWorked: Math.round(g.totalHoursWorked * 100) / 100,
+      subservices: Array.from(g.subservices),
+      unitMeasures: Array.from(g.unitNames),
+      quantity: Math.round(g.totalQuantity * 100) / 100,
+    }));
+
+    return {
+      token: { status: tokenRecord.status, createdAt: tokenRecord.createdAt },
+      operation,
+      groupSummary: {
+        groups,
+        totalGroups: groups.length,
+        totalWorkers: groups.reduce((s, g) => s + (g.workersCount ?? 0), 0),
+      },
+      canSubmit,
+    };
+  }
+
+  private async sendLiquidationEmailForOperation(operationId: number): Promise<void> {
+    const emailTargets = await this.resolveLiquidationEmails(operationId);
+    if (emailTargets.length === 0) {
+      this.logger.warn(`No se encontraron correos de liquidacion para operacion ${operationId}`);
+      return;
+    }
+
+    const clientLabel = await this.getClientLabel(operationId);
+    const liquidationTokenValue = await this.createLiquidationToken(operationId);
+    if (!liquidationTokenValue) {
+      this.logger.warn(`No se pudo generar token de liquidacion para operacion ${operationId}`);
+      return;
+    }
+
+    const liquidationLink = this.operationTokenService.buildLiquidationLink(liquidationTokenValue);
+
+    await this.operationEmailService.sendLiquidationEmail({
+      to: emailTargets,
+      operationId,
+      liquidationLink,
+      clientLabel,
+    });
+  }
+
+  private async createLiquidationToken(operationId: number): Promise<string | null> {
+    const confirmation = await this.prisma.operationConfirmation.findUnique({
+      where: { id_operation: operationId },
+      select: { id: true },
+    });
+
+    if (!confirmation) return null;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const tokenValue = this.operationTokenService.generateTokenValue();
+      const tokenHash = this.operationTokenService.hashTokenValue(tokenValue);
+
+      try {
+        await this.prisma.token.create({
+          data: {
+            id_confirmation: confirmation.id,
+            tokenHash,
+            status: TokenStatus.ACTIVE,
+            type: 'LIQUIDATION',
+          },
+        });
+        return tokenValue;
+      } catch (error: any) {
+        if (error?.code !== 'P2002') throw error;
+      }
+    }
+
+    return null;
+  }
+
+  private async resolveLiquidationEmails(operationId: number): Promise<string[]> {
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: { id_client: true },
+    });
+
+    if (!operation?.id_client) return [];
+
+    const emails = await this.prisma.clientEmail.findMany({
+      where: {
+        id_client: operation.id_client,
+        type: 'LIQUIDATION',
+        status: 'ACTIVE',
+      },
+      select: { email: true },
+    });
+
+    return emails.map((e) => e.email);
+  }
+
+  private async getClientLabel(operationId: number): Promise<string | null> {
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: { client: { select: { name: true } } },
+    });
+    return operation?.client?.name ?? null;
+  }
+  private async ensurePreBillsForSpecialOperation(
+    operationId: number,
+    userId: number,
+  ): Promise<void> {
+    return;
+  }
+
+  private async updateBillStatusesForOperation(
+    operationId: number,
+    fromStatus: BillStatus,
+    toStatus: BillStatus,
+  ): Promise<void> {
+    await this.prisma.bill.updateMany({
+      where: {
+        id_operation: operationId,
+        status: fromStatus,
+      },
+      data: {
+        status: toStatus,
+      },
+    });
+  }
+
+  private async autoCompleteConfirmedSpecialOperation(operationId: number) {
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: {
+        id: true,
+        status: true,
+        dateStart: true,
+        timeStrat: true,
+      },
+    });
+
+    if (!operation) {
+      throw new OperationNotFoundException(operationId);
+    }
+
+    const approvedStatus = 'APPROVED' as StatusOperation;
+
+    if (operation.status !== approvedStatus) {
+      throw new ConflictException(
+        `La operación ${operationId} no está en estado APPROVED`,
+      );
+    }
+
+    const confirmation = await this.prisma.operationConfirmation.findUnique({
+      where: { id_operation: operationId },
+      select: { confirmedAt: true },
+    });
+
+    if (!confirmation?.confirmedAt) {
+      throw new ConflictException(
+        `La operación ${operationId} no tiene confirmación registrada`,
+      );
+    }
+
+    const billCount = await this.prisma.bill.count({
+      where: { id_operation: operationId },
+    });
+
+    if (billCount === 0) {
+      throw new ConflictException(
+        `La operación ${operationId} no tiene prefacturas para completar`,
+      );
+    }
+
+    // const nonActiveBills = await this.prisma.bill.count({
+    //   where: {
+    //     id_operation: operationId,
+    //     status: {
+    //       not: BillStatus.ACTIVE,
+    //     },
+    //   },
+    // });
+
+    // if (nonActiveBills > 0) {
+    //   throw new ConflictException(
+    //     `La operación ${operationId} tiene facturas sin activar`,
+    //   );
+    // }
+
+    const latestEndDateTime = await this.getLatestGroupEndDateTime(operationId);
+
+    if (!latestEndDateTime) {
+      throw new ConflictException(
+        `No fue posible determinar la fecha de finalización de la operación ${operationId}`,
+      );
+    }
+
+    const opDuration =
+      operation.dateStart && operation.timeStrat
+        ? this.calculateOperationDuration(
+          operation.dateStart,
+          operation.timeStrat,
+          latestEndDateTime.date,
+          latestEndDateTime.time,
+        )
+        : 0;
+
+    const completedOperation = await this.prisma.operation.update({
+      where: { id: operationId },
+      data: {
+        status: StatusOperation.COMPLETED,
+        dateEnd: latestEndDateTime.date,
+        timeEnd: latestEndDateTime.time,
+        op_duration: opDuration,
+      },
+    });
+
+    await this.operationWorkerService.completeClientProgramming(operationId);
+    await this.operationWorkerService.releaseAllWorkersFromOperation(
+      operationId,
+    );
+    await this.workerService.addWorkedHoursOnOperationEnd(operationId);
+
+    return completedOperation;
+  }
+
+  private async getLatestGroupEndDateTime(
+    operationId: number,
+  ): Promise<{ date: Date; time: string } | null> {
+    const workers = await this.prisma.operation_Worker.findMany({
+      where: {
+        id_operation: operationId,
+        dateEnd: { not: null },
+        timeEnd: { not: null },
+      },
+      select: {
+        dateEnd: true,
+        timeEnd: true,
+      },
+    });
+
+    if (!workers.length) {
+      return null;
+    }
+
+    let latestDateTime: Date | null = null;
+    let latestResult: { date: Date; time: string } | null = null;
+
+    for (const worker of workers) {
+      if (!worker.dateEnd || !worker.timeEnd) {
+        continue;
+      }
+
+      const [hours, minutes] = worker.timeEnd.split(':').map(Number);
+      const dateTime = new Date(worker.dateEnd);
+      dateTime.setHours(hours, minutes, 0, 0);
+
+      if (!latestDateTime || dateTime > latestDateTime) {
+        latestDateTime = dateTime;
+        latestResult = {
+          date: worker.dateEnd,
+          time: worker.timeEnd,
+        };
+      }
+    }
+
+    return latestResult;
+  }
+
+  async getConfirmationPreviewByToken(token: string) {
+    // Sincroniza estado en BD: todo token ACTIVE vencido por tiempo pasa a EXPIRED.
+    await this.expireActiveTokensByTime();
+
+    const normalizedToken = token?.trim();
+    if (!normalizedToken) {
+      throw new BadRequestException('Token de confirmacion requerido');
+    }
+
+    const tokenRecord = await this.findTokenRecordByClientToken(
+      normalizedToken,
+      {
+        include: {
+          confirmation: {
+            include: {
+              operation: {
+                select: {
+                  id: true,
+                  status: true,
+                  dateStart: true,
+                  dateEnd: true,
+                  timeStrat: true,
+                  timeEnd: true,
+                  motorShip: true,
+                  zone: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                  jobArea: { select: { name: true } },
+                  client: { select: { name: true } },
+                  task: { select: { name: true } },
+                  Site: { select: { name: true } },
+                  subSite: { select: { name: true } },
+                  Bill: {
+                    select: {
+                      id_group: true,
+                      amount: true,
+                      number_of_hours: true,
+                      group_hours: true,
+                    },
+                  },
+                  clientProgramming: {
+                    select: {
+                      service_request: true,
+                    },
+                  },
+                  workers: {
+                    select: {
+                      id_worker: true,
+                      id_group: true,
+                      dateStart: true,
+                      dateEnd: true,
+                      timeStart: true,
+                      timeEnd: true,
+                      SubTask: {
+                        select: {
+                          name: true,
+                        },
+                      },
+                      tariff: {
+                        select: {
+                          pay_units: true,
+                          unitOfMeasure: {
+                            select: {
+                              name: true,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    );
+
+    if (!tokenRecord || !tokenRecord.confirmation?.operation) {
+      throw new BadRequestException('Token de confirmacion invalido');
+    }
+
+    const tokenTtlMinutes = this.getTokenValidityMinutes();
+    const expiresAt = this.getTokenExpiresAt(tokenRecord.createdAt);
+    const nowMs = Date.now();
+
+    let tokenStatus = tokenRecord.status;
+    if (tokenStatus === TokenStatus.ACTIVE && expiresAt.getTime() <= nowMs) {
+      // Si venció durante preview, persistimos EXPIRED para mantener consistencia.
+      await this.prisma.token.update({
+        where: { id: tokenRecord.id },
+        data: { status: TokenStatus.EXPIRED },
+      });
+      tokenStatus = TokenStatus.EXPIRED;
+    }
+
+    const operation = tokenRecord.confirmation.operation;
+    const canConfirm =
+      tokenStatus === TokenStatus.ACTIVE &&
+      operation.status === StatusOperation.TO_APPROVED;
+    // Construir mapa de Bills por id_group
+    const billMap = new Map<string, any>();
+    for (const bill of operation.Bill || []) {
+      if (bill.id_group) {
+        billMap.set(bill.id_group, bill);
+      }
+    }
+    const groupMap = new Map<
+      string,
+      {
+        workerIds: Set<number>;
+        totalHoursWorked: number;
+        subservices: Set<string>;
+        unitNames: Set<string>;
+        totalQuantity: number;
+      }
+    >();
+
+    for (const row of operation.workers || []) {
+      const groupId = (row.id_group || 'SIN_GRUPO').trim();
+      if (!groupMap.has(groupId)) {
+        groupMap.set(groupId, {
+          workerIds: new Set<number>(),
+          totalHoursWorked: 0,
+          subservices: new Set<string>(),
+          unitNames: new Set<string>(),
+          totalQuantity: 0,
+        });
+      }
+
+      const group = groupMap.get(groupId)!;
+      group.workerIds.add(row.id_worker);
+
+      if (row.dateStart && row.timeStart && row.dateEnd && row.timeEnd) {
+        group.totalHoursWorked += this.calculateOperationDuration(
+          row.dateStart,
+          row.timeStart,
+          row.dateEnd,
+          row.timeEnd,
+        );
+      }
+
+      if (row.SubTask?.name?.trim()) {
+        group.subservices.add(row.SubTask.name.trim());
+      }
+
+      const unitName = row.tariff?.unitOfMeasure?.name?.trim();
+      if (unitName) {
+        group.unitNames.add(unitName);
+      }
+
+      const rowQuantity = Number(row.tariff?.pay_units ?? 0);
+      if (Number.isFinite(rowQuantity)) {
+        group.totalQuantity += rowQuantity;
+      }
+    }
+
+    const groups = Array.from(groupMap.entries()).map(([groupId, group]) => ({
+      groupId,
+      workersCount: group.workerIds.size,
+      totalHoursWorked: Math.round(group.totalHoursWorked * 100) / 100,
+      subservices: Array.from(group.subservices),
+      unitOfMeasure: Array.from(group.unitNames),
+      quantity: Math.round(group.totalQuantity * 1000) / 1000,
+    }));
+
+    // Se unifica salida en `operation` (general) y `groups` (detalle por grupo).
+    const previewGroups = groups.map((group) => {
+      const bill = billMap.get(group.groupId);
+      // Usar Bill.number_of_hours si existe, de lo contrario usar el calculado
+      const billHours = bill?.number_of_hours ? Number(bill.number_of_hours) : group.totalHoursWorked;
+      const amount = bill?.amount ?? 0;
+
+      return {
+        idGrupo: group.groupId,
+        subservicio: group.subservices,
+        cantTrabajadores: group.workersCount,
+        horasTrabajadas: Math.round(billHours * 100) / 100,
+        amount: amount,
+        unidadDeMedida: group.unitOfMeasure,
+      };
+    });
+
+    const totalWorkers = new Set(
+      (operation.workers || []).map((w) => w.id_worker),
+    ).size;
+
+    return {
+      token: {
+        status: tokenStatus,
+        createdAt: tokenRecord.createdAt,
+        expiresAt,
+        remainingSeconds: Math.max(
+          0,
+          Math.floor((expiresAt.getTime() - nowMs) / 1000),
+        ),
+      },
+      operation: {
+        id: operation.id,
+        status: operation.status,
+        serviceRequest: (operation as any).clientProgramming?.service_request || null,
+        client: operation.client?.name || null,
+        area: operation.jobArea?.name || null,
+        service: operation.task?.name || null,
+        motorShip: operation.motorShip || null,
+        zone: operation.zone?.name || null,
+        dateStart: operation.dateStart,
+        dateStartFormatted: formatColombianDate(operation.dateStart),
+        timeStart: operation.timeStrat,
+        timeStartFormatted: this.formatTimeForDisplay(operation.timeStrat),
+        dateEnd: operation.dateEnd || null,
+        dateEndFormatted: operation.dateEnd ? formatColombianDate(operation.dateEnd) : null,
+        timeEnd: operation.timeEnd || null,
+        timeEndFormatted: this.formatTimeForDisplay(operation.timeEnd),
+        site: operation.Site?.name || null,
+        subsite: operation.subSite?.name || null,
+      },
+      groups: previewGroups,
+      totals: {
+        totalGroups: groups.length,
+        totalWorkers,
+      },
+      canConfirm,
+    };
+  }
+
+  private formatTimeForDisplay(timeValue?: string | null): string | null {
+    if (!timeValue || !/^\d{1,2}:\d{2}$/.test(timeValue.trim())) {
+      return null;
+    }
+
+    const [hourText, minuteText] = timeValue.trim().split(':');
+    const hour = Number(hourText);
+    const minute = Number(minuteText);
+
+    if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+      return null;
+    }
+
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+    return `${hour12.toString().padStart(2, '0')}:${minute
+      .toString()
+      .padStart(2, '0')} ${period}`;
+  }
+
+  /**
+   * Regenera un token de confirmación para una operación especial.
+   * - Valida que la operación exista
+   * - Verifica que pueda ser confirmada (no esté completada/cancelada)
+   * - Genera un nuevo token (tokens anteriores activos se marcan como EXPIRED)
+   * - Retorna el nuevo link
+   */
+  async regenerateConfirmationToken(operationId: number): Promise<{
+    operationId: number;
+    confirmation: any;
+    token: any;
+    link: string;
+    tokenTtlMinutes: number;
+  }> {
+    // Sincroniza estado en BD: todo token ACTIVE vencido por tiempo pasa a EXPIRED.
+    await this.expireActiveTokensByTime();
+
+    if (!operationId || operationId <= 0) {
+      throw new BadRequestException('operationId inválido');
+    }
+
+    // Validar que la operación existe
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: { id: true, status: true },
+    });
+
+    if (!operation) {
+      throw new OperationNotFoundException(operationId);
+    }
+
+    // Verificar que sea especial
+    const isSpecial = await this.isOperationSpecial(operationId, operation);
+    if (!isSpecial) {
+      throw new ConflictException(
+        'La operación no es especial y no requiere confirmación',
+      );
+    }
+
+    // Verificar que pueda ser confirmada (debe estar en TO_APPROVED)
+    if (operation.status !== StatusOperation.TO_APPROVED) {
+      throw new ConflictException(
+        `La operación ${operationId} no está pendiente de confirmación. Estado actual: ${operation.status}`,
+      );
+    }
+
+    // Obtener la confirmación existente
+    const confirmation = await this.prisma.operationConfirmation.findUnique({
+      where: { id_operation: operationId },
+    });
+
+    if (!confirmation) {
+      throw new NotFoundException(
+        `No existe confirmación para la operación ${operationId}`,
+      );
+    }
+
+    const latestToken = await this.prisma.token.findFirst({
+      where: { id_confirmation: confirmation.id },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, createdAt: true },
+    });
+
+    const cooldownSeconds = this.getTokenRegenerationCooldownSeconds();
+    if (latestToken && cooldownSeconds > 0) {
+      const elapsedMs = Date.now() - latestToken.createdAt.getTime();
+      const cooldownMs = cooldownSeconds * 1000;
+
+      if (elapsedMs < cooldownMs) {
+        const remainingSeconds = Math.ceil((cooldownMs - elapsedMs) / 1000);
+        throw new HttpException(
+          `Debe esperar ${remainingSeconds} segundos antes de regenerar un nuevo token para la operación ${operationId}`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+
+    await this.prisma.token.updateMany({
+      where: {
+        id_confirmation: confirmation.id,
+        status: TokenStatus.ACTIVE,
+      },
+      data: {
+        status: TokenStatus.EXPIRED,
+      },
+    });
+
+    this.logger.log(
+      `Regenerando token para confirmacion ${confirmation.id} (operacion ${operationId}). Tokens activos anteriores marcados como EXPIRED.`,
+    );
+
+    // Generar nuevo token
+    // En regeneración también se persiste únicamente el hash del nuevo token.
+    let createdToken: {
+      id: number;
+      tokenHash: string;
+      createdAt: Date;
+      status: TokenStatus;
+    } | null = null;
+    let rawTokenValue: string | null = null;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const tokenValue = this.operationTokenService.generateTokenValue();
+      // Token plano para cliente + hash para persistencia segura.
+      const tokenHash = this.operationTokenService.hashTokenValue(tokenValue);
+
+      try {
+        createdToken = await this.prisma.token.create({
+          data: {
+            id_confirmation: confirmation.id,
+            tokenHash,
+            status: TokenStatus.ACTIVE,
+          },
+          select: {
+            id: true,
+            tokenHash: true,
+            createdAt: true,
+            status: true,
+          },
+        });
+        rawTokenValue = tokenValue;
+        break;
+      } catch (error: any) {
+        const isUniqueTokenError = error?.code === 'P2002';
+        if (!isUniqueTokenError) {
+          this.logger.error(
+            `Error persistiendo token regenerado para operacion ${operationId}: ${error?.message || 'unknown error'} (code: ${error?.code || 'N/A'})`,
+          );
+          throw new TokenGenerationFailedException(
+            operationId,
+            `Error de base de datos al persistir token regenerado: ${error?.message || 'unknown error'}`,
+          );
+        }
+
+        if (attempt === 4) {
+          throw new TokenGenerationFailedException(
+            operationId,
+            'No se pudo persistir un token único para la confirmación tras múltiples reintentos',
+          );
+        }
+      }
+    }
+
+    if (!createdToken) {
+      throw new TokenGenerationFailedException(
+        operationId,
+        'No se pudo generar nuevo token de confirmación',
+      );
+    }
+
+    // Garantiza que el link de respuesta siempre tenga token válido.
+    if (!rawTokenValue) {
+      throw new TokenGenerationFailedException(
+        operationId,
+        'No se pudo recuperar el nuevo token de confirmación generado',
+      );
+    }
+
+    const link =
+      this.operationTokenService.buildConfirmationLink(rawTokenValue);
+
+    // Solo para facilitar pruebas manuales: imprime el link completo de acceso al portal.
+    this.logger.warn(
+      `LINK_CONFIRMACION_PORTAL operacion=${operationId} confirmation=${confirmation.id} link=${link}`,
+    );
+
+    const tokenTtlMinutes = this.getTokenValidityMinutes();
+
+    this.logger.log(
+      `Token regenerado ${createdToken.id} para confirmacion ${confirmation.id} (operacion ${operationId})`,
+    );
+
+    return {
+      operationId,
+      confirmation,
+      token: createdToken,
+      link,
+      tokenTtlMinutes,
+    };
+  }
+
+  private getTokenValidityMinutes(): number {
+    // Se mantiene fijo por regla de negocio, sin depender de variables de entorno.
+    return OperationService.TOKEN_VALIDITY_MINUTES;
+  }
+
+  private getTokenExpiresAt(createdAt: Date): Date {
+    // La expiración siempre se calcula desde la fecha de creación del token.
+    const validityMs = this.getTokenValidityMinutes() * 60 * 1000;
+    return new Date(createdAt.getTime() + validityMs);
+  }
+
+  private isTokenExpired(createdAt: Date): boolean {
+    // Consideramos expirado si ya alcanzó o superó el límite de 1 hora.
+    return Date.now() >= this.getTokenExpiresAt(createdAt).getTime();
+  }
+
+  // Expone la expiración de tokens para que un cron externo pueda sincronizar el estado en BD.
+  async expireConfirmationTokens(): Promise<number> {
+    return await this.expireActiveTokensByTime();
+  }
+
+  private async expireActiveTokensByTime(): Promise<number> {
+    const expirationThreshold = new Date(
+      Date.now() - this.getTokenValidityMinutes() * 60 * 1000,
+    );
+
+    const expired = await this.prisma.token.updateMany({
+      where: {
+        status: TokenStatus.ACTIVE,
+        createdAt: {
+          lte: expirationThreshold,
+        },
+      },
+      data: {
+        status: TokenStatus.EXPIRED,
+      },
+    });
+
+    return expired.count;
+  }
+
+  private getTokenRegenerationCooldownSeconds(): number {
+    const configured = Number(
+      process.env.OPERATION_CONFIRMATION_TOKEN_REGEN_COOLDOWN_SECONDS || 30,
+    );
+
+    if (!Number.isFinite(configured) || configured < 0) {
+      return 30;
+    }
+
+    return Math.floor(configured);
+  }
+
+  private async findTokenRecordByClientToken(
+    token: string,
+    args?: any,
+  ): Promise<any> {
+    const normalizedToken = token?.trim();
+    if (!normalizedToken) {
+      return null;
+    }
+
+    const tokenHashFromRaw =
+      this.operationTokenService.hashTokenValue(normalizedToken);
+
+    const findByRaw = await this.prisma.token.findUnique({
+      where: { tokenHash: tokenHashFromRaw },
+      ...(args || {}),
+    });
+
+    return findByRaw ?? null;
+  }
+
+  private async resolveClientConfirmationEmail(
+    operationId: number,
+  ): Promise<string | null> {
+    const operationContact = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: {
+        client: {
+          select: {
+            name: true,
+          },
+        },
+        clientProgramming: {
+          select: {
+            client: true,
+          },
+        },
+      },
+    });
+
+    const candidates = [
+      operationContact?.clientProgramming?.client,
+      operationContact?.client?.name,
+      process.env.CONFIRMATION_DEFAULT_EMAIL,
+    ];
+
+    for (const candidate of candidates) {
+      const normalized = (candidate || '').trim();
+      if (this.isValidEmail(normalized)) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private isValidEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  }
+
   /**
    * Crea una nueva operación y asigna trabajadores
    * @param createOperationDto - Datos de la operación a crear
@@ -154,7 +1864,7 @@ export class OperationService {
         const dateStart = new Date(createOperationDto.dateStart); // Convertir la fecha proporcionada a un objeto Date
         const diffMs = now.getTime() - dateStart.getTime(); // Calcular la diferencia en milisegundos entre ahora y dateStart
         const diffHours = diffMs / (1000 * 60 * 60); // Convertir la diferencia de ms a horas: $diffHours = \\frac{diffMs}{1000\\times60\\times60}$
-        
+
         if (diffHours >= 120) {
           // console.log('[OperationService] ==> Error: SUPERVISOR intenta crear operación muy antigua');
           // Si la diferencia es mayor o igual a 120 horas (5 días), devolver un objeto con mensaje y estado 400
@@ -178,7 +1888,7 @@ export class OperationService {
       const { workerIds = [], groups = [] } = createOperationDto;
       // console.log('[OperationService] ==> workerIds:', workerIds);
       // console.log('[OperationService] ==> groups:', JSON.stringify(groups, null, 2));
-      
+
       const scheduledWorkerIds =
         this.relationService.extractScheduledWorkerIds(groups);
       const allWorkerIds = [...workerIds, ...scheduledWorkerIds];
@@ -197,17 +1907,17 @@ export class OperationService {
       }
 
       // console.log('[OperationService] ==> Validando programación cliente');
-      
+
       //validar programacion cliente
       const validateClientProgramming =
         await this.relationService.validateClientProgramming(
           createOperationDto.id_clientProgramming || null,
         );
-     // console.log('[OperationService] ==> validateClientProgramming resultado:', validateClientProgramming);
+      // console.log('[OperationService] ==> validateClientProgramming resultado:', validateClientProgramming);
 
       if (validateClientProgramming) return validateClientProgramming;
 
-     // console.log('[OperationService] ==> Validando todos los IDs');
+      // console.log('[OperationService] ==> Validando todos los IDs');
       // Validar todos los IDs
       const validationResult = await this.relationService.validateOperationIds(
         {
@@ -245,7 +1955,7 @@ export class OperationService {
         return operation;
       }
 
-     // console.log('[OperationService] ==> Asignando trabajadores y encargados');
+      // console.log('[OperationService] ==> Asignando trabajadores y encargados');
       // Asignar trabajadores y encargados
       const response = await this.relationService.assignWorkersAndInCharge(
         operation.id,
@@ -255,13 +1965,13 @@ export class OperationService {
         id_subsite,
         id_site,
       );
-    //  console.log('[OperationService] ==> Resultado asignación:', response);
-      
+      //  console.log('[OperationService] ==> Resultado asignación:', response);
+
       if (response && (response.status === 403 || response.status === 400)) {
         console.error('[OperationService] ==> Error en asignación:', response);
         return response;
       }
-      
+
       //console.log('[OperationService] ==> SUCCESS: Operación creada con ID:', operation.id);
       return { id: operation.id };
     } catch (error) {
@@ -341,7 +2051,7 @@ export class OperationService {
       const diffMs = end.getTime() - start.getTime();
       calculatedOpDuration = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
       calculatedOpDuration = calculatedOpDuration > 0 ? calculatedOpDuration : 0;
-      
+
       // console.log(`[OperationService] ✅ op_duration calculado al crear: ${calculatedOpDuration} horas`);
     }
 
@@ -365,7 +2075,7 @@ export class OperationService {
       const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
       const updateOperationService = this.moduleRef.get(UpdateOperationService, { strict: false });
       updateOperationService.wakeUpFromDeepSleep(`Nueva operación creada (ID: ${newOperation.id})`);
-      
+
       // // 🚀 PROCESAMIENTO INMEDIATO: También despertar el cron service para verificación inmediata
       // try {
       //   const { OperationsCronService } = await import('../cron-job/cron-job.service');
@@ -439,202 +2149,217 @@ export class OperationService {
           });
         }
       }
-    // console.log('[OperationService] Iniciando actualización de operación:', id);
-    // console.log('[OperationService] DTO recibido:', JSON.stringify(updateOperationDto, null, 2));
+      // console.log('[OperationService] Iniciando actualización de operación:', id);
+      // console.log('[OperationService] DTO recibido:', JSON.stringify(updateOperationDto, null, 2));
 
-    // Verify operation exists
-    const validate = await this.findOne(id);
-    if (validate['status'] === 404) {
-      return validate;
-    }
-
-    // Validate inCharged IDs
-    const validationResult =
-      await this.relationService.validateInChargedIds(updateOperationDto);
-    if (validationResult) return validationResult;
-
-    // Extract data for update
-    const {
-      workers,
-      inCharged,
-      groups,
-      dateStart,
-      dateEnd,
-      timeStrat,
-      timeEnd,
-      
-      ...directFields
-    } = updateOperationDto;
-
-    // ✅ VERIFICAR SI LA OPERACIÓN ESTÁ COMPLETADA ANTES DE PROCESAR TRABAJADORES
-    const currentOperation = await this.prisma.operation.findUnique({
-      where: { id },
-      select: { status: true },
-    });
-
-
-    const isCompletedOperation = currentOperation?.status === 'COMPLETED';
-
-    // Process workers
-    if (workers) {
-      // console.log('[OperationService] Procesando workers con nuevo flujo V2');
-      
-      // ✅ SI ES OPERACIÓN COMPLETADA Y HAY CAMBIOS EN TRABAJADORES, RECALCULAR FACTURA
-      if (isCompletedOperation) {
-        console.log('[OperationService] 🔄 Operación COMPLETED detectada, procesando cambios en trabajadores...');
-        await this.processWorkersOperationsV2(id, workers, true); // ✅ Pasar flag isCompleted
-        
-        // Buscar y recalcular factura
-        try {
-          const bill = await this.prisma.bill.findFirst({
-            where: { id_operation: id },
-          });
-
-          if (bill) {
-            console.log(`[OperationService] 📄 Factura encontrada (ID: ${bill.id}), recalculando por cambios en trabajadores...`);
-            
-            // Importar dinámicamente BillService para evitar dependencia circular
-            const { BillService } = await import('../bill/bill.service');
-            const billService = this.moduleRef.get(BillService, { strict: false });
-            
-            // Recalcular la factura por cambios en trabajadores
-            await billService.recalculateBillAfterOpDurationChange(bill.id, id);
-            
-            // console.log(`[OperationService] ✅ Factura ${bill.id} recalculada por cambios en trabajadores`);
-          } 
-          // else {
-          //   console.log('[OperationService] ⚠️ No se encontró factura para esta operación completada');
-          // }
-        } catch (error) {
-          console.error('[OperationService] ❌ Error recalculando factura por cambios en trabajadores:', (error as Error).message);
-          // No lanzar error para no bloquear la actualización de la operación
-        }
-      } else {
-        // Operación no completada, proceso normal
-        await this.processWorkersOperationsV2(id, workers);
+      // Verify operation exists
+      const validate = await this.findOne(id);
+      if (validate['status'] === 404) {
+        return validate;
       }
-    }
 
+      // Validate inCharged IDs
+      const validationResult =
+        await this.relationService.validateInChargedIds(updateOperationDto);
+      if (validationResult) return validationResult;
 
-    // ✅ PROCESAR GRUPOS (FINALIZACIÓN DE GRUPOS)
-    if (groups && Array.isArray(groups) && groups.length > 0) {
-      // console.log('[OperationService] Procesando finalización de grupos:', groups);
-      await this.processGroupsCompletion(id, groups);
-    }
+      // Extract data for update
+      const {
+        workers,
+        inCharged,
+        groups,
+        dateStart,
+        dateEnd,
+        timeStrat,
+        timeEnd,
 
-    // Process inCharged
-    if (inCharged) {
-      // console.log('[OperationService] Procesando inCharged directamente');
-      await this.processInChargedOperations(id, inCharged);
-    }
+        ...directFields
+      } = updateOperationDto;
 
-    // ✅ PASAR TODOS LOS PARÁMETROS DE FECHA/HORA AL MÉTODO
-    const operationUpdateData = this.prepareOperationUpdateData(
-      directFields,
-      dateStart,
-      dateEnd,
-      timeStrat,
-      timeEnd, // ✅ ASEGURAR QUE SE PASE timeEnd
-    );
-
-    // Update operation
-    if (Object.keys(operationUpdateData).length > 0) {
-     console.log('[OperationService] Actualizando datos básicos de la operación');
-       console.log('[OperationService] Datos a actualizar:', operationUpdateData);
-
-      
-//       console.log("OPERATION UPDATE DATA");
-// console.log(JSON.stringify(operationUpdateData, null, 2));
-       await this.prisma.operation.update({
-         where: { id },
-        data: operationUpdateData,
-      });
-    }
-    // ✅ RECALCULAR op_duration siempre que haya cambios en fechas u horas
-const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
-    
-  
-    if (hasDateTimeChanges) {
-      // console.log('[OperationService] 🔄 Detectados cambios en fechas/horas, recalculando op_duration...');
-      
-      // Obtener la operación actualizada con todas las fechas
-      const updatedOp = await this.prisma.operation.findUnique({
+      // ✅ VERIFICAR SI LA OPERACIÓN ESTÁ COMPLETADA ANTES DE PROCESAR TRABAJADORES
+      const currentOperation = await this.prisma.operation.findUnique({
         where: { id },
-        select: { dateStart: true, timeStrat: true, dateEnd: true, timeEnd: true, status: true, op_duration: true },
+        select: { status: true },
       });
 
-      if (updatedOp && updatedOp.dateStart && updatedOp.timeStrat && updatedOp.dateEnd && updatedOp.timeEnd) {
-        const oldOpDuration = updatedOp.op_duration;
-        const newOpDuration = this.calculateOperationDuration(
-          updatedOp.dateStart,
-          updatedOp.timeStrat,
-          updatedOp.dateEnd,
-          updatedOp.timeEnd,
-        );
-        await this.prisma.operation.update({
-          where: { id },
-          data: { op_duration: newOpDuration },
-        });
 
-        // console.log(`[OperationService] ✅ op_duration actualizado en BD: ${oldOpDuration} → ${newOpDuration} horas (status: ${updatedOp.status})`);
+      const isCompletedOperation = currentOperation?.status === 'COMPLETED';
 
-        // ✅ SI LA OPERACIÓN ESTÁ COMPLETED Y CAMBIÓ op_duration, RECALCULAR FACTURA
-        if (updatedOp.status === 'COMPLETED' && oldOpDuration !== newOpDuration) {
-          // console.log('[OperationService] 🔄 Operación COMPLETED con cambio de duración, buscando factura...');
-          
+      // Process workers
+      if (workers) {
+        // console.log('[OperationService] Procesando workers con nuevo flujo V2');
+
+        // ✅ SI ES OPERACIÓN COMPLETADA Y HAY CAMBIOS EN TRABAJADORES, RECALCULAR FACTURA
+        if (isCompletedOperation) {
+          console.log('[OperationService] 🔄 Operación COMPLETED detectada, procesando cambios en trabajadores...');
+          await this.processWorkersOperationsV2(id, workers, true); // ✅ Pasar flag isCompleted
+
+          // Buscar y recalcular factura
           try {
-            // Buscar la factura de esta operación
             const bill = await this.prisma.bill.findFirst({
               where: { id_operation: id },
             });
 
             if (bill) {
-              // console.log(`[OperationService] 📄 Factura encontrada (ID: ${bill.id}), recalculando compensatorio...`);
-              
+              console.log(`[OperationService] 📄 Factura encontrada (ID: ${bill.id}), recalculando por cambios en trabajadores...`);
+
               // Importar dinámicamente BillService para evitar dependencia circular
               const { BillService } = await import('../bill/bill.service');
               const billService = this.moduleRef.get(BillService, { strict: false });
-              
-              // Recalcular la factura completa
+
+              // Recalcular la factura por cambios en trabajadores
               await billService.recalculateBillAfterOpDurationChange(bill.id, id);
-              
-              // console.log(`[OperationService] ✅ Factura ${bill.id} recalculada con nuevo compensatorio`);
-            } 
+
+              // console.log(`[OperationService] ✅ Factura ${bill.id} recalculada por cambios en trabajadores`);
+            }
             // else {
-            //   console.log('[OperationService] ⚠️ No se encontró factura para esta operación');
+            //   console.log('[OperationService] ⚠️ No se encontró factura para esta operación completada');
             // }
           } catch (error) {
-            console.error('[OperationService] ❌ Error recalculando factura:', (error as Error).message);
+            console.error('[OperationService] ❌ Error recalculando factura por cambios en trabajadores:', (error as Error).message);
             // No lanzar error para no bloquear la actualización de la operación
           }
+        } else {
+          // Operación no completada, proceso normal
+          await this.processWorkersOperationsV2(id, workers);
         }
-      } 
-    } 
-    // else {
-    //   console.log('[OperationService] ℹ️ No se detectaron cambios en fechas/horas, no se recalcula op_duration');
-    // }
+      }
 
-    // Handle status change
-    if (directFields.status === StatusOperation.COMPLETED) {
-      // Ya no necesitamos calcular op_duration aquí porque se calcula arriba cuando hay cambios de fecha
-      // O ya está calculado desde antes
-      
-      // ✅ CAMBIAR EL ORDEN: PRIMERO ACTUALIZAR FECHAS, LUEGO CALCULAR HORAS
-      await this.operationWorkerService.completeClientProgramming(id);
-      await this.operationWorkerService.releaseAllWorkersFromOperation(id);
-      await this.workerService.addWorkedHoursOnOperationEnd(id);
+
+      // ✅ PROCESAR GRUPOS (FINALIZACIÓN DE GRUPOS)
+      if (groups && Array.isArray(groups) && groups.length > 0) {
+        // console.log('[OperationService] Procesando finalización de grupos:', groups);
+        await this.processGroupsCompletion(id, groups);
+      }
+
+      // Process inCharged
+      if (inCharged) {
+        // console.log('[OperationService] Procesando inCharged directamente');
+        await this.processInChargedOperations(id, inCharged);
+      }
+
+      // ✅ PASAR TODOS LOS PARÁMETROS DE FECHA/HORA AL MÉTODO
+      const operationUpdateData = this.prepareOperationUpdateData(
+        directFields,
+        dateStart,
+        dateEnd,
+        timeStrat,
+        timeEnd, // ✅ ASEGURAR QUE SE PASE timeEnd
+      );
+
+      //   SI INTENTAN COMPLETAR UNA OPERACIÓN ESPECIAL,
+      // EN LUGAR DE COMPLETED DEBE PASAR A TO_APPROVED
+      if (operationUpdateData.status === StatusOperation.COMPLETED) {
+        const isSpecial = await this.isOperationSpecial(id);
+
+        if (isSpecial) {
+          operationUpdateData.status = StatusOperation.TO_APPROVED;
+
+          await this.createConfirmation(id);
+        }
+      }
+
+      // Update operation
+      if (Object.keys(operationUpdateData).length > 0) {
+        console.log('[OperationService] Actualizando datos básicos de la operación');
+        console.log('[OperationService] Datos a actualizar:', operationUpdateData);
+
+
+        console.log("OPERATION UPDATE DATA");
+        // console.log(JSON.stringify(operationUpdateData, null, 2));
+        await this.prisma.operation.update({
+          where: { id },
+          data: operationUpdateData,
+        });
+      }
+      // ✅ RECALCULAR op_duration siempre que haya cambios en fechas u horas
+      const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
+
+
+      if (hasDateTimeChanges) {
+        // console.log('[OperationService] 🔄 Detectados cambios en fechas/horas, recalculando op_duration...');
+
+        // Obtener la operación actualizada con todas las fechas
+        const updatedOp = await this.prisma.operation.findUnique({
+          where: { id },
+          select: { dateStart: true, timeStrat: true, dateEnd: true, timeEnd: true, status: true, op_duration: true },
+        });
+
+        if (updatedOp && updatedOp.dateStart && updatedOp.timeStrat && updatedOp.dateEnd && updatedOp.timeEnd) {
+          const oldOpDuration = updatedOp.op_duration;
+          const newOpDuration = this.calculateOperationDuration(
+            updatedOp.dateStart,
+            updatedOp.timeStrat,
+            updatedOp.dateEnd,
+            updatedOp.timeEnd,
+          );
+          await this.prisma.operation.update({
+            where: { id },
+            data: { op_duration: newOpDuration },
+          });
+
+          // console.log(`[OperationService] ✅ op_duration actualizado en BD: ${oldOpDuration} → ${newOpDuration} horas (status: ${updatedOp.status})`);
+
+          // ✅ SI LA OPERACIÓN ESTÁ COMPLETED Y CAMBIÓ op_duration, RECALCULAR FACTURA
+          if (updatedOp.status === 'COMPLETED' && oldOpDuration !== newOpDuration) {
+            // console.log('[OperationService] 🔄 Operación COMPLETED con cambio de duración, buscando factura...');
+
+            try {
+              // Buscar la factura de esta operación
+              const bill = await this.prisma.bill.findFirst({
+                where: { id_operation: id },
+              });
+
+              if (bill) {
+                // console.log(`[OperationService] 📄 Factura encontrada (ID: ${bill.id}), recalculando compensatorio...`);
+
+                // Importar dinámicamente BillService para evitar dependencia circular
+                const { BillService } = await import('../bill/bill.service');
+                const billService = this.moduleRef.get(BillService, { strict: false });
+
+                // Recalcular la factura completa
+                await billService.recalculateBillAfterOpDurationChange(bill.id, id);
+
+                // console.log(`[OperationService] ✅ Factura ${bill.id} recalculada con nuevo compensatorio`);
+              }
+              // else {
+              //   console.log('[OperationService] ⚠️ No se encontró factura para esta operación');
+              // }
+            } catch (error) {
+              console.error('[OperationService] ❌ Error recalculando factura:', (error as Error).message);
+              // No lanzar error para no bloquear la actualización de la operación
+            }
+          }
+        }
+      }
+      // else {
+      //   console.log('[OperationService] ℹ️ No se detectaron cambios en fechas/horas, no se recalcula op_duration');
+      // }
+
+      // Handle status change
+      if (
+        directFields.status === StatusOperation.COMPLETED &&
+        operationUpdateData.status === StatusOperation.COMPLETED
+      ) {
+        // Ya no necesitamos calcular op_duration aquí porque se calcula arriba cuando hay cambios de fecha
+        // O ya está calculado desde antes
+
+        // ✅ CAMBIAR EL ORDEN: PRIMERO ACTUALIZAR FECHAS, LUEGO CALCULAR HORAS
+        await this.operationWorkerService.completeClientProgramming(id);
+        await this.operationWorkerService.releaseAllWorkersFromOperation(id);
+        await this.workerService.addWorkedHoursOnOperationEnd(id);
+      }
+      // Get updated operation
+      const updatedOperation = await this.findOne(id);
+      console.log('[OperationService] Operación actualizada exitosamente');
+      return updatedOperation;
+    } catch (error) {
+      console.error('Error updating operation:', (error as Error).message);
+      throw new Error((error as Error).message);
     }
-    // Get updated operation
-    const updatedOperation = await this.findOne(id);
-    console.log('[OperationService] Operación actualizada exitosamente');
-    return updatedOperation;
-  } catch (error) {
-    console.error('Error updating operation:', (error as Error).message);
-    throw new Error((error as Error).message);
-  }
 
-  
-}
+
+  }
 
   /**
    * Prepara los datos para actualizar una operación
@@ -677,33 +2402,33 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
     // console.log('[OperationService] Campos después de limpieza:', Object.keys(updateData));
 
     if (observation) updateData.observation = observation;
-  // ✅ PROCESAR FECHAS Y HORAS RESPETANDO LO QUE ENVÍA EL USUARIO
-  if (dateStart) updateData.dateStart = new Date(dateStart);
-  
-  // ✅ MANEJAR FECHA DE FIN
-  if (dateEnd) {
-    updateData.dateEnd = new Date(dateEnd);
-  } else if (updateData.status === StatusOperation.COMPLETED && !dateEnd) {
-    // Solo establecer fecha actual si el usuario NO envió dateEnd
-    updateData.dateEnd = new Date();
-  }
-  
-  // ✅ MANEJAR HORA DE INICIO
-  if (timeStrat) updateData.timeStrat = timeStrat;
-  
-  // ✅ MANEJAR HORA DE FIN - RESPETAR LA HORA DEL USUARIO
-  if (timeEnd) {
-    // ✅ SI EL USUARIO ENVÍA timeEnd, USARLA SIEMPRE
-    updateData.timeEnd = timeEnd;
-    // console.log(`[OperationService] Usando hora de fin enviada por el usuario: ${timeEnd}`);
-  } else if (updateData.status === StatusOperation.COMPLETED) {
-    // ✅ SOLO SI NO VIENE timeEnd Y SE ESTÁ COMPLETANDO, USAR HORA ACTUAL
-    const now = new Date();
-    const hh = now.getHours().toString().padStart(2, '0');
-    const mm = now.getMinutes().toString().padStart(2, '0');
-    updateData.timeEnd = `${hh}:${mm}`;
-    // console.log(`[OperationService] No se recibió timeEnd, usando hora actual: ${updateData.timeEnd}`);
-  }
+    // ✅ PROCESAR FECHAS Y HORAS RESPETANDO LO QUE ENVÍA EL USUARIO
+    if (dateStart) updateData.dateStart = new Date(dateStart);
+
+    // ✅ MANEJAR FECHA DE FIN
+    if (dateEnd) {
+      updateData.dateEnd = new Date(dateEnd);
+    } else if (updateData.status === StatusOperation.COMPLETED && !dateEnd) {
+      // Solo establecer fecha actual si el usuario NO envió dateEnd
+      updateData.dateEnd = new Date();
+    }
+
+    // ✅ MANEJAR HORA DE INICIO
+    if (timeStrat) updateData.timeStrat = timeStrat;
+
+    // ✅ MANEJAR HORA DE FIN - RESPETAR LA HORA DEL USUARIO
+    if (timeEnd) {
+      // ✅ SI EL USUARIO ENVÍA timeEnd, USARLA SIEMPRE
+      updateData.timeEnd = timeEnd;
+      // console.log(`[OperationService] Usando hora de fin enviada por el usuario: ${timeEnd}`);
+    } else if (updateData.status === StatusOperation.COMPLETED) {
+      // ✅ SOLO SI NO VIENE timeEnd Y SE ESTÁ COMPLETANDO, USAR HORA ACTUAL
+      const now = new Date();
+      const hh = now.getHours().toString().padStart(2, '0');
+      const mm = now.getMinutes().toString().padStart(2, '0');
+      updateData.timeEnd = `${hh}:${mm}`;
+      // console.log(`[OperationService] No se recibió timeEnd, usando hora actual: ${updateData.timeEnd}`);
+    }
 
     // console.log('[OperationService] Datos finales para actualizar Operation:', updateData);
     return updateData;
@@ -777,7 +2502,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           const currentDate = new Date();
           const currentWeekNumber = getWeekNumber(currentDate);
 
-         
+
 
           if (billInGroup.week_number !== currentWeekNumber) {
             // console.log(
@@ -815,15 +2540,15 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         // 2. PRIMERO: Eliminar TODOS los BillDetails que referencian a los Operation_Worker del grupo
         if (operationWorkerIds.length > 0) {
           // console.log(
-            // `[OperationService] Eliminando TODOS los BillDetails que referencian a los ${operationWorkerIds.length} Operation_Worker del grupo`,
+          // `[OperationService] Eliminando TODOS los BillDetails que referencian a los ${operationWorkerIds.length} Operation_Worker del grupo`,
           // );
-          
+
           const deletedAllBillDetails = await tx.billDetail.deleteMany({
-            where: { 
+            where: {
               id_operation_worker: { in: operationWorkerIds }
             },
           });
-          
+
           // console.log(
           //   `[OperationService] ✅ Eliminados ${deletedAllBillDetails.count} BillDetails que referenciaban a los Operation_Worker`,
           // );
@@ -871,14 +2596,14 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         // console.log(
         //   `[OperationService] Eliminando ${operationWorkerIds.length} registros de Operation_Worker del grupo ${id_group}`,
         // );
-        
+
         const deletedWorkers = await tx.operation_Worker.deleteMany({
           where: {
             id_operation: id,
             id_group: id_group,
           },
         });
-        
+
         // console.log(
         //   `[OperationService] ✅ Eliminados ${deletedWorkers.count} Operation_Worker del grupo ${id_group}`,
         // );
@@ -972,7 +2697,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         // console.log(
         //   `[OperationService] Solo hay un grupo (${uniqueGroups[0]}), eliminando grupo y operación completa`,
         // );
-        
+
         // Eliminar el grupo primero
         const groupResult = await this.removeGroup(
           id,
@@ -981,14 +2706,14 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           id_subsite,
           userId,
         );
-        
+
         // Si hubo error al eliminar el grupo, retornar el error
         if (groupResult['status'] === 403 || groupResult['status'] === 400 || groupResult['status'] === 404) {
           return groupResult;
         }
-        
+
         // console.log(`[OperationService] Grupo eliminado, ahora eliminando operación ${id} completa`);
-        
+
         // Eliminar la operación completa usando transacción
         try {
           await this.prisma.$transaction(async (tx) => {
@@ -996,12 +2721,12 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
             const remainingGroups = await tx.operation_Worker.count({
               where: { id_operation: id },
             });
-            
+
             if (remainingGroups > 0) {
               // console.log(`[OperationService] ⚠️ Aún quedan ${remainingGroups} trabajadores, no se elimina la operación`);
               return;
             }
-            
+
             // 2. Buscar y eliminar facturas
             const bills = await tx.bill.findMany({
               where: { id_operation: id },
@@ -1010,9 +2735,9 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
             if (bills.length > 0) {
               const billIds = bills.map(bill => bill.id);
-              
+
               // console.log(`[OperationService] Eliminando ${bills.length} factura(s) de operación ${id}`);
-              
+
               await tx.billDetail.deleteMany({
                 where: { id_bill: { in: billIds } },
               });
@@ -1040,10 +2765,10 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
             await tx.operation.delete({
               where: { id },
             });
-            
+
             // console.log(`[OperationService] ✅ Operación ${id} eliminada exitosamente`);
           });
-          
+
           return {
             message: `Grupo y operación eliminados exitosamente`,
             deletedWorkers: groupResult['deletedWorkers'] || 0,
@@ -1087,11 +2812,11 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
               workersCount: workersCount,
               bill: bill
                 ? {
-                    id: bill.id,
-                    status: bill.status,
-                    observation: bill.observation,
-                    canDelete: bill.status === 'ACTIVE',
-                  }
+                  id: bill.id,
+                  status: bill.status,
+                  observation: bill.observation,
+                  canDelete: bill.status === 'ACTIVE',
+                }
                 : null,
               canDelete: !bill || bill.status === 'ACTIVE',
             };
@@ -1129,7 +2854,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
   ) {
     try {
       // console.log(`[OperationService] Iniciando eliminación múltiple de ${id_groups.length} grupos`);
-      
+
       // Validar que la operación existe
       const validateOperation = await this.findOne(id);
       if (validateOperation['status'] === 404) {
@@ -1164,7 +2889,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
       // Procesar cada grupo
       for (const id_group of id_groups) {
         // console.log(`[OperationService] Procesando grupo: ${id_group}`);
-        
+
         try {
           const result = await this.removeGroup(
             id,
@@ -1203,7 +2928,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
       let operationDeleted = false;
       if (results.success.length > 0) {
         // console.log(`[OperationService] Verificando si la operación ${id} quedó sin grupos...`);
-        
+
         const remainingGroups = await this.prisma.operation_Worker.count({
           where: { id_operation: id },
         });
@@ -1212,7 +2937,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
         if (remainingGroups === 0) {
           // console.log(`[OperationService] No quedan grupos, eliminando operación ${id} completa`);
-          
+
           try {
             await this.prisma.$transaction(async (tx) => {
               // 1. Buscar y eliminar facturas
@@ -1223,9 +2948,9 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
               if (bills.length > 0) {
                 const billIds = bills.map(bill => bill.id);
-                
+
                 // console.log(`[OperationService] Eliminando ${bills.length} factura(s) de operación ${id}`);
-                
+
                 await tx.billDetail.deleteMany({
                   where: { id_bill: { in: billIds } },
                 });
@@ -1253,10 +2978,10 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
               await tx.operation.delete({
                 where: { id },
               });
-              
+
               // console.log(`[OperationService] ✅ Operación ${id} eliminada exitosamente`);
             });
-            
+
             operationDeleted = true;
           } catch (error) {
             console.error(`[OperationService] Error eliminando operación ${id}:`, error);
@@ -1269,7 +2994,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
       if (results.failed.length === 0) {
         // Todos los grupos se eliminaron exitosamente
         return {
-          message: operationDeleted 
+          message: operationDeleted
             ? `Se eliminaron exitosamente ${results.success.length} grupo(s) y la operación completa`
             : `Se eliminaron exitosamente ${results.success.length} grupo(s)`,
           status: 200,
@@ -1344,18 +3069,18 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         // 2. Si hay facturas, eliminar primero los detalles de las facturas
         if (bills.length > 0) {
           const billIds = bills.map(bill => bill.id);
-          
+
           // console.log(`[OperationService] Eliminando detalles de ${bills.length} factura(s) asociadas a operación ${id}`);
-          
+
           await tx.billDetail.deleteMany({
-            where: { 
+            where: {
               id_bill: { in: billIds }
             },
           });
 
           // 3. Eliminar las facturas
           // console.log(`[OperationService] Eliminando ${bills.length} factura(s) de operación ${id}`);
-          
+
           await tx.bill.deleteMany({
             where: { id_operation: id },
           });
@@ -1367,7 +3092,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           where: { id_operation: id },
         });
 
-       
+
 
         // 6. Eliminar todos los trabajadores asignados a la operación
         await tx.operation_Worker.deleteMany({
@@ -1425,433 +3150,433 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
   }
 
   private async processWorkersOperationsV2(operationId: number, workersOps: any, isCompleted: boolean = false) {
-  // console.log('[OperationService] Procesando operaciones de trabajadores V2:', JSON.stringify(workersOps, null, 2));
+    // console.log('[OperationService] Procesando operaciones de trabajadores V2:', JSON.stringify(workersOps, null, 2));
 
-  if (isCompleted) {
-    // console.log('[OperationService] 🔄 Procesando cambios en operación COMPLETADA');
-  }
-  // 1. DESCONECTAR/ELIMINAR TRABAJADORES (mantener igual)
-  if (workersOps.disconnect && Array.isArray(workersOps.disconnect) && workersOps.disconnect.length > 0) {
-    // console.log('[OperationService] Eliminando trabajadores:', workersOps.disconnect);
-    
-    for (const disconnectOp of workersOps.disconnect) {
-      // console.log('[OperationService] Procesando eliminación individual:', disconnectOp);
-      
-      if (!disconnectOp.id || isNaN(Number(disconnectOp.id))) {
-        console.error('[OperationService] ID de trabajador inválido:', disconnectOp.id);
-        throw new BadRequestException(`ID de trabajador inválido: ${disconnectOp.id}`);
-      }
-      
-      const workerId = Number(disconnectOp.id);
-      // console.log('[OperationService] ID de trabajador convertido a número:', workerId);
-      
-      try {
-        if (disconnectOp.id_group) {
-          // console.log('[OperationService] Eliminando trabajador del grupo específico');
-          const removeResult = await this.removeWorkerService.removeWorkerFromGroup(
-            operationId,
-            workerId,
-            disconnectOp.id_group
-          );
-          // console.log('[OperationService] Trabajador eliminado del grupo:', removeResult);
-        } else {
-          // console.log('[OperationService] Eliminando trabajador de toda la operación');
-          const removeResult = await this.removeWorkerService.removeWorkerFromOperation(
-            operationId,
-            workerId
-          );
-          // console.log('[OperationService] Trabajador eliminado de la operación:', removeResult);
+    if (isCompleted) {
+      // console.log('[OperationService] 🔄 Procesando cambios en operación COMPLETADA');
+    }
+    // 1. DESCONECTAR/ELIMINAR TRABAJADORES (mantener igual)
+    if (workersOps.disconnect && Array.isArray(workersOps.disconnect) && workersOps.disconnect.length > 0) {
+      // console.log('[OperationService] Eliminando trabajadores:', workersOps.disconnect);
+
+      for (const disconnectOp of workersOps.disconnect) {
+        // console.log('[OperationService] Procesando eliminación individual:', disconnectOp);
+
+        if (!disconnectOp.id || isNaN(Number(disconnectOp.id))) {
+          console.error('[OperationService] ID de trabajador inválido:', disconnectOp.id);
+          throw new BadRequestException(`ID de trabajador inválido: ${disconnectOp.id}`);
         }
-      } catch (error) {
-        console.error('[OperationService] Error eliminando trabajador:', error);
-        throw error;
+
+        const workerId = Number(disconnectOp.id);
+        // console.log('[OperationService] ID de trabajador convertido a número:', workerId);
+
+        try {
+          if (disconnectOp.id_group) {
+            // console.log('[OperationService] Eliminando trabajador del grupo específico');
+            const removeResult = await this.removeWorkerService.removeWorkerFromGroup(
+              operationId,
+              workerId,
+              disconnectOp.id_group
+            );
+            // console.log('[OperationService] Trabajador eliminado del grupo:', removeResult);
+          } else {
+            // console.log('[OperationService] Eliminando trabajador de toda la operación');
+            const removeResult = await this.removeWorkerService.removeWorkerFromOperation(
+              operationId,
+              workerId
+            );
+            // console.log('[OperationService] Trabajador eliminado de la operación:', removeResult);
+          }
+        } catch (error) {
+          console.error('[OperationService] Error eliminando trabajador:', error);
+          throw error;
+        }
       }
     }
-  }
 
-  // 2. CONECTAR/AGREGAR NUEVOS TRABAJADORES - ✅ CORREGIR AQUÍ
-  // if (workersOps.connect && workersOps.connect.length > 0) {
-  //   console.log('[OperationService] Agregando trabajadores:', workersOps.connect);
-    
-  //   for (const connectOp of workersOps.connect) {
-  //     console.log('[OperationService] Procesando conexión:', connectOp);
-      
-  //     // ✅ VERIFICAR QUE workerIds EXISTE Y ES UN ARRAY
-  //     if (!connectOp.workerIds || !Array.isArray(connectOp.workerIds)) {
-  //       console.error('[OperationService] workerIds no encontrado o no es array:', connectOp);
-  //       throw new BadRequestException('workerIds debe ser un array válido en la operación connect');
-  //     }
+    // 2. CONECTAR/AGREGAR NUEVOS TRABAJADORES - ✅ CORREGIR AQUÍ
+    // if (workersOps.connect && workersOps.connect.length > 0) {
+    //   console.log('[OperationService] Agregando trabajadores:', workersOps.connect);
 
-  //     // ✅ PROCESAR CADA WORKER ID EN EL ARRAY
-  //     // for (const workerId of connectOp.workerIds) {
-  //     //   // ✅ VALIDAR QUE EL ID SEA VÁLIDO
-  //     //   if (!workerId || isNaN(Number(workerId))) {
-  //     //     console.error('[OperationService] ID de trabajador inválido:', workerId);
-  //     //     throw new BadRequestException(`ID de trabajador inválido: ${workerId}`);
-  //     //   }
+    //   for (const connectOp of workersOps.connect) {
+    //     console.log('[OperationService] Procesando conexión:', connectOp);
 
-  //     //   console.log(`[OperationService] Procesando trabajador ID: ${workerId}`);
+    //     // ✅ VERIFICAR QUE workerIds EXISTE Y ES UN ARRAY
+    //     if (!connectOp.workerIds || !Array.isArray(connectOp.workerIds)) {
+    //       console.error('[OperationService] workerIds no encontrado o no es array:', connectOp);
+    //       throw new BadRequestException('workerIds debe ser un array válido en la operación connect');
+    //     }
 
-  //     //   try {
-  //     //     // ✅ CREAR EL OBJETO PARA ASIGNAR TRABAJADOR
-  //     //     const assignData = {
-  //     //       id_operation: operationId,
-  //     //       id_worker: Number(workerId),
-  //     //       dateStart: connectOp.dateStart || null,
-  //     //       dateEnd: connectOp.dateEnd || null,
-  //     //       timeStart: connectOp.timeStart || null,
-  //     //       timeEnd: connectOp.timeEnd || null,
-  //     //       id_task: connectOp.id_task || null,
-  //     //       id_subtask: connectOp.id_subtask || null,
-  //     //       id_tariff: connectOp.id_tariff || null,
-  //     //     };
+    //     // ✅ PROCESAR CADA WORKER ID EN EL ARRAY
+    //     // for (const workerId of connectOp.workerIds) {
+    //     //   // ✅ VALIDAR QUE EL ID SEA VÁLIDO
+    //     //   if (!workerId || isNaN(Number(workerId))) {
+    //     //     console.error('[OperationService] ID de trabajador inválido:', workerId);
+    //     //     throw new BadRequestException(`ID de trabajador inválido: ${workerId}`);
+    //     //   }
 
-  //     //     console.log(`[OperationService] Datos para asignar trabajador ${workerId}:`, assignData);
+    //     //   console.log(`[OperationService] Procesando trabajador ID: ${workerId}`);
 
-  //     //     // ✅ USAR EL SERVICIO DE ASIGNACIÓN EXISTENTE
-  //     //     const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
-  //     //     console.log(`[OperationService] Trabajador ${workerId} asignado exitosamente:`, assignResult);
-  //     //   } catch (error) {
-  //     //     console.error(`[OperationService] Error asignando trabajador ${workerId}:`, error);
-  //     //     throw new BadRequestException(`Error asignando trabajador ${workerId}: ${(error as Error).message}`);
-  //     //   }
-  //     // }
-  //      try {
-  //       // ✅ VERIFICAR SI ES UN NUEVO GRUPO O ASIGNACIÓN SIMPLE
-  //       if (connectOp.isNewGroup) {
-  //         console.log('[OperationService] Creando NUEVO GRUPO para trabajadores:', connectOp.workerIds);
-          
-  //         // ✅ USAR EL FORMATO CORRECTO PARA GRUPOS CON PROGRAMACIÓN
-  //         const assignData = {
-  //           id_operation: operationId,
-  //           workersWithSchedule: [{
-  //             workerIds: connectOp.workerIds.map(id => Number(id)),
-  //             dateStart: connectOp.dateStart || null,
-  //             dateEnd: connectOp.dateEnd || null,
-  //             timeStart: connectOp.timeStart || null,
-  //             timeEnd: connectOp.timeEnd || null,
-  //             id_task: connectOp.id_task || null,
-  //             id_subtask: connectOp.id_subtask || null,
-  //             id_tariff: connectOp.id_tariff || null,
-  //             // ✅ NO incluir id_group para que se genere uno nuevo automáticamente
-  //           }]
-  //         };
+    //     //   try {
+    //     //     // ✅ CREAR EL OBJETO PARA ASIGNAR TRABAJADOR
+    //     //     const assignData = {
+    //     //       id_operation: operationId,
+    //     //       id_worker: Number(workerId),
+    //     //       dateStart: connectOp.dateStart || null,
+    //     //       dateEnd: connectOp.dateEnd || null,
+    //     //       timeStart: connectOp.timeStart || null,
+    //     //       timeEnd: connectOp.timeEnd || null,
+    //     //       id_task: connectOp.id_task || null,
+    //     //       id_subtask: connectOp.id_subtask || null,
+    //     //       id_tariff: connectOp.id_tariff || null,
+    //     //     };
 
-  //         console.log('[OperationService] Datos para crear nuevo grupo:', assignData);
-  //         const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
-  //         console.log('[OperationService] Nuevo grupo creado exitosamente:', assignResult);
-          
-  //       } else {
-  //         console.log('[OperationService] Asignando trabajadores SIN grupo específico:', connectOp.workerIds);
-          
-  //         // ✅ ASIGNACIÓN SIMPLE (SIN GRUPO) - PROCESAR CADA TRABAJADOR INDIVIDUALMENTE
-  //         for (const workerId of connectOp.workerIds) {
-  //           // ✅ VALIDAR QUE EL ID SEA VÁLIDO
-  //           if (!workerId || isNaN(Number(workerId))) {
-  //             console.error('[OperationService] ID de trabajador inválido:', workerId);
-  //             throw new BadRequestException(`ID de trabajador inválido: ${workerId}`);
-  //           }
+    //     //     console.log(`[OperationService] Datos para asignar trabajador ${workerId}:`, assignData);
 
-  //           console.log(`[OperationService] Procesando trabajador ID: ${workerId}`);
+    //     //     // ✅ USAR EL SERVICIO DE ASIGNACIÓN EXISTENTE
+    //     //     const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
+    //     //     console.log(`[OperationService] Trabajador ${workerId} asignado exitosamente:`, assignResult);
+    //     //   } catch (error) {
+    //     //     console.error(`[OperationService] Error asignando trabajador ${workerId}:`, error);
+    //     //     throw new BadRequestException(`Error asignando trabajador ${workerId}: ${(error as Error).message}`);
+    //     //   }
+    //     // }
+    //      try {
+    //       // ✅ VERIFICAR SI ES UN NUEVO GRUPO O ASIGNACIÓN SIMPLE
+    //       if (connectOp.isNewGroup) {
+    //         console.log('[OperationService] Creando NUEVO GRUPO para trabajadores:', connectOp.workerIds);
 
-  //           // ✅ CREAR EL OBJETO PARA ASIGNAR TRABAJADOR SIMPLE
-  //           const assignData = {
-  //             id_operation: operationId,
-  //             workerIds: [Number(workerId)], // ✅ Usar array de IDs para asignación simple
-  //           };
+    //         // ✅ USAR EL FORMATO CORRECTO PARA GRUPOS CON PROGRAMACIÓN
+    //         const assignData = {
+    //           id_operation: operationId,
+    //           workersWithSchedule: [{
+    //             workerIds: connectOp.workerIds.map(id => Number(id)),
+    //             dateStart: connectOp.dateStart || null,
+    //             dateEnd: connectOp.dateEnd || null,
+    //             timeStart: connectOp.timeStart || null,
+    //             timeEnd: connectOp.timeEnd || null,
+    //             id_task: connectOp.id_task || null,
+    //             id_subtask: connectOp.id_subtask || null,
+    //             id_tariff: connectOp.id_tariff || null,
+    //             // ✅ NO incluir id_group para que se genere uno nuevo automáticamente
+    //           }]
+    //         };
 
-  //           console.log(`[OperationService] Datos para asignar trabajador ${workerId}:`, assignData);
-  //           const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
-  //           console.log(`[OperationService] Trabajador ${workerId} asignado exitosamente:`, assignResult);
-  //         }
-  //       }
-  //     } catch (error) {
-  //       console.error(`[OperationService] Error procesando conexión:`, error);
-  //       throw new BadRequestException(`Error procesando conexión: ${(error as Error).message}`);
-  //     }
-  //   }
-  // }
-//------------------------------------- FUNCIONando CORRECTAMENTE DESDE AQUÍ -----------------------------
-  // // 2. CONECTAR/AGREGAR NUEVOS TRABAJADORES - ✅ CORREGIR AQUÍ
-  // if (workersOps.connect && workersOps.connect.length > 0) { 
-  //   console.log('[OperationService] Agregando trabajadores:', workersOps.connect);
-    
-  //   for (const connectOp of workersOps.connect) {
-  //     console.log('[OperationService] Procesando conexión:', connectOp);
-      
-  //     // ✅ VERIFICAR QUE workerIds EXISTE Y ES UN ARRAY
-  //     if (!connectOp.workerIds || !Array.isArray(connectOp.workerIds)) {
-  //       console.error('[OperationService] workerIds no encontrado o no es array:', connectOp);
-  //       throw new BadRequestException('workerIds debe ser un array válido en la operación connect');
-  //     }
+    //         console.log('[OperationService] Datos para crear nuevo grupo:', assignData);
+    //         const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
+    //         console.log('[OperationService] Nuevo grupo creado exitosamente:', assignResult);
 
-  //     try {
-  //       // ✅ VERIFICAR SI ES UN NUEVO GRUPO O ASIGNACIÓN SIMPLE
-  //       if (connectOp.isNewGroup) {
-  //         console.log('[OperationService] Creando NUEVO GRUPO para trabajadores:', connectOp.workerIds);
-          
-  //         // ✅ USAR EL FORMATO CORRECTO PARA GRUPOS CON PROGRAMACIÓN
-  //         const assignData = {
-  //           id_operation: operationId,
-  //           workersWithSchedule: [{
-  //             workerIds: connectOp.workerIds.map(id => Number(id)),
-  //             dateStart: connectOp.dateStart,
-  //             dateEnd: connectOp.dateEnd || null,
-  //             timeStart: connectOp.timeStart,
-  //             timeEnd: connectOp.timeEnd || null,
-  //             id_task: connectOp.id_task,
-  //             id_subtask: connectOp.id_subtask,
-  //             id_tariff: connectOp.id_tariff,
-  //           }]
-  //         };
+    //       } else {
+    //         console.log('[OperationService] Asignando trabajadores SIN grupo específico:', connectOp.workerIds);
 
-  //         console.log('[OperationService] Datos para crear nuevo grupo:', assignData);
-  //         const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
-  //         console.log('[OperationService] Nuevo grupo creado exitosamente:', assignResult);
-          
-  //       } else {
-  //         console.log('[OperationService] Asignando trabajadores SIN grupo específico:', connectOp.workerIds);
-          
-  //         // ✅ ASIGNACIÓN SIMPLE (SIN GRUPO) - PROCESAR CADA TRABAJADOR INDIVIDUALMENTE
-  //         for (const workerId of connectOp.workerIds) {
-  //           // ✅ VALIDAR QUE EL ID SEA VÁLIDO
-  //           if (!workerId || isNaN(Number(workerId))) {
-  //             console.error('[OperationService] ID de trabajador inválido:', workerId);
-  //             throw new BadRequestException(`ID de trabajador inválido: ${workerId}`);
-  //           }
+    //         // ✅ ASIGNACIÓN SIMPLE (SIN GRUPO) - PROCESAR CADA TRABAJADOR INDIVIDUALMENTE
+    //         for (const workerId of connectOp.workerIds) {
+    //           // ✅ VALIDAR QUE EL ID SEA VÁLIDO
+    //           if (!workerId || isNaN(Number(workerId))) {
+    //             console.error('[OperationService] ID de trabajador inválido:', workerId);
+    //             throw new BadRequestException(`ID de trabajador inválido: ${workerId}`);
+    //           }
 
-  //           console.log(`[OperationService] Procesando trabajador ID: ${workerId}`);
+    //           console.log(`[OperationService] Procesando trabajador ID: ${workerId}`);
 
-  //           // ✅ CREAR EL OBJETO PARA ASIGNAR TRABAJADOR SIMPLE
-  //           const assignData = {
-  //             id_operation: operationId,
-  //             workerIds: [Number(workerId)], // ✅ Usar array de IDs para asignación simple
-  //           };
+    //           // ✅ CREAR EL OBJETO PARA ASIGNAR TRABAJADOR SIMPLE
+    //           const assignData = {
+    //             id_operation: operationId,
+    //             workerIds: [Number(workerId)], // ✅ Usar array de IDs para asignación simple
+    //           };
 
-  //           console.log(`[OperationService] Datos para asignar trabajador ${workerId}:`, assignData);
-  //           const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
-  //           console.log(`[OperationService] Trabajador ${workerId} asignado exitosamente:`, assignResult);
-  //         }
-  //       }
-  //     } catch (error) {
-  //       console.error(`[OperationService] Error procesando conexión:`, error);
-  //       throw new BadRequestException(`Error procesando conexión: ${(error as Error).message}`);
-  //     }
-  //   }
-  // }
+    //           console.log(`[OperationService] Datos para asignar trabajador ${workerId}:`, assignData);
+    //           const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
+    //           console.log(`[OperationService] Trabajador ${workerId} asignado exitosamente:`, assignResult);
+    //         }
+    //       }
+    //     } catch (error) {
+    //       console.error(`[OperationService] Error procesando conexión:`, error);
+    //       throw new BadRequestException(`Error procesando conexión: ${(error as Error).message}`);
+    //     }
+    //   }
+    // }
+    //------------------------------------- FUNCIONando CORRECTAMENTE DESDE AQUÍ -----------------------------
+    // // 2. CONECTAR/AGREGAR NUEVOS TRABAJADORES - ✅ CORREGIR AQUÍ
+    // if (workersOps.connect && workersOps.connect.length > 0) { 
+    //   console.log('[OperationService] Agregando trabajadores:', workersOps.connect);
 
-   // 2. CONECTAR/AGREGAR NUEVOS TRABAJADORES
-  if (workersOps.connect && workersOps.connect.length > 0) { 
-    // console.log('[OperationService] Agregando trabajadores:', workersOps.connect);
-    
-    for (const connectOp of workersOps.connect) {
-      // console.log('[OperationService] Procesando conexión:', connectOp);
-      
-      // ✅ VERIFICAR QUE workerIds EXISTE Y ES UN ARRAY
-      if (!connectOp.workerIds || !Array.isArray(connectOp.workerIds)) {
-        console.error('[OperationService] workerIds no encontrado o no es array:', connectOp);
-        throw new BadRequestException('workerIds debe ser un array válido en la operación connect');
-      }
+    //   for (const connectOp of workersOps.connect) {
+    //     console.log('[OperationService] Procesando conexión:', connectOp);
 
-      // ✅ DETECTAR SI ES UN groupId TEMPORAL (MÓVIL)
-      const isTemporaryGroupId = connectOp.groupId && connectOp.groupId.startsWith('temp_');
-      const isNewGroup = connectOp.isNewGroup === true;
-      const isRealExistingGroup = connectOp.groupId && !isTemporaryGroupId && !isNewGroup;
-      
-  
+    //     // ✅ VERIFICAR QUE workerIds EXISTE Y ES UN ARRAY
+    //     if (!connectOp.workerIds || !Array.isArray(connectOp.workerIds)) {
+    //       console.error('[OperationService] workerIds no encontrado o no es array:', connectOp);
+    //       throw new BadRequestException('workerIds debe ser un array válido en la operación connect');
+    //     }
 
-      try {
-        if (isTemporaryGroupId && isNewGroup) {
-          // ✅ CASO MÓVIL: DELEGAR A assignWorkersToOperation
-          // console.log('[OperationService] 📱 MÓVIL: Delegando creación de nuevo grupo a assignWorkersToOperation');
-          
-          const assignData = {
-            id_operation: operationId,
-            workersWithSchedule: [{
-              workerIds: connectOp.workerIds.map(id => Number(id)),
-              dateStart: connectOp.dateStart,
-              dateEnd: connectOp.dateEnd || null,
-              timeStart: connectOp.timeStart,
-              timeEnd: connectOp.timeEnd || null,
-              id_task: connectOp.id_task,
-              id_subtask: connectOp.id_subtask,
-              id_tariff: connectOp.id_tariff,
-              observation: connectOp.observation, // ✅ AGREGAR OBSERVATION
-              // ✅ NO incluir id_group - Se genera automáticamente
-            }]
-          };
+    //     try {
+    //       // ✅ VERIFICAR SI ES UN NUEVO GRUPO O ASIGNACIÓN SIMPLE
+    //       if (connectOp.isNewGroup) {
+    //         console.log('[OperationService] Creando NUEVO GRUPO para trabajadores:', connectOp.workerIds);
 
-          // console.log('[OperationService] Datos para nuevo grupo (móvil):', assignData);
-          const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
-          // console.log('[OperationService] Nuevo grupo creado desde móvil:', assignResult);
+    //         // ✅ USAR EL FORMATO CORRECTO PARA GRUPOS CON PROGRAMACIÓN
+    //         const assignData = {
+    //           id_operation: operationId,
+    //           workersWithSchedule: [{
+    //             workerIds: connectOp.workerIds.map(id => Number(id)),
+    //             dateStart: connectOp.dateStart,
+    //             dateEnd: connectOp.dateEnd || null,
+    //             timeStart: connectOp.timeStart,
+    //             timeEnd: connectOp.timeEnd || null,
+    //             id_task: connectOp.id_task,
+    //             id_subtask: connectOp.id_subtask,
+    //             id_tariff: connectOp.id_tariff,
+    //           }]
+    //         };
 
-        } else if (isRealExistingGroup) {
-          // ✅ CASO: AGREGAR A GRUPO EXISTENTE REAL
-          // console.log('[OperationService] 🔗 Agregando a grupo existente real:', connectOp.groupId);
-          
-          // ✅ OBTENER VALORES DEL GRUPO EXISTENTE PARA HEREDARLOS
-          const existingGroupWorker = await this.prisma.operation_Worker.findFirst({
-            where: {
-              id_operation: operationId,
-              id_group: connectOp.groupId,
-            },
-            include: {
-              tariff: true,
-            },
-          });
+    //         console.log('[OperationService] Datos para crear nuevo grupo:', assignData);
+    //         const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
+    //         console.log('[OperationService] Nuevo grupo creado exitosamente:', assignResult);
 
-         
+    //       } else {
+    //         console.log('[OperationService] Asignando trabajadores SIN grupo específico:', connectOp.workerIds);
 
-          // const assignData = {
-          //   id_operation: operationId,
-          //   workersWithSchedule: [{
-          //     workerIds: connectOp.workerIds.map(id => Number(id)),
-          //     id_group: connectOp.groupId, // ✅ USAR GRUPO EXISTENTE
-          //     dateStart: connectOp.dateStart,
-          //     dateEnd: connectOp.dateEnd || null,
-          //     timeStart: connectOp.timeStart,
-          //     timeEnd: connectOp.timeEnd || null,
-          //     id_task: connectOp.id_task,
-          //     id_subtask: connectOp.id_subtask,
-          //     id_tariff: connectOp.id_tariff,
-          //   }]
-          // };
+    //         // ✅ ASIGNACIÓN SIMPLE (SIN GRUPO) - PROCESAR CADA TRABAJADOR INDIVIDUALMENTE
+    //         for (const workerId of connectOp.workerIds) {
+    //           // ✅ VALIDAR QUE EL ID SEA VÁLIDO
+    //           if (!workerId || isNaN(Number(workerId))) {
+    //             console.error('[OperationService] ID de trabajador inválido:', workerId);
+    //             throw new BadRequestException(`ID de trabajador inválido: ${workerId}`);
+    //           }
 
-          const assignData = {
-            id_operation: operationId,
-            workersWithSchedule: [{
-              workerIds: connectOp.workerIds.map(id => Number(id)),
-              id_group: connectOp.groupId, // ✅ USAR GRUPO EXISTENTE
-              // ✅ HEREDAR VALORES DEL GRUPO EXISTENTE
-              dateStart: connectOp.dateStart ?? existingGroupWorker?.dateStart,
-              dateEnd: connectOp.dateEnd ?? existingGroupWorker?.dateEnd,
-              timeStart: connectOp.timeStart ?? existingGroupWorker?.timeStart,
-              timeEnd: connectOp.timeEnd ?? existingGroupWorker?.timeEnd,
-              id_task: connectOp.id_task ?? existingGroupWorker?.id_task,
-              id_subtask: connectOp.id_subtask ?? existingGroupWorker?.id_subtask,
-              id_tariff: connectOp.id_tariff ?? existingGroupWorker?.id_tariff,
-              observation: connectOp.observation ?? existingGroupWorker?.observation, // ✅ AGREGAR OBSERVATION
-            }]
-          };
+    //           console.log(`[OperationService] Procesando trabajador ID: ${workerId}`);
 
-          // console.log('[OperationService] Datos para grupo existente:', assignData);
-          const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
-          // console.log('[OperationService] Agregado a grupo existente:', assignResult);
+    //           // ✅ CREAR EL OBJETO PARA ASIGNAR TRABAJADOR SIMPLE
+    //           const assignData = {
+    //             id_operation: operationId,
+    //             workerIds: [Number(workerId)], // ✅ Usar array de IDs para asignación simple
+    //           };
 
-        } else if (isNewGroup && !isTemporaryGroupId) {
-          // ✅ CASO WEB: CREAR NUEVO GRUPO SIN groupId TEMPORAL
-          // console.log('[OperationService] 🌐 WEB: Creando nuevo grupo');
-          
-          const assignData = {
-            id_operation: operationId,
-            workersWithSchedule: [{
-              workerIds: connectOp.workerIds.map(id => Number(id)),
-              dateStart: connectOp.dateStart,
-              dateEnd: connectOp.dateEnd || null,
-              timeStart: connectOp.timeStart,
-              timeEnd: connectOp.timeEnd || null,
-              id_task: connectOp.id_task,
-              id_subtask: connectOp.id_subtask,
-              id_tariff: connectOp.id_tariff,
-              observation: connectOp.observation, // ✅ AGREGAR OBSERVATION
-            }]
-          };
+    //           console.log(`[OperationService] Datos para asignar trabajador ${workerId}:`, assignData);
+    //           const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
+    //           console.log(`[OperationService] Trabajador ${workerId} asignado exitosamente:`, assignResult);
+    //         }
+    //       }
+    //     } catch (error) {
+    //       console.error(`[OperationService] Error procesando conexión:`, error);
+    //       throw new BadRequestException(`Error procesando conexión: ${(error as Error).message}`);
+    //     }
+    //   }
+    // }
 
-          // console.log('[OperationService] Datos para nuevo grupo (web):', assignData);
-          const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
-          // console.log('[OperationService] Nuevo grupo creado desde web:', assignResult);
+    // 2. CONECTAR/AGREGAR NUEVOS TRABAJADORES
+    if (workersOps.connect && workersOps.connect.length > 0) {
+      // console.log('[OperationService] Agregando trabajadores:', workersOps.connect);
 
-        } else {
-          // ✅ CASO: ASIGNACIÓN SIMPLE SIN GRUPO
-          // console.log('[OperationService] ➕ Asignación simple sin grupo específico');
-          
-          for (const workerId of connectOp.workerIds) {
-            if (!workerId || isNaN(Number(workerId))) {
-              console.error('[OperationService] ID de trabajador inválido:', workerId);
-              throw new BadRequestException(`ID de trabajador inválido: ${workerId}`);
-            }
+      for (const connectOp of workersOps.connect) {
+        // console.log('[OperationService] Procesando conexión:', connectOp);
+
+        // ✅ VERIFICAR QUE workerIds EXISTE Y ES UN ARRAY
+        if (!connectOp.workerIds || !Array.isArray(connectOp.workerIds)) {
+          console.error('[OperationService] workerIds no encontrado o no es array:', connectOp);
+          throw new BadRequestException('workerIds debe ser un array válido en la operación connect');
+        }
+
+        // ✅ DETECTAR SI ES UN groupId TEMPORAL (MÓVIL)
+        const isTemporaryGroupId = connectOp.groupId && connectOp.groupId.startsWith('temp_');
+        const isNewGroup = connectOp.isNewGroup === true;
+        const isRealExistingGroup = connectOp.groupId && !isTemporaryGroupId && !isNewGroup;
+
+
+
+        try {
+          if (isTemporaryGroupId && isNewGroup) {
+            // ✅ CASO MÓVIL: DELEGAR A assignWorkersToOperation
+            // console.log('[OperationService] 📱 MÓVIL: Delegando creación de nuevo grupo a assignWorkersToOperation');
 
             const assignData = {
               id_operation: operationId,
-              workerIds: [Number(workerId)],
+              workersWithSchedule: [{
+                workerIds: connectOp.workerIds.map(id => Number(id)),
+                dateStart: connectOp.dateStart,
+                dateEnd: connectOp.dateEnd || null,
+                timeStart: connectOp.timeStart,
+                timeEnd: connectOp.timeEnd || null,
+                id_task: connectOp.id_task,
+                id_subtask: connectOp.id_subtask,
+                id_tariff: connectOp.id_tariff,
+                observation: connectOp.observation, // ✅ AGREGAR OBSERVATION
+                // ✅ NO incluir id_group - Se genera automáticamente
+              }]
             };
 
-            // console.log(`[OperationService] Asignación simple trabajador ${workerId}:`, assignData);
+            // console.log('[OperationService] Datos para nuevo grupo (móvil):', assignData);
             const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
-            // console.log(`[OperationService] Trabajador ${workerId} asignado:`, assignResult);
+            // console.log('[OperationService] Nuevo grupo creado desde móvil:', assignResult);
+
+          } else if (isRealExistingGroup) {
+            // ✅ CASO: AGREGAR A GRUPO EXISTENTE REAL
+            // console.log('[OperationService] 🔗 Agregando a grupo existente real:', connectOp.groupId);
+
+            // ✅ OBTENER VALORES DEL GRUPO EXISTENTE PARA HEREDARLOS
+            const existingGroupWorker = await this.prisma.operation_Worker.findFirst({
+              where: {
+                id_operation: operationId,
+                id_group: connectOp.groupId,
+              },
+              include: {
+                tariff: true,
+              },
+            });
+
+
+
+            // const assignData = {
+            //   id_operation: operationId,
+            //   workersWithSchedule: [{
+            //     workerIds: connectOp.workerIds.map(id => Number(id)),
+            //     id_group: connectOp.groupId, // ✅ USAR GRUPO EXISTENTE
+            //     dateStart: connectOp.dateStart,
+            //     dateEnd: connectOp.dateEnd || null,
+            //     timeStart: connectOp.timeStart,
+            //     timeEnd: connectOp.timeEnd || null,
+            //     id_task: connectOp.id_task,
+            //     id_subtask: connectOp.id_subtask,
+            //     id_tariff: connectOp.id_tariff,
+            //   }]
+            // };
+
+            const assignData = {
+              id_operation: operationId,
+              workersWithSchedule: [{
+                workerIds: connectOp.workerIds.map(id => Number(id)),
+                id_group: connectOp.groupId, // ✅ USAR GRUPO EXISTENTE
+                // ✅ HEREDAR VALORES DEL GRUPO EXISTENTE
+                dateStart: connectOp.dateStart ?? existingGroupWorker?.dateStart,
+                dateEnd: connectOp.dateEnd ?? existingGroupWorker?.dateEnd,
+                timeStart: connectOp.timeStart ?? existingGroupWorker?.timeStart,
+                timeEnd: connectOp.timeEnd ?? existingGroupWorker?.timeEnd,
+                id_task: connectOp.id_task ?? existingGroupWorker?.id_task,
+                id_subtask: connectOp.id_subtask ?? existingGroupWorker?.id_subtask,
+                id_tariff: connectOp.id_tariff ?? existingGroupWorker?.id_tariff,
+                observation: connectOp.observation ?? existingGroupWorker?.observation, // ✅ AGREGAR OBSERVATION
+              }]
+            };
+
+            // console.log('[OperationService] Datos para grupo existente:', assignData);
+            const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
+            // console.log('[OperationService] Agregado a grupo existente:', assignResult);
+
+          } else if (isNewGroup && !isTemporaryGroupId) {
+            // ✅ CASO WEB: CREAR NUEVO GRUPO SIN groupId TEMPORAL
+            // console.log('[OperationService] 🌐 WEB: Creando nuevo grupo');
+
+            const assignData = {
+              id_operation: operationId,
+              workersWithSchedule: [{
+                workerIds: connectOp.workerIds.map(id => Number(id)),
+                dateStart: connectOp.dateStart,
+                dateEnd: connectOp.dateEnd || null,
+                timeStart: connectOp.timeStart,
+                timeEnd: connectOp.timeEnd || null,
+                id_task: connectOp.id_task,
+                id_subtask: connectOp.id_subtask,
+                id_tariff: connectOp.id_tariff,
+                observation: connectOp.observation, // ✅ AGREGAR OBSERVATION
+              }]
+            };
+
+            // console.log('[OperationService] Datos para nuevo grupo (web):', assignData);
+            const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
+            // console.log('[OperationService] Nuevo grupo creado desde web:', assignResult);
+
+          } else {
+            // ✅ CASO: ASIGNACIÓN SIMPLE SIN GRUPO
+            // console.log('[OperationService] ➕ Asignación simple sin grupo específico');
+
+            for (const workerId of connectOp.workerIds) {
+              if (!workerId || isNaN(Number(workerId))) {
+                console.error('[OperationService] ID de trabajador inválido:', workerId);
+                throw new BadRequestException(`ID de trabajador inválido: ${workerId}`);
+              }
+
+              const assignData = {
+                id_operation: operationId,
+                workerIds: [Number(workerId)],
+              };
+
+              // console.log(`[OperationService] Asignación simple trabajador ${workerId}:`, assignData);
+              const assignResult = await this.operationWorkerService.assignWorkersToOperation(assignData);
+              // console.log(`[OperationService] Trabajador ${workerId} asignado:`, assignResult);
+            }
           }
+        } catch (error) {
+          console.error(`[OperationService] Error procesando conexión:`, (error as Error).message);
+          throw new BadRequestException(`Error procesando conexión: ${(error as Error).message}`);
         }
-      } catch (error) {
-        console.error(`[OperationService] Error procesando conexión:`, (error as Error).message);
-        throw new BadRequestException(`Error procesando conexión: ${(error as Error).message}`);
       }
     }
-  }
 
-//------------------------------------- HASTA AQUÍ FUNCIONANDO CORRECTAMENTE -----------------------------
+    //------------------------------------- HASTA AQUÍ FUNCIONANDO CORRECTAMENTE -----------------------------
 
-  // 3. ACTUALIZAR TRABAJADORES EXISTENTES
+    // 3. ACTUALIZAR TRABAJADORES EXISTENTES
 
-  //------------------------------------- FUNCIONando CORRECTAMENTE DESDE AQUÍ -----------------------------
+    //------------------------------------- FUNCIONando CORRECTAMENTE DESDE AQUÍ -----------------------------
 
-  if (workersOps.update && workersOps.update.length > 0) {
-    // console.log('[OperationService] ===== PROCESANDO UPDATE WORKERS =====');
-    // console.log('[OperationService] workersOps.update:', JSON.stringify(workersOps.update, null, 2));
-    
-    const workersToUpdate = workersOps.update
-      .filter(updateOp => updateOp.id_worker && !isNaN(Number(updateOp.id_worker)))
-      .map((updateOp: any) => {
-        const mapped = {
-          id_group: updateOp.id_group,
-          workerIds: [Number(updateOp.id_worker)],
-          id_task: updateOp.id_task,
-          id_subtask: updateOp.id_subtask, // ✅ ASEGURAR QUE SE INCLUYA
-          id_tariff: updateOp.id_tariff,
-          dateStart: updateOp.dateStart,
-          dateEnd: updateOp.dateEnd,
-          timeStart: updateOp.timeStart,
-          timeEnd: updateOp.timeEnd,
-          observation: updateOp.observation, // ✅ AGREGAR OBSERVATION
-        };
+    if (workersOps.update && workersOps.update.length > 0) {
+      // console.log('[OperationService] ===== PROCESANDO UPDATE WORKERS =====');
+      // console.log('[OperationService] workersOps.update:', JSON.stringify(workersOps.update, null, 2));
 
-        // console.log(`[OperationService] Worker ${updateOp.id_worker} mapeado:`, {
-        //   id_task: mapped.id_task,
-        //   id_subtask: mapped.id_subtask, // ✅ LOG ESPECÍFICO
-        //   id_tariff: mapped.id_tariff
-        // });
+      const workersToUpdate = workersOps.update
+        .filter(updateOp => updateOp.id_worker && !isNaN(Number(updateOp.id_worker)))
+        .map((updateOp: any) => {
+          const mapped = {
+            id_group: updateOp.id_group,
+            workerIds: [Number(updateOp.id_worker)],
+            id_task: updateOp.id_task,
+            id_subtask: updateOp.id_subtask, // ✅ ASEGURAR QUE SE INCLUYA
+            id_tariff: updateOp.id_tariff,
+            dateStart: updateOp.dateStart,
+            dateEnd: updateOp.dateEnd,
+            timeStart: updateOp.timeStart,
+            timeEnd: updateOp.timeEnd,
+            observation: updateOp.observation, // ✅ AGREGAR OBSERVATION
+          };
 
-        return mapped;
-      });
+          // console.log(`[OperationService] Worker ${updateOp.id_worker} mapeado:`, {
+          //   id_task: mapped.id_task,
+          //   id_subtask: mapped.id_subtask, // ✅ LOG ESPECÍFICO
+          //   id_tariff: mapped.id_tariff
+          // });
 
-    // console.log('[OperationService] ===== WORKERS PREPARADOS PARA ACTUALIZAR =====');
-    // workersToUpdate.forEach((worker, index) => {
-    //   console.log(`Worker ${index + 1}:`, {
-    //     id_group: worker.id_group,
-    //     workerIds: worker.workerIds,
-    //     id_task: worker.id_task,
-    //     id_subtask: worker.id_subtask, // ✅ VERIFICAR QUE ESTÉ AQUÍ
-    //     id_tariff: worker.id_tariff
-    //   });
-    // });
+          return mapped;
+        });
 
-    if (workersToUpdate.length > 0) {
-      try {
-        const updateResult = await this.operationWorkerService.updateWorkersSchedule(
-          operationId,
-          workersToUpdate
-        );
-        // console.log('[OperationService] Resultado actualización:', updateResult);
-      } catch (error) {
-        console.error('[OperationService] Error actualizando trabajadores en la operación:', (error as Error).message);
-        throw error;
+      // console.log('[OperationService] ===== WORKERS PREPARADOS PARA ACTUALIZAR =====');
+      // workersToUpdate.forEach((worker, index) => {
+      //   console.log(`Worker ${index + 1}:`, {
+      //     id_group: worker.id_group,
+      //     workerIds: worker.workerIds,
+      //     id_task: worker.id_task,
+      //     id_subtask: worker.id_subtask, // ✅ VERIFICAR QUE ESTÉ AQUÍ
+      //     id_tariff: worker.id_tariff
+      //   });
+      // });
+
+      if (workersToUpdate.length > 0) {
+        try {
+          const updateResult = await this.operationWorkerService.updateWorkersSchedule(
+            operationId,
+            workersToUpdate
+          );
+          // console.log('[OperationService] Resultado actualización:', updateResult);
+        } catch (error) {
+          console.error('[OperationService] Error actualizando trabajadores en la operación:', (error as Error).message);
+          throw error;
+        }
       }
     }
+
+
+
+    //------------------------------------- HASTA AQUÍ FUNCIONANDO CORRECTAMENTE -----------------------------
   }
-
-
-
-  //------------------------------------- HASTA AQUÍ FUNCIONANDO CORRECTAMENTE -----------------------------
-}
 
   /**
    * Inicializa manualmente las operaciones pendientes que ya deberían estar en progreso
@@ -1860,15 +3585,15 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
   async initializePendingOperations() {
     try {
       // console.log('[OperationService] Inicializando operaciones pendientes manualmente...');
-      
+
       // Importar dinámicamente UpdateOperationService para evitar dependencia circular
       const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
       const updateOperationService = this.moduleRef.get(UpdateOperationService, { strict: false });
-      
+
       const result = await updateOperationService.updateInProgressOperations();
-      
+
       // console.log(`[OperationService] ✅ Resultado de inicialización manual: ${result.updatedCount} operaciones actualizadas`);
-      
+
       return {
         message: `${result.updatedCount} operaciones inicializadas exitosamente`,
         updatedCount: result.updatedCount,
@@ -1933,7 +3658,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
     for (const group of groups) {
       const { groupId, dateEnd, timeEnd, observation } = group;
-      
+
       if (!groupId) {
         console.warn('[OperationService] Grupo sin groupId, saltando:', group);
         continue;
@@ -1945,12 +3670,12 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
       try {
         // Preparar datos de actualización
         const updateData: any = {};
-        
+
         if (dateEnd) {
           updateData.dateEnd = new Date(dateEnd);
           // console.log(`[OperationService] Estableciendo dateEnd: ${updateData.dateEnd}`);
         }
-        
+
         if (timeEnd) {
           updateData.timeEnd = timeEnd;
           // console.log(`[OperationService] Estableciendo timeEnd: ${timeEnd}`);
@@ -1972,7 +3697,7 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
           });
 
           // console.log(`[OperationService] Grupo ${groupId} finalizado. Trabajadores afectados: ${result.count}`);
-        } 
+        }
         // else {
         //   console.log(`[OperationService] No hay datos de finalización para grupo ${groupId}`);
         // }
@@ -1981,18 +3706,18 @@ const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
         throw new BadRequestException(`Error finalizando grupo ${groupId}: ${(error as Error).message}`);
       }
     }
-    
+
     // console.log('[OperationService] ===== FINALIZACIÓN DE GRUPOS COMPLETADA =====');
   }
 
   //   // Método para obtener operaciones por trabajador (trabajadores asignados a una operación específica)
-async findByWorker(
-  idWorker: number,
-  idSite?: number,
-  page = 1,
-  limit?: number, // <- opcional (sin límite cuando viene undefined)
-  statuses: string[] = [ 'INPROGRESS'],
-) {
-  return this.finderService.findByWorker(idWorker, idSite, page, limit, statuses);
-}
+  async findByWorker(
+    idWorker: number,
+    idSite?: number,
+    page = 1,
+    limit?: number, // <- opcional (sin límite cuando viene undefined)
+    statuses: string[] = ['INPROGRESS'],
+  ) {
+    return this.finderService.findByWorker(idWorker, idSite, page, limit, statuses);
+  }
 }

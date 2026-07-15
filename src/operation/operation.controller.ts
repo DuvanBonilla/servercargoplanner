@@ -1,18 +1,21 @@
-import {Controller,Get,Post,Body,Patch,Param,Delete,UsePipes,NotFoundException,
-  UseGuards,Query,  Res,  BadRequestException,  ValidationPipe,  ConflictException,  UseInterceptors,
-  ForbiddenException,  ParseEnumPipe,
-  StreamableFile,} from '@nestjs/common';
+import {
+  Controller, Get, Post, Body, Patch, Param, Delete, UsePipes, NotFoundException,
+  UseGuards, Query, Res, Req, BadRequestException, ValidationPipe, ConflictException, UseInterceptors,
+  ForbiddenException, ParseEnumPipe,
+  StreamableFile,
+} from '@nestjs/common';
 import { OperationService } from './operation.service';
 import { Response } from 'express';
+import { Request } from 'express';
 import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { ParseIntPipe } from 'src/pipes/parse-int/parse-int.pipe';
 import { DateTransformPipe } from 'src/pipes/date-transform/date-transform.pipe';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { Role, StatusOperation } from '@prisma/client';
-// import { ExcelExportService } from 'src/common/validation/services/excel-export.service';
+import { Public } from 'src/auth/decorators/public.decorator';
 import { OperationFilterDto } from './dto/fliter-operation.dto';
 import { PaginatedOperationQueryDto } from './dto/paginated-operation-query.dto';
 import { BooleanTransformPipe } from 'src/pipes/boolean-transform/boolean-transform.pipe';
@@ -25,6 +28,11 @@ import { getColombianDateTime } from 'src/common/utils/dateColombia';
 import { WorkerHoursReportQueryDto } from './dto/worker-hours-report-query.dto';
 import { OperationExportService } from './services/operation-export.service';
 import { ExportOperationsDto, ExportReportType } from './dto/export-operations.dto';
+import { ResubmitOperationDto } from './dto/resubmit-operation.dto';
+import { ConfirmOperationDto } from './dto/confirm-operation.dto';
+import { SendConfirmationEmailDto } from './dto/send-confirmation-email.dto';
+import { TokenPreviewDto } from './dto/token-preview.dto';
+import { SubmitRadicadoDto } from './dto/submit-radicado.dto';
 // import { OperationsCronService } from 'src/cron-job/cron-job.service';
 @Controller('operation')
 @UseInterceptors(SiteInterceptor)
@@ -36,7 +44,7 @@ export class OperationController {
     private readonly operationService: OperationService,
     private readonly workerAnalyticsService: WorkerAnalyticsService,
     private readonly operationExportService: OperationExportService,
-  ) {}
+  ) { }
 
   // @Post()
   // @UsePipes(new DateTransformPipe())
@@ -67,47 +75,47 @@ export class OperationController {
   //   return response;
   // }
 
-@Post()
-@UsePipes(new DateTransformPipe())
-@UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
-async create(
-  @Body() createOperationDto: CreateOperationDto,
-  @CurrentUser('siteId') siteId: number,
-  @CurrentUser('subsiteId') subsiteId: number,
-  @CurrentUser('userId') userId: number,
-) {
-  
-// console.log('Body crudo recibido:', arguments[0]);
-  // LOG para ver lo que llega del frontend
-  // console.log('DTO recibido en controlador:', createOperationDto);
-  createOperationDto.id_user = userId;
+  @Post()
+  @UsePipes(new DateTransformPipe())
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async create(
+    @Body() createOperationDto: CreateOperationDto,
+    @CurrentUser('siteId') siteId: number,
+    @CurrentUser('subsiteId') subsiteId: number,
+    @CurrentUser('userId') userId: number,
+  ) {
 
-  if (typeof createOperationDto.id_site === 'undefined' || createOperationDto.id_site === null) {
-    createOperationDto.id_site = siteId;
+    // console.log('Body crudo recibido:', arguments[0]);
+    // LOG para ver lo que llega del frontend
+    // console.log('DTO recibido en controlador:', createOperationDto);
+    createOperationDto.id_user = userId;
+
+    if (typeof createOperationDto.id_site === 'undefined' || createOperationDto.id_site === null) {
+      createOperationDto.id_site = siteId;
+    }
+
+    // Si el frontend NO envía id_subsite, usa el del usuario (puede ser null)
+    if (typeof createOperationDto.id_subsite === 'undefined' || createOperationDto.id_subsite === null) {
+      createOperationDto.id_subsite = subsiteId;
+    }
+
+    const response = await this.operationService.createWithWorkers(
+      createOperationDto,
+      createOperationDto.id_subsite,
+      createOperationDto.id_site,
+    );
+
+    if (response['status'] === 404) {
+      throw new NotFoundException(response['message']);
+    } else if (response['status'] === 409) {
+      throw new ConflictException(response['message']);
+    } else if (response['status'] === 400) {
+      throw new BadRequestException(response['message']);
+    } else if (response['status'] === 403) {
+      throw new ForbiddenException(response['message']);
+    }
+    return response;
   }
-
-  // Si el frontend NO envía id_subsite, usa el del usuario (puede ser null)
-  if (typeof createOperationDto.id_subsite === 'undefined' || createOperationDto.id_subsite === null) {
-    createOperationDto.id_subsite = subsiteId;
-  }
-
-  const response = await this.operationService.createWithWorkers(
-    createOperationDto,
-    createOperationDto.id_subsite,
-    createOperationDto.id_site,
-  );
-
-  if (response['status'] === 404) {
-    throw new NotFoundException(response['message']);
-  } else if (response['status'] === 409) {
-    throw new ConflictException(response['message']);
-  } else if (response['status'] === 400) {
-    throw new BadRequestException(response['message']);
-  } else if (response['status'] === 403) {
-    throw new ForbiddenException(response['message']);
-  }
-  return response;
-}
 
   /**
    * Inicializa manualmente las operaciones pendientes que ya deberían estar en progreso
@@ -150,10 +158,10 @@ async create(
     try {
       const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
       const updateService = this.operationService['moduleRef'].get(UpdateOperationService, { strict: false });
-      
+
       const statusBefore = updateService.getSystemStatus();
       updateService.wakeUpFromDeepSleep('Despertar manual solicitado por usuario');
-      
+
       return {
         message: 'Sistema despertado exitosamente',
         statusBefore: {
@@ -179,9 +187,9 @@ async create(
   // async wakeUpAndProcessImmediate() {
   //   try {
   //     await this.cronService.wakeUpAndProcess('Despertar inmediato solicitado desde Flutter/App');
-      
+
   //     const systemStatus = this.cronService.getSystemStatus();
-      
+
   //     return {
   //       message: '🚀 Sistema despertado y operaciones verificadas inmediatamente',
   //       timestamp: new Date().toISOString(),
@@ -209,9 +217,9 @@ async create(
   //   try {
   //     const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
   //     const updateService = this.operationService['moduleRef'].get(UpdateOperationService, { strict: false });
-      
+
   //     const result = await updateService.forceActivateStuckOperations();
-      
+
   //     return {
   //       message: '🚨 Operaciones atascadas procesadas forzadamente',
   //       timestamp: new Date().toISOString(),
@@ -248,14 +256,14 @@ async create(
       // Importar dinámicamente para evitar dependencia circular
       const { OperationsCronService } = await import('../cron-job/cron-job.service');
       const cronService = this.operationService['moduleRef'].get(OperationsCronService, { strict: false });
-      
+
       cronService.setOperationsCronEnabled(body.enabled);
-      
+
       return {
         message: `Sistema automático ${body.enabled ? 'habilitado' : 'deshabilitado'} exitosamente`,
         enabled: body.enabled,
         status: 200,
-        recommendation: body.enabled 
+        recommendation: body.enabled
           ? 'El sistema verificará operaciones automáticamente cada 5 minutos'
           : 'Usa POST /operation/initialize-pending para inicializar operaciones manualmente'
       };
@@ -263,6 +271,303 @@ async create(
       throw new BadRequestException((error as Error).message);
     }
   }
+
+  //Envia una operacion special rechazada a la aprobacion
+
+  @Post('resubmit/:id')
+  @ApiOperation({
+    summary: 'Reenviar operación especial rechazada a aprobación',
+    description:
+      'Transiciona una operación especial de REJECTED a TO_APPROVED. ' +
+      'Invalida los tokens anteriores, genera uno nuevo y reenvía el correo de confirmación al cliente. ' +
+      'Solo aplica a operaciones con tarifa isSpecial=YES en estado REJECTED.',
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la operación rechazada',
+    example: 1792,
+  })
+  @ApiResponse({ status: 200, description: 'Operación reenviada a TO_APPROVED exitosamente' })
+  @ApiResponse({ status: 400, description: 'operationId inválido' })
+  @ApiResponse({ status: 404, description: 'Operación no encontrada' })
+  @ApiResponse({ status: 409, description: 'La operación no está en estado REJECTED o no es especial' })
+  @ApiBody({ type: ResubmitOperationDto, required: false })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async resubmit(
+    @Param('id', ParseIntPipe) operationId: number,
+    @Body() body: ResubmitOperationDto,
+  ) {
+    return this.operationService.resubmitRejectedOperation(
+      operationId,
+      body?.supervisorObservation,
+    );
+  }
+
+  // @Post('complete/:id')
+  // @ApiOperation({
+  //   summary: 'Completar operacion',
+  //   description:
+  //     'Completa una operacion. Si la operacion es especial, valida que todos sus grupos ya esten finalizados (dateEnd y timeEnd) para pasar a TO_APPROVED.',
+  // })
+  // @ApiParam({
+  //   name: 'id',
+  //   type: Number,
+  //   description: 'ID de la operacion',
+  //   example: 1792,
+  // })
+  // async complete(@Param('id', ParseIntPipe) operationId: number) {
+  //   return this.operationService.completeOperation(operationId);
+  // }
+
+  @Post('confirm')
+  @Public()
+  @ApiOperation({
+    summary: 'Confirmar operacion especial',
+    description:
+      'Confirma una operacion especial con token. Use action=APPROVE para aprobar o action=REJECT para rechazar.',
+  })
+  @ApiBody({ type: ConfirmOperationDto })
+  @ApiResponse({ status: 200, description: 'Operacion confirmada exitosamente' })
+  @ApiResponse({ status: 400, description: 'Token o accion invalida' })
+  @ApiResponse({ status: 409, description: 'La operacion no esta pendiente de confirmacion' })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async confirm(@Body() body: ConfirmOperationDto, @Req() req: Request) {
+    const ipAddress = this.getClientIp(req);
+    const device = this.getSimplifiedDevice(req.get('user-agent'));
+
+    return this.operationService.confirmOperation(
+      body.token,
+      body.action,
+      ipAddress,
+      device,
+      body.clientObservation,
+      body.supervisorObservation,
+    );
+  }
+  @Post('liquidation-preview')
+  @Public()
+  @ApiOperation({
+    summary: 'Preview del portal de liquidacion por token',
+    description: 'Devuelve informacion de la operacion para el portal de liquidacion sin consumir el token.',
+  })
+  @ApiBody({ type: TokenPreviewDto })
+  @ApiResponse({ status: 200, description: 'Preview obtenido exitosamente' })
+  @ApiResponse({ status: 400, description: 'Token invalido o faltante' })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async liquidationPreview(@Body() body: TokenPreviewDto) {
+    return this.operationService.getLiquidationPreviewByToken(body.token);
+  }
+
+  @Post('submit-radicado')
+  @Public()
+  @ApiOperation({
+    summary: 'Registrar numero de radicado',
+    description: 'Registra el radicado de la operacion confirmada y activa las bills asociadas.',
+  })
+  @ApiBody({ type: SubmitRadicadoDto })
+  @ApiResponse({ status: 201, description: 'Radicado registrado exitosamente' })
+  @ApiResponse({ status: 400, description: 'Token o radicado invalido' })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async submitRadicado(@Body() body: SubmitRadicadoDto) {
+    return this.operationService.submitRadicado(body.token, body.fileCode);
+  }
+
+  @Post('confirm/preview')
+  @Public()
+  @ApiOperation({
+    summary: 'Obtener preview de operación por token',
+    description:
+      'Devuelve informacion minima para el portal de confirmacion y el estado del token sin requerir autenticacion.',
+  })
+  @ApiBody({ type: TokenPreviewDto })
+  @ApiResponse({ status: 200, description: 'Preview obtenido exitosamente' })
+  @ApiResponse({ status: 400, description: 'Token invalido o faltante' })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async confirmPreview(@Body() body: TokenPreviewDto) {
+    return this.operationService.getConfirmationPreviewByToken(body.token);
+  }
+
+  @Post('regenerate-confirmation-token/:id')
+  @ApiOperation({
+    summary: 'Regenerar token de confirmacion',
+    description:
+      'Regenera un token de confirmación para una operación especial. Invalida tokens anteriores. Útil cuando el token ha expirado o no funciona.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la operación', type: 'number' })
+  @ApiResponse({
+    status: 201,
+    description: 'Token regenerado exitosamente',
+    schema: {
+      properties: {
+        operationId: { type: 'number' },
+        link: { type: 'string', description: 'URL completa con el nuevo token' },
+        tokenTtlMinutes: { type: 'number', description: 'Minutos de validez del token' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'operationId inválido' })
+  @ApiResponse({ status: 404, description: 'Operación no encontrada' })
+  @ApiResponse({
+    status: 429,
+    description: 'Debe esperar antes de volver a regenerar el token',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'La operación no está pendiente de confirmación o no es especial',
+  })
+  async regenerateConfirmationToken(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const result = await this.operationService.regenerateConfirmationToken(
+      id,
+    );
+
+    const tokenTtlMs = result.tokenTtlMinutes * 60 * 1000;
+    const expiresAt = new Date(result.token.createdAt.getTime() + tokenTtlMs);
+
+    return {
+      operationId: result.operationId,
+      link: result.link,
+      tokenTtlMinutes: result.tokenTtlMinutes,
+      token: {
+        id: result.token.id,
+        status: result.token.status,
+        created_at: result.token.createdAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      },
+      message: `Token regenerado exitosamente. Los tokens activos anteriores fueron marcados como EXPIRED.`,
+    };
+  }
+
+  @Get(':id/confirmation-link')
+  @ApiOperation({
+    summary: 'Obtener link de confirmación para operación especial',
+    description:
+      'Retorna el link de confirmación para una operación especial que está en estado TO_APPROVED. Si la operación no tiene confirmación aún, la crea.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la operación especial' })
+  @ApiResponse({
+    status: 200,
+    description: 'Link de confirmación obtenido exitosamente',
+    schema: {
+      properties: {
+        operationId: { type: 'number' },
+        link: {
+          type: 'string',
+          description: 'Link con token embebido para confirmación',
+        },
+        status: { type: 'string', example: 'TO_APPROVED' },
+        tokenCreatedAt: {
+          type: 'string',
+          format: 'date-time',
+          description: 'Fecha de creación del token activo',
+        },
+        tokenExpiresAt: {
+          type: 'string',
+          format: 'date-time',
+          description: 'Fecha de expiración del token activo',
+        },
+        remainingSeconds: {
+          type: 'number',
+          description: 'Segundos restantes para que expire el token activo',
+        },
+        tokenStatus: {
+          type: 'string',
+          example: 'ACTIVE',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'ID de operación inválido' })
+  @ApiResponse({ status: 404, description: 'Operación no encontrada' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'La operación no es especial o no está en estado TO_APPROVED. No tiene link de confirmación.',
+  })
+  async getConfirmationLink(@Param('id', ParseIntPipe) operationId: number) {
+    return await this.operationService.getConfirmationLinkForSpecialOperation(
+      operationId,
+    );
+  }
+
+  @Post(':id/send-confirmation-email')
+  @ApiOperation({
+    summary: 'Enviar correo de confirmación de operación especial',
+    description:
+      'Envía el enlace de confirmación (sin QR) al correo destino indicado. ' +
+      'El correo se escribe manualmente por ahora. Se permite personalizar el asunto y el cuerpo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la operación especial' })
+  @ApiBody({ type: SendConfirmationEmailDto })
+  @ApiResponse({ status: 201, description: 'Correo enviado exitosamente' })
+  @ApiResponse({ status: 400, description: 'operationId o correo inválido' })
+  @ApiResponse({ status: 404, description: 'Operación no encontrada' })
+  @ApiResponse({
+    status: 409,
+    description: 'La operación no es especial o no se pudo enviar el correo',
+  })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async sendConfirmationEmail(
+    @Param('id', ParseIntPipe) operationId: number,
+    @Body() body: SendConfirmationEmailDto,
+  ) {
+    return await this.operationService.sendConfirmationEmailManually(
+      operationId,
+      body,
+    );
+  }
+
+  private getClientIp(req: Request): string | null {
+    const forwardedFor = req.headers['x-forwarded-for'];
+
+    if (Array.isArray(forwardedFor) && forwardedFor.length > 0) {
+      return forwardedFor[0].split(',')[0].trim();
+    }
+
+    if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+      return forwardedFor.split(',')[0].trim();
+    }
+
+    return req.ip || null;
+  }
+
+  private getSimplifiedDevice(userAgent?: string): string | null {
+    if (!userAgent) {
+      return null;
+    }
+
+    const ua = userAgent.toLowerCase();
+
+    const browser = ua.includes('edg/')
+      ? 'Edge'
+      : ua.includes('opr/') || ua.includes('opera')
+        ? 'Opera'
+        : ua.includes('chrome/')
+          ? 'Chrome'
+          : ua.includes('firefox/')
+            ? 'Firefox'
+            : ua.includes('safari/') && !ua.includes('chrome/')
+              ? 'Safari'
+              : 'Unknown Browser';
+
+    const os = ua.includes('windows')
+      ? 'Windows'
+      : ua.includes('android')
+        ? 'Android'
+        : ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')
+          ? 'iOS'
+          : ua.includes('mac os') || ua.includes('macintosh')
+            ? 'macOS'
+            : ua.includes('linux')
+              ? 'Linux'
+              : 'Unknown OS';
+
+    return `${browser} on ${os}`;
+  }
+
+
   @Get('pending-status')
   @ApiOperation({
     summary: 'Estado de operaciones pendientes',
@@ -276,12 +581,12 @@ async create(
     try {
       const now = new Date();
       const threeMinutesAgo = new Date(now.getTime() - 3 * 60 * 1000);
-      
+
       // Importar dinámicamente para evitar dependencia circular
       const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
       const updateService = this.operationService['moduleRef'].get(UpdateOperationService, { strict: false });
       const systemStatus = updateService.getSystemStatus();
-      
+
       // Obtener conteo de operaciones pendientes
       const totalPending = await this.operationService['prisma'].operation.count({
         where: {
@@ -369,7 +674,7 @@ async create(
     if (!Array.isArray(response)) {
       return response;
     }
- if (format === 'excel') { 
+    if (format === 'excel') {
       const { buffer, fileName } =
         await this.operationExportService.exportProgramming(response);
       res.setHeader(
@@ -653,7 +958,7 @@ async create(
 
       if (queryParams.dateEnd) {
         filters.dateEnd = queryParams.dateEnd;
-      } 
+      }
 
       if (queryParams.jobAreaId && queryParams.jobAreaId > 0) {
         filters.jobAreaId = queryParams.jobAreaId;
@@ -673,7 +978,7 @@ async create(
 
       // Validar y ajustar límite para grandes datasets
       let adjustedLimit = queryParams.limit || 10;
-      
+
       // Para evitar sobrecarga, sugerir límites menores en requests grandes
       if (adjustedLimit > 200) {
         console.warn(`Límite alto solicitado: ${adjustedLimit}. Considera usar límites menores para mejor rendimiento.`);
@@ -686,7 +991,7 @@ async create(
         filters,
         activatePaginated, // Usar el valor transformado por el pipe
       );
-      
+
       // Agregar metadatos útiles para el frontend
       if (result.pagination && result.pagination.totalItems > 20) {
         result.pagination['performanceHint'] = {
@@ -695,7 +1000,7 @@ async create(
           totalDataSizeCategory: result.pagination.totalItems > 5000 ? 'very-large' : 'large'
         };
       }
-      
+
       return result;
     } catch (error) {
       if (error instanceof BadRequestException) {
@@ -779,27 +1084,27 @@ async create(
     return response;
   }
 
-// (asignaciones de tabajadores a operaciones)Nuevo endpoint para obtener operaciones por ID de trabajador
- @Get('by-worker/:id_worker')
- @ApiOperation({ summary: 'Obtener operaciones de un trabajador específico' })
+  // (asignaciones de tabajadores a operaciones)Nuevo endpoint para obtener operaciones por ID de trabajador
+  @Get('by-worker/:id_worker')
+  @ApiOperation({ summary: 'Obtener operaciones de un trabajador específico' })
   async findOperationsByWorker(
-  @Param('id_worker', ParseIntPipe) idWorker: number,
-  @Query('page') page = '1',
-  @Query('limit') limit?: string,
-  @Query('status') status?: string,
-  @CurrentUser('siteId') siteId?: number,
-) {
-  const parsedLimit = limit ? Number(limit) : undefined;
-  const statuses = status ? status.split(',') : [ 'INPROGRESS'];
-  const response = await this.operationService.findByWorker(
-    idWorker,
-    siteId,
-    Number(page),
-    parsedLimit,
-    statuses,
-  );
-  if (response?.['status'] === 404) throw new NotFoundException(response['message']);
-  if (response?.['status'] === 403) throw new ForbiddenException(response['message']);
+    @Param('id_worker', ParseIntPipe) idWorker: number,
+    @Query('page') page = '1',
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @CurrentUser('siteId') siteId?: number,
+  ) {
+    const parsedLimit = limit ? Number(limit) : undefined;
+    const statuses = status ? status.split(',') : ['INPROGRESS'];
+    const response = await this.operationService.findByWorker(
+      idWorker,
+      siteId,
+      Number(page),
+      parsedLimit,
+      statuses,
+    );
+    if (response?.['status'] === 404) throw new NotFoundException(response['message']);
+    if (response?.['status'] === 403) throw new ForbiddenException(response['message']);
     return response;
   }
 
@@ -873,7 +1178,7 @@ async create(
     const response = await this.operationService.remove(
       id,
       isAdmin ? siteId : undefined,
-       (isSupervisor || isProgrammer)  ? subsiteId : undefined,
+      (isSupervisor || isProgrammer) ? subsiteId : undefined,
       id_group || undefined,
       userId,
     );
@@ -916,145 +1221,145 @@ async create(
     },
   })
   async removeMultipleGroups(
-      @Param('id', ParseIntPipe) id: number,
-      @Body('id_groups') id_groups: string[],
-      @CurrentUser('userId') userId: number,
-      @CurrentUser('isSupervisor') isSupervisor: number,
-      @CurrentUser('isProgrammer') isProgrammer: number,
-      @CurrentUser('isAdmin') isAdmin: number,
-      @CurrentUser('siteId') siteId: number,
-      @CurrentUser('subsiteId') subsiteId: number,
-    ) {
-      if (!id_groups || !Array.isArray(id_groups) || id_groups.length === 0) {
-        throw new BadRequestException('Se requiere un array de id_groups con al menos un elemento');
-      }
+    @Param('id', ParseIntPipe) id: number,
+    @Body('id_groups') id_groups: string[],
+    @CurrentUser('userId') userId: number,
+    @CurrentUser('isSupervisor') isSupervisor: number,
+    @CurrentUser('isProgrammer') isProgrammer: number,
+    @CurrentUser('isAdmin') isAdmin: number,
+    @CurrentUser('siteId') siteId: number,
+    @CurrentUser('subsiteId') subsiteId: number,
+  ) {
+    if (!id_groups || !Array.isArray(id_groups) || id_groups.length === 0) {
+      throw new BadRequestException('Se requiere un array de id_groups con al menos un elemento');
+    }
 
-      const response = await this.operationService.removeMultipleGroups(
-        id,
-        id_groups,
-        isAdmin ? siteId : undefined,
-        (isSupervisor || isProgrammer) ? subsiteId : undefined,
-        userId,
-      );
+    const response = await this.operationService.removeMultipleGroups(
+      id,
+      id_groups,
+      isAdmin ? siteId : undefined,
+      (isSupervisor || isProgrammer) ? subsiteId : undefined,
+      userId,
+    );
 
-      if (response['status'] === 404) {
-        throw new NotFoundException(response['message']);
-      } else if (response['status'] === 400) {
-        throw new BadRequestException(response['message']);
-      } else if (response['status'] === 403) {
-        throw new ForbiddenException(response['message']);
-      } else if (response['status'] === 207) {
-        // 207 Multi-Status: algunos grupos se eliminaron, otros no
-        return response;
-      }
-
+    if (response['status'] === 404) {
+      throw new NotFoundException(response['message']);
+    } else if (response['status'] === 400) {
+      throw new BadRequestException(response['message']);
+    } else if (response['status'] === 403) {
+      throw new ForbiddenException(response['message']);
+    } else if (response['status'] === 207) {
+      // 207 Multi-Status: algunos grupos se eliminaron, otros no
       return response;
     }
 
+    return response;
+  }
+
 
   // Nuevo endpoint para exportar operaciones
-    @Post('export')
-    @ApiOperation({
-      summary: 'Exportar operaciones en XLSX (WORKER/NORMAL)',
-    })
-    @ApiConsumes('application/x-www-form-urlencoded', 'application/json')
-    @ApiBody({
-      required: true,
-      schema: {
-        type: 'object',
-        required: ['reportType', 'dateStart', 'dateEnd'],
-        properties: {
-          reportType: {
-            type: 'string',
-            enum: ['WORKER', 'NORMAL'],
-            example: 'NORMAL',
-          },
-          dateStart: {
-            type: 'string',
-            example: '2026-03-01',
-          },
-          dateEnd: {
-            type: 'string',
-            example: '2026-03-19',
-          },
-          status: {
-            type: 'string',
-            example: 'COMPLETED',
-          },
-          jobAreaIds: {
-            type: 'string',
-            example: '1,2,3',
-          },
-          inChargedId: {
-            type: 'number',
-            example: 10,
-          },
-          search: {
-            type: 'string',
-            example: 'muelle norte',
-          },
+  @Post('export')
+  @ApiOperation({
+    summary: 'Exportar operaciones en XLSX (WORKER/NORMAL)',
+  })
+  @ApiConsumes('application/x-www-form-urlencoded', 'application/json')
+  @ApiBody({
+    required: true,
+    schema: {
+      type: 'object',
+      required: ['reportType', 'dateStart', 'dateEnd'],
+      properties: {
+        reportType: {
+          type: 'string',
+          enum: ['WORKER', 'NORMAL'],
+          example: 'NORMAL',
+        },
+        dateStart: {
+          type: 'string',
+          example: '2026-03-01',
+        },
+        dateEnd: {
+          type: 'string',
+          example: '2026-03-19',
+        },
+        status: {
+          type: 'string',
+          example: 'COMPLETED',
+        },
+        jobAreaIds: {
+          type: 'string',
+          example: '1,2,3',
+        },
+        inChargedId: {
+          type: 'number',
+          example: 10,
+        },
+        search: {
+          type: 'string',
+          example: 'muelle norte',
         },
       },
-    })
-    @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
-    async exportOperations(
-      @Body() body: any,
-      @Body('reportType', new ParseEnumPipe(ExportReportType))
-      reportType: ExportReportType,
-      @Body('dateStart') dateStart: string,
-      @Body('dateEnd') dateEnd: string,
-      @CurrentUser() user: any,
-      @CurrentUser('userId') userIdClaim: number,
-      @CurrentUser('siteId') siteIdClaim: number,
-      @CurrentUser('subsiteId') subsiteIdClaim: number,
-    ): Promise<StreamableFile> {
-      const userId = userIdClaim ?? user?.userId ?? user?.id;
-      const siteId = siteIdClaim ?? user?.siteId;
-      const subsiteId = subsiteIdClaim ?? user?.subsiteId;
+    },
+  })
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async exportOperations(
+    @Body() body: any,
+    @Body('reportType', new ParseEnumPipe(ExportReportType))
+    reportType: ExportReportType,
+    @Body('dateStart') dateStart: string,
+    @Body('dateEnd') dateEnd: string,
+    @CurrentUser() user: any,
+    @CurrentUser('userId') userIdClaim: number,
+    @CurrentUser('siteId') siteIdClaim: number,
+    @CurrentUser('subsiteId') subsiteIdClaim: number,
+  ): Promise<StreamableFile> {
+    const userId = userIdClaim ?? user?.userId ?? user?.id;
+    const siteId = siteIdClaim ?? user?.siteId;
+    const subsiteId = subsiteIdClaim ?? user?.subsiteId;
 
-      const normalizeStringArray = (value: unknown): string[] | undefined => {
-        if (!value) return undefined;
-        if (Array.isArray(value)) return value.map(String);
-        if (typeof value === 'string') return value.split(',').map(v => v.trim());
-        return undefined;
-      };
+    const normalizeStringArray = (value: unknown): string[] | undefined => {
+      if (!value) return undefined;
+      if (Array.isArray(value)) return value.map(String);
+      if (typeof value === 'string') return value.split(',').map(v => v.trim());
+      return undefined;
+    };
 
-      const normalizeNumberArray = (value: unknown): number[] | undefined => {
-        if (!value) return undefined;
-        if (Array.isArray(value)) return value.map(Number);
-        if (typeof value === 'string') return value.split(',').map(v => Number(v.trim()));
-        return undefined;
-      };
+    const normalizeNumberArray = (value: unknown): number[] | undefined => {
+      if (!value) return undefined;
+      if (Array.isArray(value)) return value.map(Number);
+      if (typeof value === 'string') return value.split(',').map(v => Number(v.trim()));
+      return undefined;
+    };
 
-      const dto: ExportOperationsDto = {
-        reportType,
-        filters: {
-          dateStart,
-          dateEnd,
-          status: normalizeStringArray(body?.status),
-          jobAreaIds: normalizeNumberArray(body?.jobAreaIds),
-          inChargedId: body?.inChargedId ? Number(body.inChargedId) : undefined,
-          search: body?.search,
-        },
-      };
+    const dto: ExportOperationsDto = {
+      reportType,
+      filters: {
+        dateStart,
+        dateEnd,
+        status: normalizeStringArray(body?.status),
+        jobAreaIds: normalizeNumberArray(body?.jobAreaIds),
+        inChargedId: body?.inChargedId ? Number(body.inChargedId) : undefined,
+        search: body?.search,
+      },
+    };
 
-      const exportResult = await this.operationExportService.export(dto, {
-        userId,
-        siteId,
-        subsiteId,
-      });
+    const exportResult = await this.operationExportService.export(dto, {
+      userId,
+      siteId,
+      subsiteId,
+    });
 
-      // console.log('Export result:', body);
+    // console.log('Export result:', body);
 
-      if ('noContent' in exportResult) {
-        throw new NotFoundException('No hay datos para exportar');
-      }
-
-      const { buffer, fileName } = exportResult;
-
-      return new StreamableFile(buffer, {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        disposition: `attachment; filename="${fileName}"`,
-      });
+    if ('noContent' in exportResult) {
+      throw new NotFoundException('No hay datos para exportar');
     }
+
+    const { buffer, fileName } = exportResult;
+
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${fileName}"`,
+    });
+  }
 }

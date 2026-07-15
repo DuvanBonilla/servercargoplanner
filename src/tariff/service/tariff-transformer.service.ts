@@ -63,6 +63,7 @@ export interface ITransformTariff {
   FAC_FED: string; // FACTURA Festiva Extra Diurna con recargo
   FAC_FEN: string; // FACTURA Festiva Extra Nocturna con recargo
   status: string;
+  isSpecial?: string;
   createdAt: Date;
   updatedAt: Date;
   user?: {
@@ -154,6 +155,7 @@ export class TariffTransformerService {
       },
       // Información adicional
       status: tariff.status,
+      isSpecial: tariff.isSpecial,
       createdAt: tariff.createdAt,
       updatedAt: tariff.updatedAt,
       createdBy: tariff.user ? {

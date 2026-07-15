@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateBillDto, GroupBillDto } from './dto/create-bill.dto';
 import { UpdateBillDto } from './dto/update-bill.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -11,12 +11,14 @@ import {getWeekNumber,hasSundayInRange,getDayName,toLocalDate,} from 'src/common
 import { BaseCalculationService } from './services/base-calculation.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { group } from 'console';
-import { BillStatus, Status } from '@prisma/client';
+import { BillStatus, Status, StatusOperation } from '@prisma/client';
 import { getColombianDateTime,  getColombianTimeString,} from 'src/common/utils/dateColombia';
 import { FilterBillDto } from './dto/filter-bill.dto';
 import * as ExcelJS from 'exceljs';
 import { Response } from 'express';
 import { Operation } from 'src/operation/entities/operation.entity';
+import { ModuleRef } from '@nestjs/core';
+import { OperationService } from 'src/operation/operation.service';
 
 @Injectable()
 export class BillService {
@@ -27,7 +29,9 @@ export class BillService {
     private payrollCalculationService: PayrollCalculationService,
     private hoursCalculationService: HoursCalculationService,
     private baseCalculationService: BaseCalculationService,
-    private configurationService: ConfigurationService
+    private configurationService: ConfigurationService,
+     @Inject(forwardRef(() => OperationService))
+  private readonly operationService: OperationService,
   ) {}
   async create(createBillDto: CreateBillDto, userId: number) {
     console.log('=== [BillService] Iniciando creación de factura ===');
@@ -56,6 +60,23 @@ export class BillService {
 
     // console.log('[BillService] ✅ Operación validada correctamente');
 
+    // ================================
+  // ✅ DETERMINAR EL ESTADO DE LA BILL
+  // ================================
+  const isSpecialOperation = await this.prisma.operation_Worker.count({
+    where: {
+      id_operation: createBillDto.id_operation,
+      tariff: {
+        isSpecial: 'YES',
+      },
+    },
+  });
+
+  const billStatus =
+    isSpecialOperation > 0
+      ? BillStatus.TO_APPROVED
+      : BillStatus.ACTIVE;
+
     // Procesar todos los tipos de grupos
     await this.processJornalGroups(createBillDto, userId, validateOperationID);
 
@@ -63,16 +84,19 @@ export class BillService {
       createBillDto,
       userId,
       validateOperationID,
+      billStatus,
     );
     await this.processAlternativeServiceGroups(
       createBillDto,
       userId,
       validateOperationID,
+      billStatus,
     );
     await this.processQuantityGroups(
       createBillDto,
       userId,
       validateOperationID, 
+      billStatus,
       0,
     );
 
@@ -177,6 +201,7 @@ export class BillService {
   createBillDto: CreateBillDto,
   userId: number,
   validateOperationID: any,
+  billStatus: BillStatus
 ) {
   const simpleHoursGroups =
     await this.workerGroupAnalysisService.findGroupsByCriteria(
@@ -226,6 +251,8 @@ result.totalFinalFacturation = Number(billData.total_bill);
     const billSaved = await this.prisma.bill.create({
       data: {
         ...billData,
+      status: billStatus, // ✅ Asignar el estado de la factura
+
       },
     });
 
@@ -250,6 +277,7 @@ result.totalFinalFacturation = Number(billData.total_bill);
     createBillDto: CreateBillDto,
     userId: number,
     validateOperationID: any,
+    billStatus: BillStatus
   ) {
     const twoUnitsGroups =
       await this.workerGroupAnalysisService.findGroupsByCriteria(
@@ -295,6 +323,7 @@ result.totalFinalFacturation = Number(billData.total_bill);
         data: {
           ...billData,
           group_hours: group.group_hours ? Number(group.group_hours) : null,
+          status: billStatus, // ✅ Asignar el estado de la factura
         },
       });
 
@@ -350,7 +379,9 @@ result.totalFinalFacturation = Number(billData.total_bill);
     createBillDto: CreateBillDto,
     userId: number,
     validateOperationID: any,
+    billStatus: BillStatus,
     amountDb: number,
+
   ) {
     // Si validateOperationID es un array de grupos, úsalo directamente
     const groupsSource = Array.isArray(validateOperationID.workerGroups)
@@ -405,6 +436,7 @@ result.totalFinalFacturation = Number(billData.total_bill);
       const billSaved = await this.prisma.bill.create({
         data: {
           ...billData,
+          status: billStatus, // ✅ Asignar el estado de la factura
         },
       });
 
@@ -3349,6 +3381,34 @@ for (const worker of uniqueWorkers) {
         return;
       }
 
+      // 1.5. Verificar que todas las bills estén ACTIVAS
+// const pendingBills = await this.prisma.bill.count({
+//   where: {
+//     id_operation: operationId,
+//     status: {
+//       not: BillStatus.ACTIVE,
+//     },
+//   },
+// });
+
+// if (pendingBills > 0) {
+//   return;
+// }
+// 1.5. Determinar si la operación es especial
+const isSpecialOperation = await this.prisma.operation_Worker.count({
+  where: {
+    id_operation: operationId,
+    tariff: {
+      isSpecial: 'YES',
+    },
+  },
+});
+
+const operationStatus =
+  isSpecialOperation > 0
+    ? StatusOperation.TO_APPROVED
+    : StatusOperation.COMPLETED;
+
       // console.log(`[BillService] ✅ Operación ${operationId}: Todos los grupos completados, procediendo a completar operación...`);
 
       // 2. Encontrar la fecha más reciente de finalización
@@ -3368,12 +3428,17 @@ for (const worker of uniqueWorkers) {
       await this.prisma.operation.update({
         where: { id: operationId },
         data: {
-          status: 'COMPLETED',
+          // status: 'COMPLETED',
+          status: operationStatus,
           dateEnd: latestEndDateTime.date,
           timeEnd: latestEndDateTime.time,
           op_duration: opDuration
         }
       });
+      // Si la operación es especial, generar el token y el link
+if (operationStatus === StatusOperation.TO_APPROVED) {
+  await this.operationService.createConfirmation(operationId);
+}
 
       // 5. Liberar trabajadores
       await this.releaseOperationWorkers(operationId);
@@ -4497,6 +4562,7 @@ async exportBillsToExcelStream(
     'Zona', //42 - Zona (jobArea)
     'Estado', //43 - Estado
     'Cliente', //44 - Cliente
+    'Radicado', //45 - Radicado (Ingresado por el Cliente en Facturador)
   ];
 //Encabezados para hoja "RTD" (Registro de Detalle de Factura para cada trabajador)
   const headersRTD = [ // 41 columnas
@@ -4568,6 +4634,7 @@ this.applyDynamicWidths(worksheetRTD, headersRTD);
     total_paysheet: true,
     observation: true,
     status: true,
+    fileCode: true,
 
     // 🔥 distribuciones (las usas)
     HOD: true,
@@ -4619,7 +4686,9 @@ this.applyDynamicWidths(worksheetRTD, headersRTD);
         task: {
           select: { name: true },
         },
-        zone: true,
+        zone: {
+          select: { id: true, name: true },
+        },
         client:{
           select: { name: true },
         },
@@ -4915,9 +4984,10 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
       bill.user?.name ?? '', //39 Usuario
       bill.operation?.user?.name ?? '', //40 Creado por (usuario de la operación)
       bill.observation ?? '', //41 Observaciones
-      bill.operation?.zone ?? '', //43 Zona (zona de la operación)
+      bill.operation?.zone?.name ?? '', //43
       estadoTexto, //42 Estado
       bill.operation?.client?.name ?? '', //44 Cliente
+      bill.fileCode ?? '', //45 Radicado (Ingresado por el Cliente en Facturador)
     ]);
 
     this.styleRow(row, rowIndexData);
@@ -5009,9 +5079,11 @@ const endTime = firstDetail.operationWorker?.timeEnd ;
         bill.user?.name ?? '', //38- Usuario
         bill.operation.user?.name ?? '', //39- Creado por (usuario de la operación)
         bill.observation ?? '', //40- Observación
-        bill.operation?.zone ?? '', //42- Zona
+        bill.fileCode ?? '', //45- Radicado (Ingresado por el Cliente en Facturador)
+        bill.operation?.zone?.name ?? '', //42- Zona
         estadoTexto, //41- Estado
         bill.operation?.client?.name ?? '', //43- Cliente
+        bill.fileCode ?? '', //44- Radicado (Ingresado por el Cliente en Facturador)
       ]);
 
       // ===== FORMATOS RTD ===

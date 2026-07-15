@@ -1,0 +1,1 @@
+ALTER TABLE "Operation" DROP COLUMN "zone";

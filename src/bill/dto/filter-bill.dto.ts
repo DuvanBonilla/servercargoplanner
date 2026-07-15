@@ -10,7 +10,8 @@ import {
 
 export enum BillStatus {
   ACTIVE = 'ACTIVE',
-  COMPLETED = 'COMPLETED'
+  COMPLETED = 'COMPLETED',
+  TO_APPROVE = 'TO_APPROVED',
 }
 
 export class FilterBillDto {

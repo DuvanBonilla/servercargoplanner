@@ -1,7 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
-import { StatusOperation } from '@prisma/client';
+import { StatusOperation, YES_NO  } from '@prisma/client';
 import { OperationFilterDto } from 'src/operation/dto/fliter-operation.dto';
 import { PaginationService } from '../pagination.service';
 import { PaginatedResponse } from '../../interface/paginate-operation';
@@ -53,7 +53,17 @@ export class PaginateOperationService {
         // Usar ID como campo secundario para consistencia y rendimiento
         orderBy: [{ status: 'asc' }, { id: 'desc' }],
         activatePaginated,
-        transformFn: (item) => transformer.transformOperationResponse(item),
+          transformFn: (item) => {
+            const transformed = transformer.transformOperationResponse(item);
+            const isSpecial =
+              item?.workers?.some((w) => w.tariff?.isSpecial === YES_NO.YES) ??
+              false;
+
+            return {
+              ...transformed,
+              isSpecial,
+            };
+          },
         buildWhereClause: (filters) => this.buildOperationWhereClause(filters),
         getAdditionalStats: async () => this.getOperationStats(prisma)
       });

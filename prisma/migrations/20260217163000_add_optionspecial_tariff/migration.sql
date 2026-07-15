@@ -1,0 +1,2 @@
+ALTER TABLE "Tariff"
+ADD COLUMN "isSpecial" "YES_NO" NOT NULL DEFAULT 'NO';

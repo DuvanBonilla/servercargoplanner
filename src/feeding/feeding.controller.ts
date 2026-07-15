@@ -26,6 +26,8 @@ import { FilterWorkerFeedingDto } from './dto/filter-worker-feeding.dto';
 import { BooleanTransformPipe } from 'src/pipes/boolean-transform/boolean-transform.pipe';
 import { SiteInterceptor } from 'src/common/interceptors/site.interceptor';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import { CreateBulkFeedingDto } from './dto/create-bulk-feeding.dto';
+
 
 @Controller('feeding')
 @UseGuards(JwtAuthGuard)
@@ -220,6 +222,25 @@ export class FeedingController {
     @CurrentUser('siteId') siteId: number,
   ) {
     const response = await this.feedingService.getMissingMealsForOperation(id);
+    return response;
+  }
+
+  
+  @Post('bulk')
+  @ApiOperation({ summary: 'Registrar múltiples alimentaciones en una sola petición (máx. 500 ítems)' })
+  async createBulk(
+    @Body(new ValidationPipe({ transform: true, whitelist: true })) dto: CreateBulkFeedingDto,
+    @CurrentUser('siteId') siteId: number,
+    @CurrentUser('subsiteId') subsiteId: number,
+    @CurrentUser('userId') userId: number,
+  ) {
+    dto.id_user = userId;
+    const response = await this.feedingService.createBulk(dto, siteId, subsiteId);
+    if (response['status'] === 404) {
+      throw new NotFoundException(response['message']);
+    } else if (response['status'] === 409) {
+      throw new ConflictException(response['message']);
+    }
     return response;
   }
 }

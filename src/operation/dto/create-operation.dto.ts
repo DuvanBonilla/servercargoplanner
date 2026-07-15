@@ -22,7 +22,7 @@ export class CreateOperationDto {
   @ApiProperty({ example: '23' })
   @Type(() => Number)
   @IsNumber()
-  zone!: number;
+  id_zone?: number;
 
   @ApiProperty({ example: 'HTR4567' })
   @IsString()

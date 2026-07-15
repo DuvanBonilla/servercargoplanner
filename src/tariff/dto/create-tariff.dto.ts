@@ -162,6 +162,13 @@ export class CreateTariffDto {
   @IsOptional()
   id_user!: number;
 
+   @ApiProperty({ example: `${Object.values(YES_NO).join(', ')}` })
+  @IsEnum(YES_NO, {
+    message: `isSpecial debe ser uno de los siguientes valores: ${Object.values(YES_NO).join(', ')}`,
+  })
+  @IsOptional()
+  isSpecial?: YES_NO;
+
   @ApiProperty({ example: `${Object.values(StatusActivation).join(', ')} ` })
   @IsEnum(StatusActivation, {
     message: `status debe ser uno de los siguientes valores: ${Object.values(StatusActivation).join(', ')}`,

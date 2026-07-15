@@ -1,0 +1,4 @@
+ALTER TABLE "Operation" ALTER COLUMN "zone" DROP NOT NULL;
+ALTER TABLE "Operation" ADD COLUMN "id_zone" INTEGER;
+ALTER TABLE "Operation" ADD CONSTRAINT "Operation_id_zone_fkey" 
+  FOREIGN KEY ("id_zone") REFERENCES "Zone"("id") ON DELETE SET NULL ON UPDATE CASCADE;

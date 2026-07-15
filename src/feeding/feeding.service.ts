@@ -5,6 +5,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { ValidationService } from 'src/common/validation/validation.service';
 import { FilterWorkerFeedingDto } from './dto/filter-worker-feeding.dto';
 import { PaginationFeedingService } from 'src/common/services/pagination/feeding/pagination-feeding.service';
+import { CreateBulkFeedingDto } from './dto/create-bulk-feeding.dto';
 
 @Injectable()
 export class FeedingService {
@@ -1376,4 +1377,219 @@ for (const feeding of allFeedings) {
     }
     return result;
   }
+
+  private toDateOnlyUTC(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00.000Z`);
+}
+private async getMissingMealMapForBulk(operationId: number) {
+  const missingMeals = await this.getMissingMealsForOperation(operationId);
+
+  const map = new Map<string, string[]>();
+
+  for (const worker of missingMeals) {
+    for (const meal of worker.missingMeals) {
+      map.set(`${worker.workerId}-${meal.type}`, meal.dates);
+    }
+  }
+
+  return map;
+}
+  async createBulk(
+  dto: CreateBulkFeedingDto,
+  id_site: number,
+  id_subsite: number,
+) {
+  const operation = await this.prisma.operation.findUnique({
+    where: { id: dto.id_operation },
+    select: {
+      id: true,
+      id_site: true,
+    },
+  });
+
+  if (!operation) {
+    return { status: 404, message: 'Operación no encontrada' };
+  }
+
+  if (operation.id_site !== id_site) {
+    return {
+      status: 409,
+      message: 'No autorizado para registrar alimentaciones en esta operación',
+    };
+  }
+
+  const workerIds = [...new Set(dto.items.map((item) => item.id_worker))];
+
+  const workers = await this.prisma.worker.findMany({
+    where: {
+      id: { in: workerIds },
+      id_site,
+    },
+    select: { id: true },
+  });
+
+  const validWorkerSet = new Set(workers.map((worker) => worker.id));
+
+  const invalidWorkers = workerIds.filter(
+    (workerId) => !validWorkerSet.has(workerId),
+  );
+
+  if (invalidWorkers.length > 0) {
+    return {
+      status: 404,
+      message: `Los siguientes trabajadores no existen o no pertenecen al sitio: ${invalidWorkers.join(', ')}`,
+    };
+  }
+
+  const missingMealMap = await this.getMissingMealMapForBulk(dto.id_operation);
+
+  const feedingTypeNames: Record<string, string> = {
+    BREAKFAST: 'desayuno',
+    LUNCH: 'almuerzo',
+    DINNER: 'cena',
+    SNACK: 'refrigerio',
+  };
+
+  type FailedItem = {
+    id_worker: number;
+    type: string;
+    reason: string;
+  };
+
+  const failed: FailedItem[] = [];
+  const toInsert: {
+    id_worker: number;
+    type: any;
+    dateFeeding: Date;
+    id_operation: number;
+    id_user?: number;
+  }[] = [];
+
+  const batchKeys = new Set<string>();
+
+  for (const item of dto.items) {
+    const key = `${item.id_worker}-${item.type}`;
+    const pendingDates = missingMealMap.get(key) || [];
+
+    if (pendingDates.length === 0 && !item.forceMissingMeal) {
+      const reason = `No hay ${feedingTypeNames[item.type] ?? item.type} pendiente para el trabajador ${item.id_worker}`;
+
+      if (dto.stopOnError) {
+        return {
+          status: 409,
+          message: reason,
+          failedItem: item,
+        };
+      }
+
+      failed.push({
+        id_worker: item.id_worker,
+        type: item.type,
+        reason,
+      });
+
+      continue;
+    }
+
+    for (const dateStr of pendingDates) {
+      const batchKey = `${item.id_worker}-${item.type}-${dateStr}`;
+
+      if (batchKeys.has(batchKey)) {
+        continue;
+      }
+
+      batchKeys.add(batchKey);
+
+      toInsert.push({
+        id_worker: item.id_worker,
+        type: item.type,
+        dateFeeding: this.toDateOnlyUTC(dateStr),
+        id_operation: dto.id_operation,
+        id_user: dto.id_user,
+      });
+    }
+  }
+
+  if (toInsert.length === 0) {
+    return {
+      summary: {
+        total: dto.items.length,
+        created: 0,
+        failed: failed.length,
+      },
+      created: [],
+      failed,
+    };
+  }
+
+  const existingFeedings = await this.prisma.workerFeeding.findMany({
+    where: {
+      id_worker: { in: [...new Set(toInsert.map((item) => item.id_worker))] },
+      type: { in: [...new Set(toInsert.map((item) => item.type))] },
+      id_operation: dto.id_operation,
+    },
+    select: {
+      id_worker: true,
+      type: true,
+      dateFeeding: true,
+    },
+  });
+
+  const existingSet = new Set(
+    existingFeedings.map(
+      (feeding) =>
+        `${feeding.id_worker}-${feeding.type}-${feeding.dateFeeding.toISOString().split('T')[0]}`,
+    ),
+  );
+
+  const finalInsert = toInsert.filter((item) => {
+    const key = `${item.id_worker}-${item.type}-${item.dateFeeding.toISOString().split('T')[0]}`;
+    return !existingSet.has(key);
+  });
+
+  if (finalInsert.length === 0) {
+    return {
+      summary: {
+        total: dto.items.length,
+        created: 0,
+        failed: failed.length,
+      },
+      created: [],
+      failed,
+    };
+  }
+
+  await this.prisma.workerFeeding.createMany({
+    data: finalInsert,
+  });
+
+  const created = await this.prisma.workerFeeding.findMany({
+    where: {
+      id_operation: dto.id_operation,
+      id_worker: { in: [...new Set(finalInsert.map((item) => item.id_worker))] },
+      type: { in: [...new Set(finalInsert.map((item) => item.type))] },
+      dateFeeding: {
+        in: finalInsert.map((item) => item.dateFeeding),
+      },
+    },
+    select: {
+      id: true,
+      id_worker: true,
+      type: true,
+      dateFeeding: true,
+      id_operation: true,
+    },
+  });
+
+  return {
+    summary: {
+      total: dto.items.length,
+      created: created.length,
+      failed: failed.length,
+    },
+    created,
+    failed,
+  };
+}
+  
 }

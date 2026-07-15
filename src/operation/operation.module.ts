@@ -15,6 +15,8 @@ import { TariffModule } from 'src/tariff/tariff.module';
 import { WorkerModule } from 'src/worker/worker.module';
 import { BillModule } from 'src/bill/bill.module';
 import { OperationExportService } from './services/operation-export.service';
+import { OperationTokenService } from './services/operation-token.service';
+import { OperationEmailService } from './services/operation-email.service';
 
 @Module({
   imports: [
@@ -35,8 +37,10 @@ import { OperationExportService } from './services/operation-export.service';
     OperationTransformerService,
     OperationRelationService,
     WorkerAnalyticsService,
+    OperationTokenService,
+    OperationEmailService,
     OperationExportService,
   ],
-  exports: [OperationFinderService]
+  exports: [OperationFinderService, OperationService]
 })
 export class OperationModule {}

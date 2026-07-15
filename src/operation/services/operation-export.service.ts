@@ -3,7 +3,7 @@ import { Prisma, StatusOperation } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { BillService } from 'src/bill/bill.service';
 import { PrismaService } from 'src/prisma/prisma.service';
-import {ExportOperationsDto,ExportReportType,} from '../dto/export-operations.dto';
+import { ExportOperationsDto, ExportReportType, } from '../dto/export-operations.dto';
 
 interface ExportScope {
 	userId: number;
@@ -22,7 +22,7 @@ export class OperationExportService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly billService: BillService,
-	) {}
+	) { }
 
 	// Metodo principal para exportar operaciones segun filtros y tipo de reporte
 	async export(
@@ -43,18 +43,18 @@ export class OperationExportService {
 		// 	);
 		// }
 
-		 // Variables para acumulación de datos y control de paginación
+		// Variables para acumulación de datos y control de paginación
 		const generalRows: any[] = [];
 		const workerRows: any[] = [];
 		const programmingOperations: any[] = [];
 		let lastId: number | undefined;
 
-         // Bucle para cargar operaciones en lotes y construir filas para el Excel
+		// Bucle para cargar operaciones en lotes y construir filas para el Excel
 		while (true) {
 			const batchWhere: Prisma.OperationWhereInput = lastId
 				? { AND: [where, { id: { lt: lastId } }] }
 				: where;
-            // Consulta para obtener un lote de operaciones con sus relaciones necesarias para el reporte
+			// Consulta para obtener un lote de operaciones con sus relaciones necesarias para el reporte
 			const operations = await this.prisma.operation.findMany({
 				where: batchWhere,
 				// take: this.OPERATION_BATCH_SIZE,
@@ -66,7 +66,12 @@ export class OperationExportService {
 					timeStrat: true,
 					timeEnd: true,
 					motorShip: true,
-					zone:true,
+					zone: {
+						select: {
+							id: true,
+							name: true,
+						},
+					},
 					subSite: { select: { id: true, name: true } },
 					jobArea: { select: { id: true, name: true } },
 					client: { select: { id: true, name: true } },
@@ -77,10 +82,11 @@ export class OperationExportService {
 							user: { select: { id: true, name: true, username: true } },
 						},
 					},
-					Bill:{
+					Bill: {
 						select: {
-							user: { select: { id: true, name: true} },},
+							user: { select: { id: true, name: true } },
 						},
+					},
 					workers: {
 						select: {
 							id: true,
@@ -119,7 +125,7 @@ export class OperationExportService {
 				continue;
 			}
 
-           // Obtener IDs de operaciones del lote actual para consultas relacionadas (bills, feedings)
+			// Obtener IDs de operaciones del lote actual para consultas relacionadas (bills, feedings)
 			const operationIds = operations.map((o) => o.id);
 			const [bills, feedings] = await Promise.all([
 				this.billService.findByOperationIdsWithCompensatory(operationIds, {
@@ -244,7 +250,7 @@ export class OperationExportService {
 			timezone: f.timezone || 'America/Bogota',
 		};
 	}
-  
+
 	//Construcción din4mica de la condición "where" para la consulta de operaciones según los filtros y el alcance (site/subsite)
 	private buildWhere(
 		filters: {
@@ -280,11 +286,11 @@ export class OperationExportService {
 			) as StatusOperation[];
 
 			if (validStatuses.length) where.status = { in: validStatuses };
-		} 
-		
+		}
+
 		else {
-              where.status = { not: StatusOperation.CANCELED };  //No descargar las operaciones CANCELED
-      }  
+			where.status = { not: StatusOperation.CANCELED };  //No descargar las operaciones CANCELED
+		}
 
 		if (filters.jobAreaIds?.length) where.id_area = { in: filters.jobAreaIds };
 
@@ -358,12 +364,12 @@ export class OperationExportService {
 					Subservicio: 'Sin subservicio',
 					"Unidad de Medida": '',
 					Cantidad: this.round2(opBills.reduce((acc, b) => acc + Number(b.amount || 0), 0)),
-					"Horas Trabajadas Op.": this.hoursToDecimal(					
-					this.getHoursWorked(op.dateStart, op.timeStrat, op.dateEnd, op.timeEnd)),
+					"Horas Trabajadas Op.": this.hoursToDecimal(
+						this.getHoursWorked(op.dateStart, op.timeStrat, op.dateEnd, op.timeEnd)),
 					"Total Trabajadores": 0,
 					"Total Nomina": this.round2(opBills.reduce((acc, b) => acc + Number(b.total_paysheet || 0), 0)),
 					Buque: op.motorShip || '',
-					Zona: op.zone || '',
+					Zona: op.zone?.name || '',
 					"Total Alimentacion": feedingsByOperation.get(op.id) || 0,
 					"Supervisores": this.formatSupervisors(op.inChargeOperation),
 					Observaciones: this.joinObservations(opBills),
@@ -376,13 +382,13 @@ export class OperationExportService {
 				});
 				continue;
 			}
-            
+
 			for (const group of workersByGroup) {
 				const groupBills = opBills.filter((b: any) => String(b.id_group || '') === String(group.groupId || ''));
 				const schedule = group.firstWorker;
 				const quantity = this.groupQuantity(groupBills, group.workers.length, group.unitMeasure);
-             
-				 // HOJA 2 RTD
+
+				// HOJA 2 RTD
 				rows.push({
 					"Operacion": op.id,
 					"Fecha Inicio Op.": this.combineDateTime(
@@ -410,7 +416,7 @@ export class OperationExportService {
 					"Total Nomina": this.round2(groupBills.reduce((acc: number, b: any) => acc + Number(b.total_paysheet || 0), 0)),
 					Buque: op.motorShip || '',
 					Zona: op.zone || '',
-				    "Total Alimentacion": feedingsByOperation.get(op.id) || 0,
+					"Total Alimentacion": feedingsByOperation.get(op.id) || 0,
 					Supervisores: this.formatSupervisors(op.inChargeOperation),
 					Observaciones: this.joinObservations(groupBills),
 					Subsede: op.subSite?.name || 'Sin subsede',
@@ -425,8 +431,8 @@ export class OperationExportService {
 
 		return rows;
 	}
-   
-  // (RTD)  (HOJA 2) Reporte  detallado por trabajador, cada fila es un trabajador específico dentro de una operacion
+
+	// (RTD)  (HOJA 2) Reporte  detallado por trabajador, cada fila es un trabajador específico dentro de una operacion
 	private buildWorkerRows(
 		operations: any[],
 		bills: any[],
@@ -452,7 +458,7 @@ export class OperationExportService {
 		for (const op of operations) {
 			const opBills = billsByOperation.get(op.id) || [];
 			const billUser = op.Bill || [];
-            
+
 			if (!op.workers?.length) {
 				rows.push({ //HOJA1 
 					"Operacion": op.id,
@@ -496,7 +502,7 @@ export class OperationExportService {
 				const workerBillDetails = groupBills
 					.flatMap((b: any) => b.billDetails.map((d: any) => ({ ...d, __bill: b })))
 					.filter((d: any) => d.id_operation_worker === ow.id);
-        
+
 				const billMatchedByWorker = groupBills.find((bill: any) =>
 					(bill.billDetails || []).some(
 						(detail: any) => String(detail.operationWorker?.id_worker || '') === String(ow.id_worker || ''),
@@ -504,8 +510,8 @@ export class OperationExportService {
 				); // Buscar bill del grupo /trabajador actual para obtener su compensatorio específico, si existe
 				const workerComp = Number(
 					billMatchedByWorker?.compensatory?.hours ??
-						groupBills[0]?.compensatory?.hours ??
-						0,
+					groupBills[0]?.compensatory?.hours ??
+					0,
 				);
 
 				const firstDetail = workerBillDetails[0];
@@ -530,15 +536,15 @@ export class OperationExportService {
 
 				const feedKey = `${op.id}-${ow.id_worker}`;
 				// const workedHours = firstBill.this.getHoursWorked(ow.dateStart || op.dateStart, ow.timeStart || op.timeStrat, ow.dateEnd || op.dateEnd, ow.timeEnd || op.timeEnd);
-                
-				const workedHours = this.getHoursWorked(
-						ow.dateStart || op.dateStart,
-						ow.timeStart || op.timeStrat,
-						ow.dateEnd || op.dateEnd,
-						ow.timeEnd || op.timeEnd,
-						);
 
-											//EDITAR 
+				const workedHours = this.getHoursWorked(
+					ow.dateStart || op.dateStart,
+					ow.timeStart || op.timeStrat,
+					ow.dateEnd || op.dateEnd,
+					ow.timeEnd || op.timeEnd,
+				);
+
+				//EDITAR 
 				rows.push({ //HOJA 2 
 					"Operacion": op.id,
 					Inicio: this.combineDateTime(
@@ -560,11 +566,11 @@ export class OperationExportService {
 					"Horas Trabajadas": this.hoursToDecimal(workedHours),
 					Cantidad: this.round2(workerBillDetails.reduce((acc: number, d: any) => acc + Number(d.pay_rate || 0), 0)),
 					"Total Nomina": this.round2(totalNomina),
-					COMP:(workerComp),   //no redondear comp
+					COMP: (workerComp),   //no redondear comp
 					HOD: distribution.HOD,
 					HND: distribution.HND,
 					HED: distribution.HED,
-				    HEN: distribution.HEN,
+					HEN: distribution.HEN,
 					FHOD: distribution.FHOD,
 					FHND: distribution.FHND,
 					FHED: distribution.FHED,
@@ -618,19 +624,19 @@ export class OperationExportService {
 
 		this.applyBodyRows(
 			sheet, rows, headers, 2,
-			new Set(['Subservicio','Observaciones','Supervisores','Buque','Subsede','Area','Cliente','Estado','Nombre Trabajador','Unidad de Medida','Unidad Medida']),
-			new Set(['Operacion ','Semana','Inicio Op. ','Fin Op. ']),
+			new Set(['Subservicio', 'Observaciones', 'Supervisores', 'Buque', 'Subsede', 'Area', 'Cliente', 'Estado', 'Nombre Trabajador', 'Unidad de Medida', 'Unidad Medida']),
+			new Set(['Operacion ', 'Semana', 'Inicio Op. ', 'Fin Op. ']),
 		);
 
 		if (compIndex > 0) sheet.getColumn(compIndex).numFmt = '#,##0.00';
 
 		this.applyColumnFormats(sheet, headers, {
 			dateTimeHeaders: new Set(['Fecha Inicio Op.',
-			'Fecha Fin Op.',
-			'Inicio',
-			'Fin',
-			'Fecha Inicio',
-			'Fecha Fin']),
+				'Fecha Fin Op.',
+				'Inicio',
+				'Fin',
+				'Fecha Inicio',
+				'Fecha Fin']),
 			decimalHeaders: new Set([
 				'Cantidad',
 				'Total Nomina',
@@ -649,12 +655,12 @@ export class OperationExportService {
 				'Horas Trabajadas Op',
 				'Horas Trabajadas',
 			]),
-			integerHeaders: new Set(['Operacion','Semana','Codigo Subservicio','Total Trabajadores','Total Alimentacion','DNI Trabajador','DNITrabajador','Codigo Nomina','Zona']),
+			integerHeaders: new Set(['Operacion', 'Semana', 'Codigo Subservicio', 'Total Trabajadores', 'Total Alimentacion', 'DNI Trabajador', 'DNITrabajador', 'Codigo Nomina', 'Zona']),
 			preferredWidths: { Subservicio: 42, Observaciones: 42, Supervisores: 30, 'Nombre Trabajador': 28, Buque: 22 },
 		});
 	}
-   
-	 //GRUPO DE TRABAjadores SEGUN ID_GROUP, para luego calcular cantidades y horas trabajadas por grupo/subservicio
+
+	//GRUPO DE TRABAjadores SEGUN ID_GROUP, para luego calcular cantidades y horas trabajadas por grupo/subservicio
 	private groupWorkersByIdGroup(workers: any[]) {
 		const map = new Map<string, any[]>();
 		workers.forEach((w) => {
@@ -674,7 +680,7 @@ export class OperationExportService {
 		}));
 	}
 
-	  //cantidad total del grupo segun unidad de medida (horas/jornal/monto)
+	//cantidad total del grupo segun unidad de medida (horas/jornal/monto)
 	private groupQuantity(groupBills: any[], workersCount: number, unitMeasure?: string) {
 		const unit = (unitMeasure || '').toUpperCase();
 
@@ -717,8 +723,8 @@ export class OperationExportService {
 	}
 
 
-   // Etiquetar estados a un formato mas legible para el reporte
-   //actualmente solo se manejan en la decarga estado/ COMPLETED (finalizado)
+	// Etiquetar estados a un formato mas legible para el reporte
+	//actualmente solo se manejan en la decarga estado/ COMPLETED (finalizado)
 	private statusLabel(status: string) {
 		switch (status) {
 			case 'PENDING':
@@ -753,41 +759,41 @@ export class OperationExportService {
 	}
 
 
-    	private combineDateTimeExcelSerial(
-        date?: Date | null,
-        time?: string | null,
-        ): number | '' {
-        if (!date) return '';
+	private combineDateTimeExcelSerial(
+		date?: Date | null,
+		time?: string | null,
+	): number | '' {
+		if (!date) return '';
 
-      const datePart = this.formatDate(date); // YYYY-MM-DD en UTC
-      const [yyyy, month, dd] = datePart.split('-').map((v) => Number(v));
-      if (!yyyy || !month || !dd) return '';
-      const [hh = '00', mm = '00', ss = '00'] = String(time || '00:00:00')
-      .split(':')
-      .map((v) => String(v || '00').padStart(2, '0'));
+		const datePart = this.formatDate(date); // YYYY-MM-DD en UTC
+		const [yyyy, month, dd] = datePart.split('-').map((v) => Number(v));
+		if (!yyyy || !month || !dd) return '';
+		const [hh = '00', mm = '00', ss = '00'] = String(time || '00:00:00')
+			.split(':')
+			.map((v) => String(v || '00').padStart(2, '0'));
 
-      const h = Number(hh);
-      const m = Number(mm);
-      const s = Number(ss);
+		const h = Number(hh);
+		const m = Number(mm);
+		const s = Number(ss);
 
-      // Base serial de Excel (sistema 1900)
-      const excelEpochMs = Date.UTC(1899, 11, 30, 0, 0, 0, 0);
-      const valueMs = Date.UTC(yyyy, month - 1, dd, h, m, s, 0);
+		// Base serial de Excel (sistema 1900)
+		const excelEpochMs = Date.UTC(1899, 11, 30, 0, 0, 0, 0);
+		const valueMs = Date.UTC(yyyy, month - 1, dd, h, m, s, 0);
 
-      return (valueMs - excelEpochMs) / 86400000;
-      }
+		return (valueMs - excelEpochMs) / 86400000;
+	}
 
 	// Convertir fecha de inicio al comienzo del día en UTC
 	private toUtcStartOfDay(value: string): Date {
 		const { year, month, day } = this.parseDateOnly(value);
 		return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
 	}
-  // Convertir fecha de fin al final del día en UTC
+	// Convertir fecha de fin al final del día en UTC
 	private toUtcEndOfDay(value: string): Date {
 		const { year, month, day } = this.parseDateOnly(value);
 		return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
 	}
-   // Formatear fecha a string YYYY-MM-DD, ajustando a UTC para evitar problemas de zona horaria
+	// Formatear fecha a string YYYY-MM-DD, ajustando a UTC para evitar problemas de zona horaria
 	private formatDate(date?: Date | null, _timezone = 'America/Bogota') {
 		if (!date) return '';
 		const year = date.getUTCFullYear();
@@ -795,7 +801,7 @@ export class OperationExportService {
 		const day = String(date.getUTCDate()).padStart(2, '0');
 		return `${year}-${month}-${day}`;
 	}
-   
+
 	// Calcular número de semana ISO (1-53) para una fecha dada, considerando el lunes como primer día de la semana
 	private isoWeek(date?: Date | null) {
 		if (!date) return 0;
@@ -831,12 +837,12 @@ export class OperationExportService {
 	}
 
 
-    
+
 	private hoursToDecimal(value: string) {
-  if (!value) return 0;
-  const [h, m] = value.split(':').map(Number);
-  return (h || 0) + ((m || 0) / 60);
-}
+		if (!value) return 0;
+		const [h, m] = value.split(':').map(Number);
+		return (h || 0) + ((m || 0) / 60);
+	}
 
 	// Convertir horas decimales a formato HH:MM, manejando casos de NaN y horas negativas
 	private hoursToHHMM(decimalHours: number) {
@@ -846,14 +852,14 @@ export class OperationExportService {
 		if (m === 60) return `${h + 1}:00`;
 		return `${h}:${String(m).padStart(2, '0')}`;
 	}
-     // Redondear nUmeros a 2 decimales, manejando casos de NaN y asegurando precisión
+	// Redondear nUmeros a 2 decimales, manejando casos de NaN y asegurando precisión
 	private round2(n: number) {
 		return Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
 	}
 
 
-	  // (PROGRAMACION) (HOJA 1)Reporte de programación general, cada fila representa una operación, con campos agregados para tareas, cantidad de trabajadores y turnos
-	  private buildProgrammingGeneralRows(operations: any[]) {
+	// (PROGRAMACION) (HOJA 1)Reporte de programación general, cada fila representa una operación, con campos agregados para tareas, cantidad de trabajadores y turnos
+	private buildProgrammingGeneralRows(operations: any[]) {
 		return (operations || []).map((op) => {
 			const groups = this.getProgrammingGroups(op);
 			const billUser = op.Bill || [];
@@ -885,7 +891,7 @@ export class OperationExportService {
 			};
 		});
 	}
-     
+
 	//  (PROGRAMACION) (HOJA 2) Reporte detallado de programación, cada fila representa un trabajador específico dentro de una operación
 	private buildProgrammingDetailRows(operations: any[]) {
 		const rows: any[] = [];
@@ -928,21 +934,21 @@ export class OperationExportService {
 						Cliente: op.client?.name || 'Sin cliente',
 						Supervisores: this.formatProgrammingSupervisors(op.inCharge || op.inChargeOperation),
 
-						 //horas unificadas 
+						//horas unificadas 
 						'Fecha Inicio': this.combineDateTime(
 							group.schedule?.dateStart,
-							group.schedule?.timeStart ,
+							group.schedule?.timeStart,
 						),
-						 // //horas unificadas
+						// //horas unificadas
 						'Fecha Fin': this.combineDateTime(
 							group.schedule?.dateEnd,
 							group.schedule?.timeEnd,
 						),
 						'Horas Trabajadas': this.getHoursWorked(
-							group.schedule?.dateStart ,
-							group.schedule?.timeStart ,
-							group.schedule?.dateEnd ,
-							group.schedule?.timeEnd ,
+							group.schedule?.dateStart,
+							group.schedule?.timeStart,
+							group.schedule?.dateEnd,
+							group.schedule?.timeEnd,
 						),
 						Buque: op.motorShip || '',
 						Zona: op.zone || '',
@@ -976,7 +982,7 @@ export class OperationExportService {
 			sheet.addRow(['No hay datos para exportar']);
 			return;
 		}
-      
+
 		// Bloque de título fusionado
 		const headers = Object.keys(rows[0]); // Obtener encabezados de las claves de la primera fila de datos
 		sheet.mergeCells(1, 1, 1, headers.length);// fusionar primera fila para el título
@@ -988,10 +994,10 @@ export class OperationExportService {
 		sheet.getRow(1).height = 26;
 
 		sheet.getCell(3, 1).value = `Fecha de ${this.formatNowDMYHM()}`;
-		sheet.getCell(4, 1).value = 'Periodo: Calendario'; 
+		sheet.getCell(4, 1).value = 'Periodo: Calendario';
 
-		sheet.getCell(6, 1).value = 'ESTADISTICAS'; 
-		sheet.getCell(6, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D9D9D9' } }; 
+		sheet.getCell(6, 1).value = 'ESTADISTICAS';
+		sheet.getCell(6, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D9D9D9' } };
 		sheet.getCell(6, 1).font = { bold: true };
 
 		let rowIndex = 7;
@@ -1030,8 +1036,8 @@ export class OperationExportService {
 		const yyyy = String(date.getFullYear());
 		return `${dd}/${mm}/${yyyy}`;
 	}
-   
-	 // Formatear fecha y hora actual a string DD/MM/YYYY HH:MM, manejando casos de fechas inválidas o nulas
+
+	// Formatear fecha y hora actual a string DD/MM/YYYY HH:MM, manejando casos de fechas inválidas o nulas
 	private formatNowDMYHM(date = new Date()): string {
 		const dd = String(date.getDate()).padStart(2, '0');
 		const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -1088,16 +1094,16 @@ export class OperationExportService {
 			row.eachCell((cell) => {
 				const header = headers[Number(cell.col) - 1];
 				// Ajustar ancho de columnas específicas para fechas
-					 if (
-                            header === 'Inicio' ||
-                            header === 'Fin' ||
-                            header === 'Fecha Inicio' ||
-                            header === 'Fecha Fin' ||
-                            header === 'Fecha Inicio Op.' ||
-                            header === 'Fecha Fin Op.'
-                          ) {
-                         sheet.getColumn(Number(cell.col)).width = 20;
-                         }
+				if (
+					header === 'Inicio' ||
+					header === 'Fin' ||
+					header === 'Fecha Inicio' ||
+					header === 'Fecha Fin' ||
+					header === 'Fecha Inicio Op.' ||
+					header === 'Fecha Fin Op.'
+				) {
+					sheet.getColumn(Number(cell.col)).width = 20;
+				}
 				let horizontal: 'left' | 'center' | 'right' = 'right';
 				if (leftHeaders.has(header)) horizontal = 'left';
 				if (centerHeaders.has(header)) horizontal = 'center';
@@ -1140,9 +1146,9 @@ export class OperationExportService {
 
 		headers.forEach((header, idx) => {
 			const col = sheet.getColumn(idx + 1);
-			if (dateTimeHeaders.has(header)) { col.numFmt = '[$-es-ES,1]dd/mm/yyyy h:mm:ss'; return;}//retunr;
-			if (decimalHeaders.has(header))  { col.numFmt = '#,##0.00';} //retunr;
-			if (integerHeaders.has(header))  { col.numFmt = '0'; }
+			if (dateTimeHeaders.has(header)) { col.numFmt = '[$-es-ES,1]dd/mm/yyyy h:mm:ss'; return; }//retunr;
+			if (decimalHeaders.has(header)) { col.numFmt = '#,##0.00'; } //retunr;
+			if (integerHeaders.has(header)) { col.numFmt = '0'; }
 
 			let max = 12;
 			col.eachCell?.({ includeEmpty: true }, (cell) => {
@@ -1155,35 +1161,35 @@ export class OperationExportService {
 	}
 
 	private combineDateTime(date: Date | string | null, time: string | null): number | null {
-  if (!date) return null;
+		if (!date) return null;
 
-  const dateStr =
-    typeof date === 'string'
-      ? date.split('T')[0]
-      : date.toISOString().split('T')[0];
+		const dateStr =
+			typeof date === 'string'
+				? date.split('T')[0]
+				: date.toISOString().split('T')[0];
 
-  const [year, month, day] = dateStr.split('-').map(Number);
+		const [year, month, day] = dateStr.split('-').map(Number);
 
-  if (!year || !month || !day) return null;
+		if (!year || !month || !day) return null;
 
-  const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-  const targetDate = new Date(Date.UTC(year, month - 1, day));
-  const diffTime = targetDate.getTime() - excelEpoch.getTime();
-  const excelDate = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+		const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+		const targetDate = new Date(Date.UTC(year, month - 1, day));
+		const diffTime = targetDate.getTime() - excelEpoch.getTime();
+		const excelDate = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-  let excelTime = 0;
+		let excelTime = 0;
 
-  if (time) {
-    const parts = time.split(':');
-    const hours = parseInt(parts[0] || '0', 10);
-    const minutes = parseInt(parts[1] || '0', 10);
-    const seconds = parseInt(parts[2] || '0', 10);
+		if (time) {
+			const parts = time.split(':');
+			const hours = parseInt(parts[0] || '0', 10);
+			const minutes = parseInt(parts[1] || '0', 10);
+			const seconds = parseInt(parts[2] || '0', 10);
 
-    excelTime = (hours + minutes / 60 + seconds / 3600) / 24;
-  }
+			excelTime = (hours + minutes / 60 + seconds / 3600) / 24;
+		}
 
-  return excelDate + excelTime;
-}
+		return excelDate + excelTime;
+	}
 	// Agrupar trabajadores de una operación por su id_group, para luego calcular horas trabajadas y cantidades por grupo/subservicio
 	private getProgrammingGroups(op: any): any[] {
 		if (Array.isArray(op?.workerGroups) && op.workerGroups.length) {
