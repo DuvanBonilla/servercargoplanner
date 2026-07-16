@@ -256,9 +256,6 @@ async update(id: number, updateClientEmailDto: UpdateClientEmailDto) {
     try {
 
         const emails = await this.prisma.clientEmail.findMany({
-            where: {
-                status: "ACTIVE",
-            },
             select: {
                 id: true,
                 id_client: true,

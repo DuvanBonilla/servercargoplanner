@@ -12,6 +12,8 @@ type SendConfirmationEmailParams = {
   subject?: string | null;
   /** Cuerpo de contexto (texto plano, admite saltos de linea). */
   bodyMessage?: string | null;
+  /** Nombre del/los servicio(s) de la operación, usado en asunto y encabezado por defecto. */
+  serviceLabel?: string | null;
 };
 
 type SendLiquidationEmailParams = {
@@ -209,10 +211,12 @@ export class OperationEmailService {
 
       const subjectPrefix =
         process.env.CONFIRMATION_EMAIL_SUBJECT_PREFIX || 'PlannerOP';
+      const serviceLabel = (params.serviceLabel || '').trim();
+      const headingSuffix = serviceLabel || `Operación #${params.operationId}`;
       const customSubject = (params.subject || '').trim();
       const subject = customSubject
         ? customSubject
-        : `[${subjectPrefix}] Confirmacion de operacion #${params.operationId}`;
+        : `[${subjectPrefix}] Solicitud de confirmación — ${headingSuffix}`;
 
       const customBody = (params.bodyMessage || '').trim();
       const defaultBodyText =
@@ -237,7 +241,7 @@ export class OperationEmailService {
 
             <div style="padding:28px 32px 0;">
               <p style="font-size:13px;color:#6b7280;margin:0 0 4px;">Estimado cliente,</p>
-              <h2 style="font-size:18px;font-weight:600;color:#111827;margin:0 0 16px;">Solicitud de confirmación — Operación #${params.operationId}</h2>
+              <h2 style="font-size:18px;font-weight:600;color:#111827;margin:0 0 16px;">Solicitud de confirmación — ${this.escapeHtml(headingSuffix)}</h2>
 
               <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
                 ${bodyHtml}

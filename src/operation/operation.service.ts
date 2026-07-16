@@ -589,12 +589,14 @@ export class OperationService {
     } = { sent: false, to: emailTarget };
 
     if (emailTarget) {
+      const serviceLabel = await this.servicesForSendByEmail(operationId);
       const emailResult =
         await this.operationEmailService.sendSpecialOperationConfirmationEmail({
           to: emailTarget,
           operationId,
           confirmationLink: confirmationData.link,
           tokenTtlMinutes,
+          serviceLabel,
         });
       emailNotification = {
         sent: emailResult.sent,
@@ -670,6 +672,7 @@ export class OperationService {
       operation,
     );
     const tokenTtlMinutes = this.getTokenValidityMinutes();
+    const serviceLabel = await this.servicesForSendByEmail(operationId);
 
     const emailResult =
       await this.operationEmailService.sendSpecialOperationConfirmationEmail({
@@ -679,6 +682,7 @@ export class OperationService {
         tokenTtlMinutes,
         subject: params?.subject,
         bodyMessage: params?.body,
+        serviceLabel,
       });
 
     if (!emailResult.sent) {
@@ -1824,6 +1828,41 @@ export class OperationService {
 
   private isValidEmail(value: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  }
+
+  /**
+   * Resuelve un texto legible con el/los servicio(s) de una operación,
+   * para usarlo en el asunto y encabezado del correo de confirmación.
+   * Prioriza los subservicios (SubTask) de los grupos de trabajadores y,
+   * si no hay ninguno, cae al servicio general (Task) de la operación.
+   */
+  private async servicesForSendByEmail(
+    operationId: number,
+  ): Promise<string | null> {
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: {
+        task: { select: { name: true } },
+        workers: {
+          where: { id_worker: { not: -1 } },
+          select: { SubTask: { select: { name: true } } },
+        },
+      },
+    });
+
+    const subserviceNames = Array.from(
+      new Set(
+        (operation?.workers || [])
+          .map((w) => w.SubTask?.name?.trim())
+          .filter((name): name is string => !!name),
+      ),
+    );
+
+    if (subserviceNames.length > 0) {
+      return subserviceNames.join(', ');
+    }
+
+    return operation?.task?.name?.trim() || null;
   }
 
   /**
