@@ -3,6 +3,7 @@ import { ValidationTaskAndSubtaskService } from 'src/common/validation/services/
 import { ValidationService } from 'src/common/validation/validation.service';
 import { WorkerScheduleDto } from 'src/operation-worker/dto/worker-schedule.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { OperationGroupService } from '../operation-group/operation-group.service';
 
 @Injectable()
 export class UpdateWorkerSheduleService {
@@ -10,6 +11,7 @@ export class UpdateWorkerSheduleService {
     private prisma: PrismaService,
     private validationTaskAndSubtaskService: ValidationTaskAndSubtaskService,
     private validationService: ValidationService,
+    private operationGroupService: OperationGroupService,
   ) {}
   /**
    * Actualiza la programación de trabajadores ya asignados a una operación
@@ -145,7 +147,7 @@ export class UpdateWorkerSheduleService {
         // ✅ SI NO HAY WORKERS EN EL GRUPO PERO SE PROPORCIONARON NUEVOS, CREARLOS
         if (existingGroupRecords.length === 0 && workerIds && workerIds.length > 0) {
           // console.log(`[UpdateWorkerSheduleService] ✨ Grupo ${id_group} vacío, agregando ${workerIds.length} worker(s) nuevo(s)`);
-          
+
           // Validar que los trabajadores existen
           const validation = await this.validationService.validateAllIds({
             workerIds: workerIds,
@@ -153,6 +155,9 @@ export class UpdateWorkerSheduleService {
           if (validation && 'status' in validation && validation.status === 404) {
             return validation;
           }
+
+          // Garantizar que el grupo tenga su código legible (ej. 1437901); es la primera vez que aparece este id_group
+          await this.operationGroupService.ensureCode(id_operation, id_group);
 
           // Crear registros para los nuevos trabajadores con los datos del grupo
           const newWorkerRecords = workerIds.map((workerId) => ({

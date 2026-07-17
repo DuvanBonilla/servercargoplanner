@@ -131,6 +131,21 @@ model Operation {
   subSite              SubSite?            @relation(fields: [id_subsite], references: [id])
   zone                 Zone?               @relation(fields: [id_zone], references: [id])
   Bill                 Bill[]
+  operationGroups      OperationGroup[]
+}
+
+// Codigo legible y estable por grupo (id_group) de Operation_Worker, ej. operacion 14379 -> code "1437901", "1437902"...
+model OperationGroup {
+  id           Int       @id @default(autoincrement())
+  id_operation Int
+  id_group     String    // Relación con Operation_Worker
+  code         String    // Código único del grupo, ej. "1437901"
+  alias        Int       // Lo que ve el usuario, ej. 1, 2, 3...
+  createAt     DateTime  @default(now())
+  operation    Operation @relation(fields: [id_operation], references: [id])
+
+  @@unique([id_operation, id_group])
+  @@unique([id_operation, alias])
 }
 
 model Operation_Worker {

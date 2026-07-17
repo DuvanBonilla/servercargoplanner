@@ -7,6 +7,7 @@ import { RemoveWorkerFromOperationService } from './service/remove-worker-from-o
 import { UpdateWorkerSheduleService } from './service/update-worker-shedule/update-worker-shedule.service';
 import { AssignWorkerToOperationService } from './service/assign-worker-to-operation/assign-worker-to-operation.service';
 import { WorkerModule } from 'src/worker/worker.module';
+import { OperationGroupService } from './service/operation-group/operation-group.service';
 
 @Module({
   imports: [AuthModule, ValidationModule, WorkerModule],
@@ -16,12 +17,14 @@ import { WorkerModule } from 'src/worker/worker.module';
     RemoveWorkerFromOperationService,
     UpdateWorkerSheduleService,
     AssignWorkerToOperationService,
+    OperationGroupService,
   ],
   exports: [
     OperationWorkerService,
     RemoveWorkerFromOperationService,
     UpdateWorkerSheduleService,
     AssignWorkerToOperationService,
+    OperationGroupService,
   ],
 })
 export class OperationWorkerModule {}

@@ -19,9 +19,10 @@ export class CreateOperationDto {
   })
   status!: StatusOperation;
 
-  @ApiProperty({ example: '23' })
+  @ApiProperty({ example: '23', required: false })
   @Type(() => Number)
   @IsNumber()
+  @IsOptional()
   id_zone?: number;
 
   @ApiProperty({ example: 'HTR4567' })

@@ -87,6 +87,9 @@ export class OperationExportService {
 							user: { select: { id: true, name: true } },
 						},
 					},
+					operationGroups: {
+						select: { id_group: true, code: true },
+					},
 					workers: {
 						select: {
 							id: true,
@@ -356,6 +359,7 @@ export class OperationExportService {
 			if (!workersByGroup.length) {
 				rows.push({ ///HOJA1 RTD
 					"Operacion": op.id,
+					Grupo: '',
 					"userId": op.user?.name,
 					"Fecha Inicio Op.": this.combineDateTime(op.dateStart, op.timeStrat),
 					"Fecha Fin Op.": this.combineDateTime(op.dateEnd, op.timeEnd),
@@ -391,6 +395,7 @@ export class OperationExportService {
 				// HOJA 2 RTD
 				rows.push({
 					"Operacion": op.id,
+					Grupo: this.resolveGroupCode(op, group.groupId),
 					"Fecha Inicio Op.": this.combineDateTime(
 						schedule.dateStart || op.dateStart,
 						schedule.timeStart || op.timeStrat,
@@ -460,8 +465,9 @@ export class OperationExportService {
 			const billUser = op.Bill || [];
 
 			if (!op.workers?.length) {
-				rows.push({ //HOJA1 
+				rows.push({ //HOJA1
 					"Operacion": op.id,
+					Grupo: '',
 					Inicio: this.combineDateTime(op.dateStart, op.timeStrat),
 					Fin: this.combineDateTime(op.dateEnd, op.timeEnd),
 					Semana: this.isoWeek(op.dateStart),
@@ -544,9 +550,10 @@ export class OperationExportService {
 					ow.timeEnd || op.timeEnd,
 				);
 
-				//EDITAR 
-				rows.push({ //HOJA 2 
+				//EDITAR
+				rows.push({ //HOJA 2
 					"Operacion": op.id,
+					Grupo: this.resolveGroupCode(op, ow.id_group),
 					Inicio: this.combineDateTime(
 						ow.dateStart || op.dateStart,
 						ow.timeStart || op.timeStrat,
@@ -624,7 +631,7 @@ export class OperationExportService {
 
 		this.applyBodyRows(
 			sheet, rows, headers, 2,
-			new Set(['Subservicio', 'Observaciones', 'Supervisores', 'Buque', 'Subsede', 'Area', 'Cliente', 'Estado', 'Nombre Trabajador', 'Unidad de Medida', 'Unidad Medida']),
+			new Set(['Grupo', 'Subservicio', 'Observaciones', 'Supervisores', 'Buque', 'Subsede', 'Area', 'Cliente', 'Estado', 'Nombre Trabajador', 'Unidad de Medida', 'Unidad Medida']),
 			new Set(['Operacion ', 'Semana', 'Inicio Op. ', 'Fin Op. ']),
 		);
 
@@ -658,6 +665,13 @@ export class OperationExportService {
 			integerHeaders: new Set(['Operacion', 'Semana', 'Codigo Subservicio', 'Total Trabajadores', 'Total Alimentacion', 'DNI Trabajador', 'DNITrabajador', 'Codigo Nomina', 'Zona']),
 			preferredWidths: { Subservicio: 42, Observaciones: 42, Supervisores: 30, 'Nombre Trabajador': 28, Buque: 22 },
 		});
+	}
+
+	// Código legible del grupo (ej. 1437901) a partir del id_group (uuid), buscando en operationGroups de la operacion
+	private resolveGroupCode(op: any, id_group?: string | null): string {
+		if (!id_group) return '';
+		const match = (op.operationGroups || []).find((g: any) => g.id_group === id_group);
+		return match?.code || '';
 	}
 
 	//GRUPO DE TRABAjadores SEGUN ID_GROUP, para luego calcular cantidades y horas trabajadas por grupo/subservicio
@@ -923,7 +937,7 @@ export class OperationExportService {
 
 			for (let i = 0; i < groups.length; i += 1) {
 				const group = groups[i];
-				const turno = `Turno ${i + 1}`;
+				const turno = group.code || `Turno ${i + 1}`;
 				const workers = group.workers || [];
 
 				for (const worker of workers) {
@@ -1211,6 +1225,7 @@ export class OperationExportService {
 			const first = groupWorkers[0] || {};
 			return {
 				groupId: first.id_group || String(idx + 1),
+				code: this.resolveGroupCode(op, first.id_group),
 				schedule: {
 					dateStart: first.dateStart || op.dateStart,
 					timeStart: first.timeStart || op.timeStrat,

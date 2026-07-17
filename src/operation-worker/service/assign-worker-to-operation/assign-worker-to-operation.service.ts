@@ -4,6 +4,7 @@ import { ValidationService } from 'src/common/validation/validation.service';
 import { AssignWorkersDto } from 'src/operation-worker/dto/assign-workers.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
+import { OperationGroupService } from '../operation-group/operation-group.service';
 
 @Injectable()
 export class AssignWorkerToOperationService {
@@ -11,6 +12,7 @@ export class AssignWorkerToOperationService {
     private readonly prisma: PrismaService,
     private readonly validationService: ValidationService,
     private readonly validationWorkerService: ValidationWorkerService,
+    private readonly operationGroupService: OperationGroupService,
   ) {}
   /**
    * Asigna trabajadores a una operación
@@ -116,19 +118,22 @@ export class AssignWorkerToOperationService {
         // console.log(`[AssignWorkerService] 📋 Procesando ${scheduledGroupsToProcess.length} grupos`);
         
         // Para cada grupo de trabajadores con programación
-        scheduledGroupsToProcess.forEach((group) => {
+        for (const group of scheduledGroupsToProcess) {
           const isNewGroup = !group.id_group;
           const isExistingGroup = !!group.id_group;
-          
+
           // Generar UUID para grupos nuevos (1 o más workers), usar id_group si existe
           const groupId = isNewGroup ? uuidv4() : group.id_group;
-          
+
           if (isNewGroup) {
             // console.log(`[AssignWorkerService] 🆕 Creando nuevo grupo: ${groupId} (${group.workerIds.length} workers)`);
           } else if (isExistingGroup) {
             // console.log(`[AssignWorkerService] ♻️ Agregando a grupo existente: ${groupId} (${group.workerIds.length} workers)`);
           }
-          
+
+          // Garantizar que el grupo tenga su código legible (ej. 1437901); no-op si ya existe
+          await this.operationGroupService.ensureCode(id_operation, groupId);
+
           const groupSchedule = {
             dateStart: group.dateStart ? parseDate(group.dateStart) : null,
             dateEnd: group.dateEnd ? parseDate(group.dateEnd) : null,
@@ -153,7 +158,7 @@ export class AssignWorkerToOperationService {
           );
 
           assignmentPromises.push(...groupAssignments);
-        });
+        }
       }
 
       // Ejecutar todas las asignaciones

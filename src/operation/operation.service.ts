@@ -2105,6 +2105,7 @@ export class OperationService {
         timeStrat: timeStrat,
         timeEnd: timeEnd || null,
         id_subsite: id_subsite || null,
+        id_zone: operationData.id_zone ? operationData.id_zone : null,
         op_duration: calculatedOpDuration,
       },
     });
@@ -2439,6 +2440,11 @@ export class OperationService {
     // - id_area, id_client, id_clientProgramming, id_user, id_task, id_site, id_subsite
 
     // console.log('[OperationService] Campos después de limpieza:', Object.keys(updateData));
+
+    // ✅ id_zone: 0 no existe en el catálogo de zonas (no es obligatorio tener zona) -> guardar null
+    if ('id_zone' in updateData && !updateData.id_zone) {
+      updateData.id_zone = null;
+    }
 
     if (observation) updateData.observation = observation;
     // ✅ PROCESAR FECHAS Y HORAS RESPETANDO LO QUE ENVÍA EL USUARIO
