@@ -40,6 +40,8 @@ model User {
   Bill              Bill[]
   zones             Zone[]
 
+  @@index([id_site])
+  @@index([id_subsite])
 }
 
 model JobArea {
@@ -54,6 +56,10 @@ model JobArea {
   id_site    Int              @default(1)
   id_subsite Int?
   subSite    SubSite?         @relation(fields: [id_subsite], references: [id])
+
+  @@index([id_user])
+  @@index([id_site])
+  @@index([id_subsite])
 }
 
 model Zone {
@@ -67,6 +73,10 @@ model Zone {
   id_subsite Int?
   subSite    SubSite?         @relation(fields: [id_subsite], references: [id])
   operations Operation[]
+
+  @@index([id_user])
+  @@index([id_site])
+  @@index([id_subsite])
 }
 
 model Worker {
@@ -97,6 +107,11 @@ model Worker {
   id_site          Int                @default(1)
   id_subsite       Int?
   subSite          SubSite?           @relation(fields: [id_subsite], references: [id])
+
+  @@index([id_area])
+  @@index([id_user])
+  @@index([id_site])
+  @@index([id_subsite])
 }
 
 model Operation {
@@ -132,6 +147,16 @@ model Operation {
   zone                 Zone?               @relation(fields: [id_zone], references: [id])
   Bill                 Bill[]
   operationGroups      OperationGroup[]
+
+  @@index([id_user])
+  @@index([id_area])
+  @@index([id_task])
+  @@index([id_client])
+  @@index([id_clientProgramming])
+  @@index([id_zone])
+  @@index([id_site])
+  @@index([id_subsite])
+  @@index([status, id_site, id_subsite])
 }
 
 // Codigo legible y estable por grupo (id_group) de Operation_Worker, ej. operacion 14379 -> code "1437901", "1437902"...
@@ -167,6 +192,12 @@ model Operation_Worker {
   observation  String?
   worker       Worker    @relation(fields: [id_worker], references: [id])
   billDetail   BillDetail[]
+
+  @@index([id_operation])
+  @@index([id_worker])
+  @@index([id_task])
+  @@index([id_subtask])
+  @@index([id_tariff])
 }
 
 model Task {
@@ -182,7 +213,11 @@ model Task {
   id_site          Int                @default(1)
   id_subsite       Int?
   subSite          SubSite?           @relation(fields: [id_subsite], references: [id])
-  SubTask          SubTask[]        
+  SubTask          SubTask[]
+
+  @@index([id_user])
+  @@index([id_site])
+  @@index([id_subsite])
 }
 
 model SubTask {
@@ -193,11 +228,15 @@ model SubTask {
   id_task Int
   task    Task             @relation(fields: [id_task], references: [id])
   Tariff  Tariff[]
-  id_subsite       Int     
+  id_subsite       Int
   subSite          SubSite           @relation(fields: [id_subsite], references: [id])
   operation_Worker Operation_Worker[]
-  id_client       Int          
+  id_client       Int
   client         Client           @relation(fields: [id_client], references: [id])
+
+  @@index([id_task])
+  @@index([id_subsite])
+  @@index([id_client])
 }
 
 model Client {
@@ -210,6 +249,8 @@ model Client {
   CostCenter CostCenter[]
   SubTask    SubTask[]
   emails     ClientEmail[]
+
+  @@index([id_user])
 }
 model ClientEmail {
   id        Int              @id @default(autoincrement())
@@ -239,6 +280,8 @@ model CalledAttention {
   createAt    DateTime  @default(now())
   user        User      @relation(fields: [id_user], references: [id])
   worker      Worker    @relation(fields: [dni_worker], references: [dni])
+
+  @@index([id_user])
 }
 
 model InChargeOperation {
@@ -247,6 +290,9 @@ model InChargeOperation {
   id_operation Int
   operation    Operation @relation(fields: [id_operation], references: [id])
   user         User      @relation(fields: [id_user], references: [id])
+
+  @@index([id_operation])
+  @@index([id_user])
 }
 
 model WorkerFeeding {
@@ -261,6 +307,11 @@ model WorkerFeeding {
   user         User?         @relation(fields: [id_user], references: [id])
   operation    Operation     @relation(fields: [id_operation], references: [id])
   worker       Worker        @relation(fields: [id_worker], references: [id])
+
+  @@index([id_worker])
+  @@index([id_operation])
+  @@index([id_user])
+  @@index([dateFeeding])
 }
 
 model Inability {
@@ -275,6 +326,9 @@ model Inability {
   updateAt         DateTime        @updatedAt
   user             User            @relation(fields: [id_user], references: [id])
   worker           Worker          @relation(fields: [id_worker], references: [id])
+
+  @@index([id_worker])
+  @@index([id_user])
 }
 
 model Permission{
@@ -291,6 +345,9 @@ model Permission{
   updateAt         DateTime         @updatedAt
   user             User             @relation(fields: [id_user], references: [id])
   worker           Worker           @relation(fields: [id_worker], references: [id])
+
+  @@index([id_worker])
+  @@index([id_user])
 }
 
 model ClientProgramming {
@@ -309,6 +366,10 @@ model ClientProgramming {
   Site            Site           @relation(fields: [id_site], references: [id])
   id_subsite      Int?
   subSite         SubSite?       @relation(fields: [id_subsite], references: [id])
+
+  @@index([id_user])
+  @@index([id_site])
+  @@index([id_subsite])
 }
 
 model Site {
@@ -345,6 +406,8 @@ model SubSite {
   CostCenter        CostCenter[]
   SubTask           SubTask[]
   Zone              Zone[]
+
+  @@index([id_site])
 }
 
 model CostCenter {
@@ -361,6 +424,10 @@ model CostCenter {
   updatedAt  DateTime         @updatedAt
   Tariff     Tariff[]
   status     StatusActivation @default(ACTIVE)
+
+  @@index([id_user])
+  @@index([id_client])
+  @@index([id_subsite])
 }
 
 model UnitOfMeasure {
@@ -373,6 +440,8 @@ model UnitOfMeasure {
   updatedAt DateTime         @updatedAt
   Tariff    Tariff[] @relation("FacturationUnit")
   paysheetUnit Tariff[] @relation("PaysheetUnit")
+
+  @@index([id_user])
 }
 model OperationConfirmation {
   id            Int       @id @default(autoincrement())
@@ -402,6 +471,8 @@ model Token {
   createdAt        DateTime                @default(now())
   status           TokenStatus             @default(ACTIVE)
   usedAt           DateTime?
+
+  @@index([id_confirmation])
 }
 
 model Tariff {
@@ -448,6 +519,12 @@ model Tariff {
   status                StatusActivation   @default(ACTIVE)
   Operation_Worker      Operation_Worker[]
   // bills                 Bill[]
+
+  @@index([id_subtask])
+  @@index([id_costCenter])
+  @@index([id_unidOfMeasure])
+  @@index([id_facturation_unit])
+  @@index([id_user])
 }
 
 model Configuration {
@@ -461,6 +538,8 @@ model Configuration {
   updatedAt   DateTime               @updatedAt
   id_user     Int
   user        User                   @relation(fields: [id_user], references: [id])
+
+  @@index([id_user])
 }
 
 model Bill {
@@ -507,6 +586,9 @@ model Bill {
   dateEnd_group   DateTime? @db.Date
   timeEnd_group   String?
 
+  @@index([id_operation])
+  @@index([id_user])
+  @@index([id_group])
 }
 
 model BillDetail {
@@ -521,6 +603,9 @@ model BillDetail {
   total_paysheet    Decimal?           @db.Decimal(15, 3)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+
+  @@index([id_bill])
+  @@index([id_operation_worker])
 }
 
 enum TypeValueConfiguration {

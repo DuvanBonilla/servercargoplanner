@@ -23,6 +23,7 @@ import { OperationInChargeModule } from './in-charged/in-charged.module';
 import { DocsController } from './docs/docs.controller';
 import { DocsModule } from './docs/docs.module';
 import { DocsAuthMiddleware } from './common/middleware/docs-auth.middleware';
+import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { CommonModule } from './common/common.module';
 import { FeedingModule } from './feeding/feeding.module';
 import { InabilityModule } from './inability/inability.module';
@@ -82,12 +83,15 @@ import { ZoneModule } from './zone/zone.module';
     ZoneModule,
   ],
   providers: [
-    DocsAuthMiddleware
+    DocsAuthMiddleware,
+    RequestLoggerMiddleware,
   ],
   controllers: [AppController, DocsController],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestLoggerMiddleware).forRoutes('*path');
+
     consumer
       .apply(DocsAuthMiddleware)
       .exclude(
