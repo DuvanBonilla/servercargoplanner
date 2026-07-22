@@ -590,6 +590,7 @@ export class OperationService {
 
     if (emailTarget) {
       const serviceLabel = await this.servicesForSendByEmail(operationId);
+      const serviceCode = await this.getClientServiceCode(operationId);
       const emailResult =
         await this.operationEmailService.sendSpecialOperationConfirmationEmail({
           to: emailTarget,
@@ -597,6 +598,7 @@ export class OperationService {
           confirmationLink: confirmationData.link,
           tokenTtlMinutes,
           serviceLabel,
+          serviceCode,
         });
       emailNotification = {
         sent: emailResult.sent,
@@ -673,6 +675,7 @@ export class OperationService {
     );
     const tokenTtlMinutes = this.getTokenValidityMinutes();
     const serviceLabel = await this.servicesForSendByEmail(operationId);
+    const serviceCode = await this.getClientServiceCode(operationId);
 
     const emailResult =
       await this.operationEmailService.sendSpecialOperationConfirmationEmail({
@@ -683,6 +686,7 @@ export class OperationService {
         subject: params?.subject,
         bodyMessage: params?.body,
         serviceLabel,
+        serviceCode,
       });
 
     if (!emailResult.sent) {
@@ -702,6 +706,102 @@ export class OperationService {
       messageId: emailResult.messageId,
       link: confirmationData.link,
     };
+  }
+
+  /**
+   * Reenvía manualmente el correo de liquidación de una operación cuya
+   * factura ya fue creada (status TO_APPROVED) pero está a la espera del
+   * número de radicado. Útil cuando el equipo de liquidación no recibió o
+   * no encontró el correo original (falla de internet, bandeja saturada,
+   * etc.). Genera un nuevo enlace de liquidación y expira los anteriores
+   * para no dejar varios tokens activos apuntando a links distintos.
+   */
+  async resendLiquidationEmail(operationId: number): Promise<{
+    operationId: number;
+    sent: boolean;
+    to: string[];
+  }> {
+    if (!operationId || operationId <= 0) {
+      throw new BadRequestException('operationId inválido');
+    }
+
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: { id: true },
+    });
+    if (!operation) {
+      throw new OperationNotFoundException(operationId);
+    }
+
+    // Debe existir una factura pendiente de radicado para esta operación.
+    const pendingBill = await this.prisma.bill.findFirst({
+      where: { id_operation: operationId, status: BillStatus.TO_APPROVED },
+      select: { id: true },
+    });
+    if (!pendingBill) {
+      throw new ConflictException(
+        'La operación no tiene una factura pendiente de radicado (TO_APPROVED) para reenviar el correo de liquidación',
+      );
+    }
+
+    const confirmation = await this.prisma.operationConfirmation.findUnique({
+      where: { id_operation: operationId },
+      select: { id: true },
+    });
+    if (!confirmation) {
+      throw new ConflictException(
+        'La operación no tiene una confirmación asociada; no se puede generar el enlace de liquidación',
+      );
+    }
+
+    const emailTargets = await this.resolveLiquidationEmails(operationId);
+    if (emailTargets.length === 0) {
+      throw new ConflictException(
+        'No hay correos de liquidación configurados para el cliente de esta operación',
+      );
+    }
+
+    // Expirar tokens de liquidación activos previos para no dejar varios
+    // enlaces vivos apuntando a radicados distintos de la misma operación.
+    await this.prisma.token.updateMany({
+      where: {
+        id_confirmation: confirmation.id,
+        type: 'LIQUIDATION',
+        status: TokenStatus.ACTIVE,
+      },
+      data: { status: TokenStatus.EXPIRED },
+    });
+
+    const clientLabel = await this.getClientLabel(operationId);
+    const serviceLabel = await this.servicesForSendByEmail(operationId);
+    const serviceCode = await this.getClientServiceCode(operationId);
+    const liquidationTokenValue = await this.createLiquidationToken(operationId);
+    if (!liquidationTokenValue) {
+      throw new ConflictException('No se pudo generar el enlace de liquidación');
+    }
+
+    const liquidationLink = this.operationTokenService.buildLiquidationLink(liquidationTokenValue);
+
+    const emailResult = await this.operationEmailService.sendLiquidationEmail({
+      to: emailTargets,
+      operationId,
+      liquidationLink,
+      clientLabel,
+      serviceLabel,
+      serviceCode,
+    });
+
+    if (!emailResult.sent) {
+      throw new ConflictException(
+        emailResult.reason || 'No se pudo reenviar el correo de liquidación',
+      );
+    }
+
+    this.logger.log(
+      `Correo de liquidación reenviado manualmente para operación ${operationId} a [${emailTargets.join(', ')}]`,
+    );
+
+    return { operationId, sent: true, to: emailTargets };
   }
 
   /**
@@ -1007,32 +1107,85 @@ export class OperationService {
     const canSubmit = tokenRecord.status === TokenStatus.ACTIVE;
     const operation = tokenRecord.confirmation.operation;
 
-    const groupMap = new Map<string, { workerIds: Set<number>; totalHoursWorked: number; subservices: Set<string>; unitNames: Set<string>; totalQuantity: number }>();
+    // Mapa de Bills por id_group, para usar horas ya facturadas como respaldo
+    // cuando la fecha/hora de los trabajadores no permite calcularlas.
+    const billMap = new Map<string, any>();
+    for (const bill of operation.Bill || []) {
+      if (bill.id_group) {
+        billMap.set(bill.id_group, bill);
+      }
+    }
+
+    const groupMap = new Map<
+      string,
+      {
+        workerIds: Set<number>;
+        subservices: Set<string>;
+        unitNames: Set<string>;
+        totalQuantity: number;
+        dateStart: Date | null;
+        timeStart: string | null;
+        dateEnd: Date | null;
+        timeEnd: string | null;
+      }
+    >();
 
     for (const row of operation.workers || []) {
       const groupId = (row.id_group || 'SIN_GRUPO').trim();
       if (!groupMap.has(groupId)) {
-        groupMap.set(groupId, { workerIds: new Set(), totalHoursWorked: 0, subservices: new Set(), unitNames: new Set(), totalQuantity: 0 });
+        groupMap.set(groupId, {
+          workerIds: new Set(),
+          subservices: new Set(),
+          unitNames: new Set(),
+          totalQuantity: 0,
+          dateStart: null,
+          timeStart: null,
+          dateEnd: null,
+          timeEnd: null,
+        });
       }
       const g = groupMap.get(groupId)!;
       g.workerIds.add(row.id_worker);
       if (row.SubTask?.name) g.subservices.add(row.SubTask.name);
       if (row.tariff?.unitOfMeasure?.name) g.unitNames.add(row.tariff.unitOfMeasure.name);
       if (row.tariff?.pay_units) g.totalQuantity += Number(row.tariff.pay_units);
-      if (row.dateStart && row.dateEnd) {
-        const diffMs = new Date(row.dateEnd).getTime() - new Date(row.dateStart).getTime();
-        if (diffMs > 0) g.totalHoursWorked += diffMs / 3_600_000;
-      }
+
+      this.mergeGroupDateRange(g, row.dateStart, row.timeStart, row.dateEnd, row.timeEnd);
     }
 
-    const groups = Array.from(groupMap.entries()).map(([groupId, g]) => ({
-      groupId,
-      workersCount: g.workerIds.size,
-      totalHoursWorked: Math.round(g.totalHoursWorked * 100) / 100,
-      subservices: Array.from(g.subservices),
-      unitMeasures: Array.from(g.unitNames),
-      quantity: Math.round(g.totalQuantity * 100) / 100,
-    }));
+    const groups = Array.from(groupMap.entries()).map(([groupId, g]) => {
+      const bill = billMap.get(groupId);
+      // ✅ Duración del rango del grupo (una sola vez, no por trabajador): todos
+      // los trabajadores de un grupo comparten el mismo horario, así que sumar
+      // la duración por cada fila la multiplicaba por la cantidad de personas
+      // (p.ej. 2h reales x 2 trabajadores mostraban "4.0 h").
+      const rangeHours =
+        g.dateStart && g.timeStart && g.dateEnd && g.timeEnd
+          ? this.calculateOperationDuration(g.dateStart, g.timeStart, g.dateEnd, g.timeEnd)
+          : 0;
+      // ✅ Preferir las horas ya guardadas en la factura del grupo; si no hay
+      // factura (o no tiene horas), usar la duración calculada del rango.
+      const billHours = Number(bill?.number_of_hours ?? bill?.group_hours ?? 0);
+      const totalHoursWorked = billHours > 0 ? billHours : rangeHours;
+
+      return {
+        groupId,
+        workersCount: g.workerIds.size,
+        totalHoursWorked: Math.round(totalHoursWorked * 100) / 100,
+        subservices: Array.from(g.subservices),
+        unitMeasures: Array.from(g.unitNames),
+        quantity: Math.round(g.totalQuantity * 100) / 100,
+        amount: bill?.amount ?? 0,
+        dateStart: g.dateStart,
+        timeStart: g.timeStart,
+        dateStartFormatted: g.dateStart ? formatColombianDate(g.dateStart) : null,
+        timeStartFormatted: this.formatTimeForDisplay(g.timeStart),
+        dateEnd: g.dateEnd,
+        timeEnd: g.timeEnd,
+        dateEndFormatted: g.dateEnd ? formatColombianDate(g.dateEnd) : null,
+        timeEndFormatted: this.formatTimeForDisplay(g.timeEnd),
+      };
+    });
 
     return {
       token: { status: tokenRecord.status, createdAt: tokenRecord.createdAt },
@@ -1054,6 +1207,8 @@ export class OperationService {
     }
 
     const clientLabel = await this.getClientLabel(operationId);
+    const serviceLabel = await this.servicesForSendByEmail(operationId);
+    const serviceCode = await this.getClientServiceCode(operationId);
     const liquidationTokenValue = await this.createLiquidationToken(operationId);
     if (!liquidationTokenValue) {
       this.logger.warn(`No se pudo generar token de liquidacion para operacion ${operationId}`);
@@ -1067,6 +1222,8 @@ export class OperationService {
       operationId,
       liquidationLink,
       clientLabel,
+      serviceLabel,
+      serviceCode,
     });
   }
 
@@ -1402,10 +1559,13 @@ export class OperationService {
       string,
       {
         workerIds: Set<number>;
-        totalHoursWorked: number;
         subservices: Set<string>;
         unitNames: Set<string>;
         totalQuantity: number;
+        dateStart: Date | null;
+        timeStart: string | null;
+        dateEnd: Date | null;
+        timeEnd: string | null;
       }
     >();
 
@@ -1414,24 +1574,20 @@ export class OperationService {
       if (!groupMap.has(groupId)) {
         groupMap.set(groupId, {
           workerIds: new Set<number>(),
-          totalHoursWorked: 0,
           subservices: new Set<string>(),
           unitNames: new Set<string>(),
           totalQuantity: 0,
+          dateStart: null,
+          timeStart: null,
+          dateEnd: null,
+          timeEnd: null,
         });
       }
 
       const group = groupMap.get(groupId)!;
       group.workerIds.add(row.id_worker);
 
-      if (row.dateStart && row.timeStart && row.dateEnd && row.timeEnd) {
-        group.totalHoursWorked += this.calculateOperationDuration(
-          row.dateStart,
-          row.timeStart,
-          row.dateEnd,
-          row.timeEnd,
-        );
-      }
+      this.mergeGroupDateRange(group, row.dateStart, row.timeStart, row.dateEnd, row.timeEnd);
 
       if (row.SubTask?.name?.trim()) {
         group.subservices.add(row.SubTask.name.trim());
@@ -1448,14 +1604,37 @@ export class OperationService {
       }
     }
 
-    const groups = Array.from(groupMap.entries()).map(([groupId, group]) => ({
-      groupId,
-      workersCount: group.workerIds.size,
-      totalHoursWorked: Math.round(group.totalHoursWorked * 100) / 100,
-      subservices: Array.from(group.subservices),
-      unitOfMeasure: Array.from(group.unitNames),
-      quantity: Math.round(group.totalQuantity * 1000) / 1000,
-    }));
+    const groups = Array.from(groupMap.entries()).map(([groupId, group]) => {
+      // ✅ Duración del rango del grupo (una sola vez, no sumada por cada
+      // trabajador): todos comparten el mismo horario, así que sumar por fila
+      // multiplicaba la duración real por la cantidad de personas del grupo.
+      const rangeHours =
+        group.dateStart && group.timeStart && group.dateEnd && group.timeEnd
+          ? this.calculateOperationDuration(
+              group.dateStart,
+              group.timeStart,
+              group.dateEnd,
+              group.timeEnd,
+            )
+          : 0;
+
+      return {
+        groupId,
+        workersCount: group.workerIds.size,
+        totalHoursWorked: Math.round(rangeHours * 100) / 100,
+        subservices: Array.from(group.subservices),
+        unitOfMeasure: Array.from(group.unitNames),
+        quantity: Math.round(group.totalQuantity * 1000) / 1000,
+        dateStart: group.dateStart,
+        timeStart: group.timeStart,
+        dateStartFormatted: group.dateStart ? formatColombianDate(group.dateStart) : null,
+        timeStartFormatted: this.formatTimeForDisplay(group.timeStart),
+        dateEnd: group.dateEnd,
+        timeEnd: group.timeEnd,
+        dateEndFormatted: group.dateEnd ? formatColombianDate(group.dateEnd) : null,
+        timeEndFormatted: this.formatTimeForDisplay(group.timeEnd),
+      };
+    });
 
     // Se unifica salida en `operation` (general) y `groups` (detalle por grupo).
     const previewGroups = groups.map((group) => {
@@ -1471,12 +1650,21 @@ export class OperationService {
         horasTrabajadas: Math.round(billHours * 100) / 100,
         amount: amount,
         unidadDeMedida: group.unitOfMeasure,
+        dateStart: group.dateStart,
+        timeStart: group.timeStart,
+        dateStartFormatted: group.dateStartFormatted,
+        timeStartFormatted: group.timeStartFormatted,
+        dateEnd: group.dateEnd,
+        timeEnd: group.timeEnd,
+        dateEndFormatted: group.dateEndFormatted,
+        timeEndFormatted: group.timeEndFormatted,
       };
     });
 
-    const totalWorkers = new Set(
-      (operation.workers || []).map((w) => w.id_worker),
-    ).size;
+    // ✅ Se suma el conteo por grupo (no un Set global) para que coincida con
+    // las tarjetas mostradas al usuario: un mismo trabajador puede repetirse
+    // en más de un grupo dentro de la misma operación especial.
+    const totalWorkers = groups.reduce((sum, group) => sum + group.workersCount, 0);
 
     return {
       token: {
@@ -1535,6 +1723,49 @@ export class OperationService {
     return `${hour12.toString().padStart(2, '0')}:${minute
       .toString()
       .padStart(2, '0')} ${period}`;
+  }
+
+  /**
+   * Actualiza in-place el rango fecha/hora de un grupo tomando el mínimo
+   * inicio y el máximo fin entre todos los trabajadores que lo componen.
+   * Se usa para mostrar el inicio/fin real de cada grupo en los portales
+   * de confirmación y liquidación (antes solo se exponía a nivel operación).
+   */
+  private mergeGroupDateRange(
+    group: {
+      dateStart: Date | null;
+      timeStart: string | null;
+      dateEnd: Date | null;
+      timeEnd: string | null;
+    },
+    rowDateStart?: Date | null,
+    rowTimeStart?: string | null,
+    rowDateEnd?: Date | null,
+    rowTimeEnd?: string | null,
+  ): void {
+    const toTimestamp = (date?: Date | null, time?: string | null): number | null => {
+      if (!date) return null;
+      const d = new Date(date);
+      if (time && /^\d{1,2}:\d{2}$/.test(time.trim())) {
+        const [h, m] = time.trim().split(':').map(Number);
+        d.setHours(h, m, 0, 0);
+      }
+      return d.getTime();
+    };
+
+    const currentStart = toTimestamp(group.dateStart, group.timeStart);
+    const rowStart = toTimestamp(rowDateStart, rowTimeStart);
+    if (rowStart !== null && (currentStart === null || rowStart < currentStart)) {
+      group.dateStart = rowDateStart ?? null;
+      group.timeStart = rowTimeStart ?? null;
+    }
+
+    const currentEnd = toTimestamp(group.dateEnd, group.timeEnd);
+    const rowEnd = toTimestamp(rowDateEnd, rowTimeEnd);
+    if (rowEnd !== null && (currentEnd === null || rowEnd > currentEnd)) {
+      group.dateEnd = rowDateEnd ?? null;
+      group.timeEnd = rowTimeEnd ?? null;
+    }
   }
 
   /**
@@ -1863,6 +2094,22 @@ export class OperationService {
     }
 
     return operation?.task?.name?.trim() || null;
+  }
+
+  /**
+   * Código de servicio que el CLIENTE reconoce (el que ellos mismos radicaron
+   * al programar el servicio). Se usa en los correos en lugar del id interno
+   * de operación, que el cliente no conoce.
+   */
+  private async getClientServiceCode(operationId: number): Promise<string | null> {
+    const operation = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: {
+        clientProgramming: { select: { service_request: true } },
+      },
+    });
+
+    return operation?.clientProgramming?.service_request?.trim() || null;
   }
 
   /**
@@ -2278,13 +2525,32 @@ export class OperationService {
         await this.processInChargedOperations(id, inCharged);
       }
 
+      // ✅ Si se actualizaron trabajadores o se finalizó algún grupo, el fin
+      // real de la operación es el máximo dateEnd/timeEnd entre TODOS los
+      // grupos (Operation_Worker), no lo que venga (o no) a nivel raíz del
+      // DTO. Sin esto, cuando el root no manda dateEnd/timeEnd (como en el
+      // flujo de finalización de grupos), el campo queda vacío/null en vez
+      // de reflejar el fin más tardío real; y si un grupo anterior ya lo
+      // había fijado, un grupo que termina después no lo actualiza.
+      let computedDateEnd: string | undefined;
+      let computedTimeEnd: string | undefined;
+      if (workers || (groups && Array.isArray(groups) && groups.length > 0)) {
+        const latestEnd = await this.getLatestGroupEndDateTime(id);
+        if (latestEnd) {
+          computedDateEnd = latestEnd.date.toISOString();
+          computedTimeEnd = latestEnd.time;
+        }
+      }
+
       // ✅ PASAR TODOS LOS PARÁMETROS DE FECHA/HORA AL MÉTODO
+      // (el valor explícito del DTO tiene prioridad; si no viene, se usa el
+      // fin real calculado a partir de los trabajadores/grupos)
       const operationUpdateData = this.prepareOperationUpdateData(
         directFields,
         dateStart,
-        dateEnd,
+        dateEnd ?? computedDateEnd,
         timeStrat,
-        timeEnd, // ✅ ASEGURAR QUE SE PASE timeEnd
+        timeEnd ?? computedTimeEnd, // ✅ ASEGURAR QUE SE PASE timeEnd
       );
 
       //   SI INTENTAN COMPLETAR UNA OPERACIÓN ESPECIAL,

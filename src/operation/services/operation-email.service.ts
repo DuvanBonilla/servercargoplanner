@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as https from 'https';
 import * as querystring from 'querystring';
+import * as fs from 'fs';
+import * as path from 'path';
 
 type SendConfirmationEmailParams = {
   to: string;
@@ -14,6 +16,8 @@ type SendConfirmationEmailParams = {
   bodyMessage?: string | null;
   /** Nombre del/los servicio(s) de la operación, usado en asunto y encabezado por defecto. */
   serviceLabel?: string | null;
+  /** Código de servicio que el cliente reconoce (el que ellos mismos radicaron). */
+  serviceCode?: string | null;
 };
 
 type SendLiquidationEmailParams = {
@@ -21,6 +25,8 @@ type SendLiquidationEmailParams = {
   operationId: number;
   liquidationLink: string;
   clientLabel?: string | null;
+  serviceLabel?: string | null;
+  serviceCode?: string | null;
 };
 
 type SendConfirmationEmailResult = {
@@ -29,9 +35,32 @@ type SendConfirmationEmailResult = {
   messageId?: string;
 };
 
+// ─────────────────────────── Identidad visual CARGOBAN ───────────────────────────
+const BRAND = {
+  navy: '#152A56',
+  navySoft: '#1F3A73',
+  green: '#8DC63F',
+  teal: '#3EC6C6',
+  bg: '#eef1f6',
+  cardBg: '#ffffff',
+  border: '#e5e7eb',
+  textMuted: '#6b7280',
+  textLabel: '#9ca3af',
+  textDark: '#111827',
+  textBody: '#374151',
+  pillBg: '#E1F5EE',
+  pillText: '#0F6E56',
+  warnBg: '#FAEEDA',
+  warnText: '#854F0B',
+  link: '#185FA5',
+};
+
+const LOGO_CID = 'cargobanLogo';
+
 @Injectable()
 export class OperationEmailService {
   private readonly logger = new Logger(OperationEmailService.name);
+  private logoAttachmentCache: Record<string, unknown> | null | undefined;
 
   async sendSpecialOperationConfirmationEmail(
     params: SendConfirmationEmailParams,
@@ -52,75 +81,71 @@ export class OperationEmailService {
 
       const subjectPrefix =
         process.env.CONFIRMATION_EMAIL_SUBJECT_PREFIX || 'PlannerOP';
-      const subject = `[${subjectPrefix}] Radicado de operacion #${params.operationId}`;
+      const serviceCode = (params.serviceCode || params.serviceLabel || '').trim();
+      const headingSuffix = serviceCode || `Operación #${params.operationId}`;
+      const subject = `[${subjectPrefix}] Radicado pendiente — ${headingSuffix}`;
 
       const clientLabel = params.clientLabel?.trim() || '';
       const now = new Date();
       const dateLabel = now.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 
       const html = `
-        <div style="background:#f3f4f6;padding:24px;font-family:Arial,sans-serif;">
-          <div style="max-width:580px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;">
+        <div style="background:${BRAND.bg};padding:24px;font-family:Arial,sans-serif;">
+          <div style="max-width:580px;margin:0 auto;background:${BRAND.cardBg};border-radius:12px;border:1px solid ${BRAND.border};overflow:hidden;">
 
-            <div style="background:#0f3460;padding:28px 32px 24px;">
-              <span style="font-size:22px;font-weight:600;color:#ffffff;letter-spacing:1.5px;">CARGOBAN</span>
-              <p style="font-size:12px;color:#9FE1CB;margin:4px 0 0;">Operador Logístico y Portuario S.A.S.</p>
-            </div>
+            ${this.renderHeader()}
 
             <div style="padding:28px 32px 0;">
-              <p style="font-size:13px;color:#6b7280;margin:0 0 4px;">Estimado equipo de liquidación,</p>
-              <h2 style="font-size:18px;font-weight:600;color:#111827;margin:0 0 16px;">
-                Servicio confirmado — Operación #${params.operationId}
+              <p style="font-size:13px;color:${BRAND.textMuted};margin:0 0 4px;">Estimado equipo de liquidación,</p>
+              <h2 style="font-size:18px;font-weight:600;color:${BRAND.textDark};margin:0 0 16px;">
+                Servicio confirmado — ${this.escapeHtml(headingSuffix)}
               </h2>
 
-              <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
-                El cliente ha confirmado el servicio. Por favor ingrese el número de radicado en el portal adjunto para completar el proceso de liquidación.
+              <p style="font-size:14px;color:${BRAND.textBody};line-height:1.7;margin:0 0 20px;">
+                El Supervisor ha confirmado el servicio. Por favor ingrese el número de radicado en el portal adjunto para completar el proceso de liquidación.
               </p>
 
-              <div style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;padding:16px 20px;margin-bottom:24px;">
+              <div style="background:#f9fafb;border-radius:8px;border:1px solid ${BRAND.border};padding:16px 20px;margin-bottom:24px;">
                 <table style="width:100%;border-collapse:collapse;">
                   <tr>
                     <td style="padding:6px 0;width:50%;">
-                      <p style="font-size:11px;color:#9ca3af;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Operación</p>
-                      <p style="font-size:14px;font-weight:600;color:#111827;margin:0;">#${params.operationId}</p>
+                      <p style="font-size:11px;color:${BRAND.textLabel};margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Código de servicio</p>
+                      <p style="font-size:14px;font-weight:600;color:${BRAND.textDark};margin:0;">${this.escapeHtml(headingSuffix)}</p>
                     </td>
                     <td style="padding:6px 0;width:50%;">
-                      <p style="font-size:11px;color:#9ca3af;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Estado</p>
-                      <p style="margin:0;"><span style="background:#E1F5EE;color:#0F6E56;font-size:12px;padding:2px 10px;border-radius:20px;">Confirmado por el  supervisor</span></p>
+                      <p style="font-size:11px;color:${BRAND.textLabel};margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Estado</p>
+                      <p style="margin:0;"><span style="background:${BRAND.pillBg};color:${BRAND.pillText};font-size:12px;padding:2px 10px;border-radius:20px;">Confirmado por el supervisor</span></p>
                     </td>
                   </tr>
                   ${clientLabel ? `
                   <tr>
                     <td style="padding:6px 0;" colspan="2">
-                      <p style="font-size:11px;color:#9ca3af;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Cliente</p>
-                      <p style="font-size:14px;font-weight:600;color:#111827;margin:0;">${this.escapeHtml(clientLabel)}</p>
+                      <p style="font-size:11px;color:${BRAND.textLabel};margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Cliente</p>
+                      <p style="font-size:14px;font-weight:600;color:${BRAND.textDark};margin:0;">${this.escapeHtml(clientLabel)}</p>
                     </td>
                   </tr>` : ''}
                   <tr>
                     <td style="padding:6px 0;" colspan="2">
-                      <p style="font-size:11px;color:#9ca3af;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Fecha de confirmación</p>
-                      <p style="font-size:14px;font-weight:600;color:#111827;margin:0;">${dateLabel}</p>
+                      <p style="font-size:11px;color:${BRAND.textLabel};margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Fecha de confirmación</p>
+                      <p style="font-size:14px;font-weight:600;color:${BRAND.textDark};margin:0;">${dateLabel}</p>
                     </td>
                   </tr>
                 </table>
               </div>
 
               <div style="text-align:center;margin-bottom:24px;">
-                <a href="${params.liquidationLink}" style="display:inline-block;background:#0f3460;color:#ffffff;padding:12px 32px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">
+                <a href="${params.liquidationLink}" style="display:inline-block;background:${BRAND.navy};color:#ffffff;padding:12px 32px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">
                   Ingresar radicado
                 </a>
               </div>
 
-              <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:24px;">
-                <p style="font-size:12px;color:#6b7280;margin:0 0 4px;">Si el botón no funciona, copie este enlace en su navegador:</p>
-                <p style="font-size:12px;color:#185FA5;word-break:break-all;margin:0;">${params.liquidationLink}</p>
+              <div style="border:1px solid ${BRAND.border};border-radius:8px;padding:12px 16px;margin-bottom:24px;">
+                <p style="font-size:12px;color:${BRAND.textMuted};margin:0 0 4px;">Si el botón no funciona, copie este enlace en su navegador:</p>
+                <p style="font-size:12px;color:${BRAND.link};word-break:break-all;margin:0;">${params.liquidationLink}</p>
               </div>
             </div>
 
-            <div style="border-top:1px solid #e5e7eb;padding:20px 32px;">
-              <p style="font-size:12px;color:#374151;margin:0;">CARGOBAN Operador Logístico y Portuario S.A.S.</p>
-              <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">Este es un mensaje automático, por favor no responda este correo.</p>
-            </div>
+            ${this.renderFooter(params.operationId)}
 
           </div>
         </div>
@@ -132,6 +157,7 @@ export class OperationEmailService {
           subject,
           body: { contentType: 'HTML', content: html },
           toRecipients: recipients.map((email) => ({ emailAddress: { address: email } })),
+          attachments: this.getLogoAttachments(),
         },
         saveToSentItems: false,
       });
@@ -211,16 +237,16 @@ export class OperationEmailService {
 
       const subjectPrefix =
         process.env.CONFIRMATION_EMAIL_SUBJECT_PREFIX || 'PlannerOP';
-      const serviceLabel = (params.serviceLabel || '').trim();
-      const headingSuffix = serviceLabel || `Operación #${params.operationId}`;
+      const serviceCode = (params.serviceCode || params.serviceLabel || '').trim();
+      const headingSuffix = serviceCode || `Operación #${params.operationId}`;
       const customSubject = (params.subject || '').trim();
       const subject = customSubject
         ? customSubject
-        : `[${subjectPrefix}] Solicitud de confirmación — ${headingSuffix}`;
+        : `[${subjectPrefix}] Servicios por aprobar — ${headingSuffix}`;
 
       const customBody = (params.bodyMessage || '').trim();
       const defaultBodyText =
-        `La operacion #${params.operationId} esta pendiente de su validacion. ` +
+        `Tiene servicios pendientes de aprobación (${headingSuffix}). ` +
         'Use el siguiente enlace para aprobar o rechazar el servicio.';
       const bodyText = customBody || defaultBodyText;
       const bodyHtml = this.escapeHtml(bodyText).replace(/\n/g, '<br/>');
@@ -229,73 +255,63 @@ export class OperationEmailService {
       const dateLabel = now.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 
       const html = `
-        <div style="background:#f3f4f6;padding:24px;font-family:Arial,sans-serif;">
-          <div style="max-width:580px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;">
+        <div style="background:${BRAND.bg};padding:24px;font-family:Arial,sans-serif;">
+          <div style="max-width:580px;margin:0 auto;background:${BRAND.cardBg};border-radius:12px;border:1px solid ${BRAND.border};overflow:hidden;">
 
-            <div style="background:#0f3460;padding:28px 32px 24px;">
-              <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-                <span style="font-size:22px;font-weight:600;color:#ffffff;letter-spacing:1.5px;">CARGOBAN</span>
-              </div>
-              <p style="font-size:12px;color:#9FE1CB;margin:0;">Operador Logístico y Portuario S.A.S.</p>
-            </div>
+            ${this.renderHeader()}
 
             <div style="padding:28px 32px 0;">
-              <p style="font-size:13px;color:#6b7280;margin:0 0 4px;">Estimado cliente,</p>
-              <h2 style="font-size:18px;font-weight:600;color:#111827;margin:0 0 16px;">Solicitud de confirmación — ${this.escapeHtml(headingSuffix)}</h2>
+              <p style="font-size:13px;color:${BRAND.textMuted};margin:0 0 4px;">Estimado cliente,</p>
+              <h2 style="font-size:18px;font-weight:600;color:${BRAND.textDark};margin:0 0 16px;">Servicios por aprobar — ${this.escapeHtml(headingSuffix)}</h2>
 
-              <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 20px;">
+              <p style="font-size:14px;color:${BRAND.textBody};line-height:1.7;margin:0 0 20px;">
                 ${bodyHtml}
               </p>
 
-              <div style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;padding:16px 20px;margin-bottom:24px;">
+              <div style="background:#f9fafb;border-radius:8px;border:1px solid ${BRAND.border};padding:16px 20px;margin-bottom:24px;">
                 <table style="width:100%;border-collapse:collapse;">
                   <tr>
                     <td style="padding:6px 0;width:50%;">
-                      <p style="font-size:11px;color:#9ca3af;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Operación</p>
-                      <p style="font-size:14px;font-weight:600;color:#111827;margin:0;">#${params.operationId}</p>
+                      <p style="font-size:11px;color:${BRAND.textLabel};margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Código de servicio</p>
+                      <p style="font-size:14px;font-weight:600;color:${BRAND.textDark};margin:0;">${this.escapeHtml(headingSuffix)}</p>
                     </td>
                     <td style="padding:6px 0;width:50%;">
-                      <p style="font-size:11px;color:#9ca3af;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Estado</p>
-                      <p style="margin:0;"><span style="background:#E1F5EE;color:#0F6E56;font-size:12px;padding:2px 10px;border-radius:20px;">Pendiente de confirmación</span></p>
+                      <p style="font-size:11px;color:${BRAND.textLabel};margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Estado</p>
+                      <p style="margin:0;"><span style="background:${BRAND.pillBg};color:${BRAND.pillText};font-size:12px;padding:2px 10px;border-radius:20px;">Pendiente de confirmación</span></p>
                     </td>
                   </tr>
                   <tr>
                     <td style="padding:6px 0;">
-                      <p style="font-size:11px;color:#9ca3af;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Vigencia del enlace</p>
-                      <p style="font-size:14px;font-weight:600;color:#111827;margin:0;">${params.tokenTtlMinutes} minutos</p>
+                      <p style="font-size:11px;color:${BRAND.textLabel};margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Vigencia del enlace</p>
+                      <p style="font-size:14px;font-weight:600;color:${BRAND.textDark};margin:0;">${params.tokenTtlMinutes} minutos</p>
                     </td>
                     <td style="padding:6px 0;">
-                      <p style="font-size:11px;color:#9ca3af;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Fecha</p>
-                      <p style="font-size:14px;font-weight:600;color:#111827;margin:0;">${dateLabel}</p>
+                      <p style="font-size:11px;color:${BRAND.textLabel};margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Fecha</p>
+                      <p style="font-size:14px;font-weight:600;color:${BRAND.textDark};margin:0;">${dateLabel}</p>
                     </td>
                   </tr>
                 </table>
               </div>
 
               <div style="text-align:center;margin-bottom:24px;">
-                <a href="${params.confirmationLink}" style="display:inline-block;background:#0f3460;color:#ffffff;padding:12px 32px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">
+                <a href="${params.confirmationLink}" style="display:inline-block;background:${BRAND.navy};color:#ffffff;padding:12px 32px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">
                   Abrir portal
                 </a>
               </div>
 
-              <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:24px;">
-                <p style="font-size:12px;color:#6b7280;margin:0 0 4px;">Si el botón no funciona, copie este enlace en su navegador:</p>
-                <p style="font-size:12px;color:#185FA5;word-break:break-all;margin:0;">${params.confirmationLink}</p>
+              <div style="border:1px solid ${BRAND.border};border-radius:8px;padding:12px 16px;margin-bottom:24px;">
+                <p style="font-size:12px;color:${BRAND.textMuted};margin:0 0 4px;">Si el botón no funciona, copie este enlace en su navegador:</p>
+                <p style="font-size:12px;color:${BRAND.link};word-break:break-all;margin:0;">${params.confirmationLink}</p>
               </div>
 
-              <div style="background:#FAEEDA;border-radius:8px;padding:12px 16px;margin-bottom:28px;">
-                <p style="font-size:12px;color:#854F0B;margin:0;line-height:1.6;">
+              <div style="background:${BRAND.warnBg};border-radius:8px;padding:12px 16px;margin-bottom:28px;">
+                <p style="font-size:12px;color:${BRAND.warnText};margin:0;line-height:1.6;">
                   &#9200; Este enlace tiene una vigencia de <strong>${params.tokenTtlMinutes} minutos</strong> desde el momento en que fue generado. Si ha expirado, solicite un nuevo enlace al equipo de CARGOBAN.
                 </p>
               </div>
             </div>
 
-            <div style="border-top:1px solid #e5e7eb;padding:20px 32px;display:flex;justify-content:space-between;align-items:center;">
-              <div>
-                <p style="font-size:12px;color:#374151;margin:0;">CARGOBAN Operador Logístico y Portuario S.A.S.</p>
-                <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">Este es un mensaje automático, por favor no responda este correo.</p>
-              </div>
-            </div>
+            ${this.renderFooter(params.operationId)}
 
           </div>
         </div>
@@ -307,6 +323,7 @@ export class OperationEmailService {
           subject,
           body: { contentType: 'HTML', content: html },
           toRecipients: [{ emailAddress: { address: params.to } }],
+          attachments: this.getLogoAttachments(),
         },
         saveToSentItems: false,
       });
@@ -324,6 +341,58 @@ export class OperationEmailService {
       );
       return { sent: false, reason: error?.message || 'Error al enviar correo via Graph API' };
     }
+  }
+
+  // ─────────────────────────── Plantilla compartida ───────────────────────────
+
+  private renderHeader(): string {
+    const logo = this.getLogoAttachments().length
+      ? `<img src="cid:${LOGO_CID}" alt="CARGOBAN" style="height:56px;display:block;" />`
+      : `<span style="font-size:22px;font-weight:700;color:${BRAND.navy};letter-spacing:1px;">CARGOBAN</span>`;
+
+    return `
+      <div style="height:4px;background:linear-gradient(90deg, ${BRAND.green} 0%, ${BRAND.teal} 100%);"></div>
+      <div style="background:#ffffff;padding:24px 32px;border-bottom:1px solid ${BRAND.border};">
+        ${logo}
+      </div>
+    `;
+  }
+
+  private renderFooter(operationId: number): string {
+    return `
+      <div style="background:${BRAND.navy};padding:20px 32px;">
+        <p style="font-size:12px;color:#ffffff;margin:0;font-weight:600;">CARGOBAN Operador Logístico y Portuario S.A.S.</p>
+        <p style="font-size:11px;color:#c7d2e6;margin:4px 0 0;">Este es un mensaje automático, por favor no responda este correo.</p>
+        <p style="font-size:10px;color:#8ea0c4;margin:8px 0 0;">Ref. interna: #${operationId}</p>
+      </div>
+    `;
+  }
+
+  /**
+   * Adjunta el logo como imagen inline (cid) via Graph API para que se vea
+   * embebido en el correo sin depender de que el cliente de correo cargue
+   * imágenes externas. Se cachea en memoria tras la primera lectura.
+   */
+  private getLogoAttachments(): Record<string, unknown>[] {
+    if (this.logoAttachmentCache === undefined) {
+      try {
+        const logoPath = path.join(process.cwd(), 'public', 'assets', 'cargoban-logo.png');
+        const contentBytes = fs.readFileSync(logoPath).toString('base64');
+        this.logoAttachmentCache = {
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name: 'cargoban-logo.png',
+          contentType: 'image/png',
+          contentBytes,
+          isInline: true,
+          contentId: LOGO_CID,
+        };
+      } catch (error: any) {
+        this.logger.warn(`No se pudo cargar el logo para los correos: ${error?.message || 'unknown'}`);
+        this.logoAttachmentCache = null;
+      }
+    }
+
+    return this.logoAttachmentCache ? [this.logoAttachmentCache] : [];
   }
 
   private graphRequest(token: string, mailFrom: string, payload: string): Promise<void> {

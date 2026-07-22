@@ -1,6 +1,17 @@
 import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
 import { StatusOperation } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+
+// ✅ Convierte '' a undefined ANTES de que corran los @Matches/@IsOptional.
+// El ValidationPipe global se ejecuta antes que cualquier pipe a nivel de
+// método (como DateTransformPipe), así que ese pipe nunca llega a sanear
+// estos campos cuando vienen vacíos desde el cliente (p.ej. un campo de
+// fecha/hora opcional que el usuario dejó en blanco) — @IsOptional() de
+// class-validator solo omite la validación si el valor es null/undefined,
+// no si es ''. Se hace aquí, en el propio DTO, para no depender del orden
+// de pipes.
+const emptyStringToUndefined = () =>
+  Transform(({ value }) => (value === '' ? undefined : value));
 import {
   IsArray,
   IsEnum,
@@ -30,6 +41,7 @@ export class CreateOperationDto {
   motorShip!: string;
 
   @ApiProperty({ example: '2021-09-01' })
+  @emptyStringToUndefined()
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'dateStart debe tener formato YYYY-MM-DD',
@@ -37,6 +49,7 @@ export class CreateOperationDto {
   dateStart!: string;
 
   @ApiProperty({ example: '08:00' })
+  @emptyStringToUndefined()
   @IsString()
   @Matches(/^([01]?[0-9]|2[0-3]):([0-5][0-9])$/, {
     message: 'timeStrat debe tener formato HH:MM',
@@ -44,6 +57,7 @@ export class CreateOperationDto {
   timeStrat!: string;
 
   @ApiProperty({ example: '2021-09-01' })
+  @emptyStringToUndefined()
   @IsString()
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
@@ -52,6 +66,7 @@ export class CreateOperationDto {
   dateEnd!: string;
 
   @ApiProperty({ example: '17:00' })
+  @emptyStringToUndefined()
   @IsString()
   @IsOptional()
   @Matches(/^([01]?[0-9]|2[0-3]):([0-5][0-9])$/, {

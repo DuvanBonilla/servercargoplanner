@@ -519,6 +519,26 @@ export class OperationController {
     );
   }
 
+  @Post(':id/resend-liquidation-email')
+  @ApiOperation({
+    summary: 'Reenviar correo de liquidación',
+    description:
+      'Reenvía el correo de liquidación (radicado pendiente) de una operación cuya factura ya ' +
+      'fue creada y está en estado TO_APPROVED. Genera un nuevo enlace y expira los anteriores.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la operación' })
+  @ApiResponse({ status: 201, description: 'Correo reenviado exitosamente' })
+  @ApiResponse({ status: 400, description: 'operationId inválido' })
+  @ApiResponse({ status: 404, description: 'Operación no encontrada' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'La operación no tiene una factura pendiente de radicado, no tiene correos de liquidación configurados, o no se pudo enviar el correo',
+  })
+  async resendLiquidationEmail(@Param('id', ParseIntPipe) operationId: number) {
+    return await this.operationService.resendLiquidationEmail(operationId);
+  }
+
   private getClientIp(req: Request): string | null {
     const forwardedFor = req.headers['x-forwarded-for'];
 
