@@ -1,20 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { HoursDistribution } from '../dto/create-bill.dto';
 import { hasSundayInRange } from '../../common/utils/dateType';
+import { ConfigurationService } from 'src/configuration/configuration.service';
 
 @Injectable()
 export class BaseCalculationService {
+  constructor(
+  private readonly configurationService: ConfigurationService,
+) {}
   /**
    * Calcula el total de horas y montos basado en distribución de horas
    */
-  calculateHoursByDistribution(
+  async calculateHoursByDistribution(
     group: any,
     hoursDistribution: HoursDistribution,
     tariff: number,
     useFacturationMultipliers: boolean = false,
     startDate?: Date,
-    endDate?: Date
-  ): { totalHours: number; totalAmount: number; details: any } {
+    endDate?: Date,
+  ): Promise <{ totalHours: number; totalAmount: number; details: any } >{
     if (typeof tariff !== 'number' || isNaN(tariff) || tariff < 0) {
       throw new Error(`El grupo ${group.groupId} tiene una tarifa invalida, debe ser mayor o igual a 0`);
     }
@@ -28,9 +32,11 @@ export class BaseCalculationService {
     const hoursDetail = {};
   
     // Detectar si hay domingo en el rango
+        const sundayHoursConfig =  this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
+    const weekHoursConfig =  this.configurationService.findOneByName('HORAS_SEMANALES');
     const hasSunday = startDate && endDate ? hasSundayInRange(startDate, endDate) : false;
-    const weeklyHoursLimit = hasSunday ? 48 : 44;
-    const dailyHoursLimit = weeklyHoursLimit / 6; // 8 horas para domingo, 7.33 para días normales
+    const weeklyHoursLimit = hasSunday ? sundayHoursConfig : weekHoursConfig;
+    const dailyHoursLimit = await weeklyHoursLimit / 6; // 8 horas para domingo, 7.33 para días normales
   
     // Mapeo correcto de tipos de horas a claves de multiplicadores
     const hourTypeMapping = {

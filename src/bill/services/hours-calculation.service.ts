@@ -232,7 +232,7 @@ export class HoursCalculationService {
 
     // Calcular montos de distribución de horas - PASANDO LAS FECHAS
     const factHoursDistributionTotal =
-      this.baseCalculationService.calculateHoursByDistribution(
+       await this.baseCalculationService.calculateHoursByDistribution(
         combinedGroupData,
         combinedGroupData.billHoursDistribution,
         combinedGroupData.facturation_tariff ?? combinedGroupData.tariffDetails?.facturation_tariff ?? 0,
@@ -244,7 +244,7 @@ export class HoursCalculationService {
     // console.log("Fact Hours Distribution Total:", JSON.stringify(factHoursDistributionTotal, null, 2));
 
     const paysheetHoursDistributionTotal =
-      this.baseCalculationService.calculateHoursByDistribution(
+       await this.baseCalculationService.calculateHoursByDistribution(
         combinedGroupData,
         combinedGroupData.paysheetHoursDistribution,
         combinedGroupData.paysheet_tariff ?? combinedGroupData.tariffDetails?.paysheet_tariff ?? 0,
@@ -259,8 +259,8 @@ export class HoursCalculationService {
     const workerCount = combinedGroupData.workerCount || 1;
 
     // ✅ VALIDAR QUE LOS TOTALES NO SEAN NaN
-    let totalFinalFacturation = factHoursDistributionTotal.totalAmount || 0;
-    let totalFinalPayroll = paysheetHoursDistributionTotal.totalAmount || 0;
+    let totalFinalFacturation = (await factHoursDistributionTotal).totalAmount || 0;
+    let totalFinalPayroll = (await paysheetHoursDistributionTotal).totalAmount || 0;
 
     // ✅ VALIDAR QUE NO SEAN NaN ANTES DE SUMAR
     if (isNaN(totalFinalFacturation)) {
@@ -368,12 +368,12 @@ export class HoursCalculationService {
       paysheetTotal = Number(groupBill.amount || 0) * Number(group.paysheet_tariff || 0);
     } else {
       // Lógica tradicional
-      paysheetTotal = this.baseCalculationService.calculateHoursByDistribution(
+      paysheetTotal = (await this.baseCalculationService.calculateHoursByDistribution(
         group,
         groupBill.paysheetHoursDistribution,
         group.paysheet_tariff || 0,
-        false,
-      ).totalAmount;
+        false
+      )).totalAmount;
     }
 
     // Facturación
@@ -387,12 +387,12 @@ export class HoursCalculationService {
     ) {
       billingTotal = Number(groupBill.amount || 0) * (group.facturation_tariff || 0);
     } else {
-      billingTotal = this.baseCalculationService.calculateHoursByDistribution(
+      billingTotal = (await this.baseCalculationService.calculateHoursByDistribution(
         group,
         groupBill.billHoursDistribution,
         group.facturation_tariff || 0,
-        true,
-      ).totalAmount;
+        true
+      )).totalAmount;
     }
 
     return {

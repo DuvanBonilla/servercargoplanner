@@ -25,6 +25,7 @@ export class ClientEmailController {
   }
 
   @Get('client/:idClient')
+  @Roles(Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN)
   findByClient(@Param('idClient', ParseIntPipe) idClient: number) {
     return this.clientEmailService.findByClient(idClient);
   }

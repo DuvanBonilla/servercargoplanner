@@ -577,8 +577,10 @@ result.totalFinalFacturation = Number(billData.total_bill);
   // =========================================================
   // ✅ CÁLCULO DEL COMPENSATORIO
   // =========================================================
+  const sundayHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
+    const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
 
-  const weekHours = hasSundayReal ? 48 : 44;
+  const weekHours = hasSundayReal ? sundayHoursConfig : weekHoursConfig;
 
   const dayHours = weekHours / 6;
 
@@ -1038,8 +1040,8 @@ const endDate = operationWorker?.dateEnd
     }
 
     // ✅ CÁLCULO CORRECTO DEL COMPENSATORIO
-    const dayHours = weekHours / 6; // 7.333333 para 44 horas
-    const compensatoryDay = dayHours / 6; // 1.222222 para 44 horas
+    const dayHours = weekHours / 6; // 7 para 44 horas
+    const compensatoryDay = dayHours / 6; // 1.166666 para 44 horas
     const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por hora
     
     // ✅ USAR DURACIÓN REAL DEL GRUPO, LIMITADA AL MÁXIMO DIARIO
@@ -4952,7 +4954,10 @@ let numberOfHours = this.calculateGroupDuration_Datos(firstDetail.operationWorke
         ? 'Activo'
         : bill.status === 'COMPLETED'
           ? 'Completo'
-          : bill.status || '';
+          : bill.status === 'TO_APPROVED'
+            ? 'Por aprobar'
+            : bill.status
+             || '';
 
 const dateStart = firstDetail.operationWorker.dateStart;
 const startTime = firstDetail.operationWorker?.timeStart;
@@ -5291,18 +5296,23 @@ private combineDateTime(date: Date | string | null, time: string | null): number
         header === 'Grupo' ||
         header === 'Sem' ||
         header === 'Código Labor' ||
+        header === 'Código Trabajador' ||
+        header === 'Código Subservicio' ||
         header === 'Q Hombres' ||
         header === 'Total Alimentación'||
         header === 'Solicitud SC'
       ) {
         cell.numFmt = '0';
       }
+        //DECENA DE MIL 12331,55 QUEDA 12.331,55
+      else if (header === 'Cantidad') {
+        cell.numFmt = '#,##0.00';
+      }
 
       // ⏱ HORAS / DECIMALES
       else if (
         header === 'Horas Servicio' ||
         header === 'Total pago' ||
-        header === 'Cantidad' ||
         header === 'COMP' ||
         header === 'Q Horas' ||
         header === 'Unidad de pago'
