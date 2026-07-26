@@ -1016,10 +1016,19 @@ export class OperationService {
         data: { status: TokenStatus.CONFIRMED, usedAt: now },
       });
 
-      await tx.bill.updateMany({
-        where: { id_operation: confirmation.operation.id, status: 'TO_APPROVED' as BillStatus },
+      const billUpdateResult = await tx.bill.updateMany({
+        where: {
+          id_operation: confirmation.operation.id,
+          status: { in: [BillStatus.TO_APPROVED, BillStatus.ACTIVE] },
+        },
         data: { status: BillStatus.ACTIVE, fileCode: normalizedFileCode },
       });
+
+      if (billUpdateResult.count === 0) {
+        this.logger.warn(
+          `No se encontraron facturas TO_APPROVED/ACTIVE para registrar el radicado "${normalizedFileCode}" en la operacion ${confirmation.operation.id}`,
+        );
+      }
     });
 
     this.logger.log(

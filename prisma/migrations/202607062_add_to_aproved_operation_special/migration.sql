@@ -75,13 +75,3 @@ CREATE TABLE "Token" (
         ON UPDATE CASCADE
 );
 
-
-/* ============================================================
-   5. Índices
-   ============================================================ */
-
-CREATE UNIQUE INDEX "OperationConfirmation_id_operation_key"
-ON "OperationConfirmation"("id_operation");
-
-CREATE UNIQUE INDEX "Token_tokenHash_key"
-ON "Token"("tokenHash");

@@ -78,7 +78,12 @@ export class BillService {
       : BillStatus.ACTIVE;
 
     // Procesar todos los tipos de grupos
-    await this.processJornalGroups(createBillDto, userId, validateOperationID);
+    await this.processJornalGroups(
+      createBillDto,
+      userId,
+      validateOperationID,
+      billStatus,
+    );
 
     await this.processSimpleHoursGroups(
       createBillDto,
@@ -137,6 +142,7 @@ export class BillService {
     createBillDto: CreateBillDto,
     userId: number,
     validateOperationID: any,
+    billStatus: BillStatus,
   ) {
     const jornalGroups =
       await this.workerGroupAnalysisService.findGroupsByCriteria(
@@ -176,8 +182,10 @@ export class BillService {
         userId,
         groupDto,
       );
-      const billSaved = await this.prisma.bill.create({ data: billData });
-      
+      const billSaved = await this.prisma.bill.create({
+        data: { ...billData, status: billStatus },
+      });
+
       // console.log(`Bill creada con ID: ${billSaved.id} para grupo: ${result.groupId}`);
 
       await this.processBillDetails(
