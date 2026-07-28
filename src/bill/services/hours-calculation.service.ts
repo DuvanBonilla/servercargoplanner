@@ -58,23 +58,59 @@ export class HoursCalculationService {
   /**
    * Determina las horas semanales límite basado en si hay domingo en el rango de fechas
    */
-  private async getWeeklyHoursLimit(startDate: Date, endDate: Date): Promise<number> {
-    const hasSunday = hasSundayInRange(startDate, endDate);
 
-    if (hasSunday) {
-      const sundayHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
-      if (sundayHoursConfig?.value) {
-        return parseInt(sundayHoursConfig.value, 10);
-      }
-      return 48; // Valor por defecto para domingos
-    } else {
-      const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
-      if (weekHoursConfig?.value) {
-        return parseInt(weekHoursConfig.value, 10);
-      }
-      return 44; // Valor por defecto para días normales
+  // private async getWeeklyHoursLimit(startDate: Date, endDate: Date): Promise<number> {
+  //   const hasSunday = hasSundayInRange(startDate, endDate);
+
+  //   if (hasSunday) {
+  //     const sundayHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
+  //     if (sundayHoursConfig?.value) {
+  //       return parseInt(sundayHoursConfig.value, 10);
+  //     }
+  //     return 48; // Valor por defecto para domingos
+  //   } else {
+  //     const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
+  //     if (weekHoursConfig?.value) {
+  //       return parseInt(weekHoursConfig.value, 10);
+  //     }
+  //     return 44; // Valor por defecto para días normales
+  //   }
+  // } //ESTO SE HACIA MANUALMENTE ANTES DE CAMBIAR A 44 HORAS
+
+  private async getWeeklyHoursLimit(
+  startDate: Date,
+  endDate: Date,
+): Promise<number> {
+  const hasSunday = hasSundayInRange(startDate, endDate);
+
+  if (hasSunday) {
+    const sundayHoursConfig =
+      await this.configurationService.findOneByName(
+        'HORAS_SEMANALES_DOMINGO',
+      );
+
+    if (!sundayHoursConfig?.value) {
+      throw new Error(
+        'No se encontró la configuración HORAS_SEMANALES_DOMINGO',
+      );
     }
+
+    return Number(sundayHoursConfig.value);
+  } else {
+    const weekHoursConfig =
+      await this.configurationService.findOneByName(
+        'HORAS_SEMANALES',
+      );
+
+    if (!weekHoursConfig?.value) {
+      throw new Error(
+        'No se encontró la configuración HORAS_SEMANALES',
+      );
+    }
+
+    return Number(weekHoursConfig.value);
   }
+}
 
   /**
    * Determina si se debe calcular compensatorio basado en la fecha
@@ -83,45 +119,114 @@ export class HoursCalculationService {
     return !hasSundayInRange(startDate, endDate);
   }
 
-  async calculateCompensatoryHours(hours: number, billStatus?: string, startDate?: Date, endDate?: Date): Promise<number> {
+  // async calculateCompensatoryHours(hours: number, billStatus?: string, startDate?: Date, endDate?: Date): Promise<number> {
 
 
-    // Si se proporcionan fechas, verificar si hay domingo
-    if (startDate && endDate && !this.shouldCalculateCompensatory(startDate, endDate)) {
-      // console.log('❌ No se calcula compensatorio para operaciones con domingo');
-      return 0;
-    }
-    console.log('🔍 COMPENSATORIO DEBUG', {
-      hours,
-      billStatus,
-      entraCondicion:
-        billStatus !== 'COMPLETED' &&
-        hours > 7.3333333,
-    });
+  //   // Si se proporcionan fechas, verificar si hay domingo
+  //   if (startDate && endDate && !this.shouldCalculateCompensatory(startDate, endDate)) {
+  //     // console.log('❌ No se calcula compensatorio para operaciones con domingo');
+  //     return 0;
+  //   }
+  //   console.log('🔍 COMPENSATORIO DEBUG', {
+  //     hours,
+  //     billStatus,
+  //     entraCondicion:
+  //       billStatus !== 'COMPLETED' &&
+  //       hours > 7.3333333,
+  //   });
 
-    // ✅ LÓGICA BASADA EN ESTADO DE FACTURA
-    // Si la factura NO está completada, mostrar valor por defecto para verificación del usuario
-    if (billStatus !== 'COMPLETED' && hours > 7.3333333) {
-      // console.log(`✅ Factura NO completada - Compensatorio por defecto para verificación: ${hours} > 7.33 → 1.22222 horas`);
-      return 1.222;
-    }
+  //   // ✅ LÓGICA BASADA EN ESTADO DE FACTURA
+  //   // Si la factura NO está completada, mostrar valor por defecto para verificación del usuario
+  //   if (billStatus !== 'COMPLETED' && hours > 7.3333333) {
+  //     // console.log(`✅ Factura NO completada - Compensatorio por defecto para verificación: ${hours} > 7.33 → 1.22222 horas`);
+  //     return 1.222;
+  //   }
 
-    // ✅ OBTENER HORAS SEMANALES DINÁMICAMENTE
-    const weekHours = startDate && endDate
-      ? await this.getWeeklyHoursLimit(startDate, endDate)
-      : 44; // Fallback a valor por defecto
+  //   // ✅ OBTENER HORAS SEMANALES DINÁMICAMENTE
+  //   const weekHours = startDate && endDate
+  //     ? await this.getWeeklyHoursLimit(startDate, endDate)
+  //     : 44; // Fallback a valor por defecto
 
-    // ✅ CÁLCULO CORRECTO DEL COMPENSATORIO (para facturas completadas o <= 7.33 horas)
-    const dayHours = weekHours / 6; // 7.333333 para 44 horas, 8 para 48 horas
-    const compensatoryDay = dayHours / 6; // 1.222222 para 44 horas, 1.333333 para 48 horas
-    const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por cada hora trabajada
+  //   // ✅ CÁLCULO CORRECTO DEL COMPENSATORIO (para facturas completadas o <= 7.33 horas)
+  //   const dayHours = weekHours / 6; // 7.333333 para 44 horas, 8 para 48 horas
+  //   const compensatoryDay = dayHours / 6; // 1.222222 para 44 horas, 1.333333 para 48 horas
+  //   const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por cada hora trabajada
 
-    // ✅ USAR EL TIEMPO REAL DE LA OPERACIÓN, LIMITADO AL MÁXIMO DIARIO
-    const effectiveHours = Math.min(hours, dayHours);
-    const compensatoryHours = effectiveHours * compensatoryPerHour;
+  //   // ✅ USAR EL TIEMPO REAL DE LA OPERACIÓN, LIMITADO AL MÁXIMO DIARIO
+  //   const effectiveHours = Math.min(hours, dayHours);
+  //   const compensatoryHours = effectiveHours * compensatoryPerHour;
 
-    return compensatoryHours;
+  //   return compensatoryHours;
+  // }
+
+  async calculateCompensatoryHours(
+  hours: number,
+  billStatus?: string,
+  startDate?: Date,
+  endDate?: Date,
+): Promise<number> {
+
+  // Si se proporcionan fechas, verificar si hay domingo
+  if (
+    startDate &&
+    endDate &&
+    !this.shouldCalculateCompensatory(startDate, endDate)
+  ) {
+    return 0;
   }
+
+  // ✅ OBTENER EL LÍMITE SEMANAL DESDE CONFIGURATION
+  // HORAS_SEMANALES o HORAS_SEMANALES_DOMINGO
+  if (!startDate || !endDate) {
+    throw new Error(
+      'Se requieren startDate y endDate para calcular el límite de horas semanal',
+    );
+  }
+
+  const weekHours = await this.getWeeklyHoursLimit(
+    startDate,
+    endDate,
+  );
+
+  // ✅ TODO SE CALCULA DINÁMICAMENTE
+  const dayHours = weekHours / 6;
+  const compensatoryDay = dayHours / 6;
+  const compensatoryPerHour = compensatoryDay / dayHours;
+
+  console.log('========== CÁLCULO COMPENSATORIO ==========');
+  console.log('Horas trabajadas:', hours);
+  console.log('Estado factura:', billStatus);
+  console.log('Horas semanales configuradas:', weekHours);
+  console.log('Máximo diario:', dayHours);
+  console.log('Compensatorio día completo:', compensatoryDay);
+  console.log('Compensatorio por hora:', compensatoryPerHour);
+  console.log('===========================================');
+
+  // ✅ FACTURA NO COMPLETADA
+  // Antes:
+  // hours > 7.3333333
+  // return 1.222;
+  //
+  // Ahora ambos valores dependen de configuration
+  if (billStatus !== 'COMPLETED' && hours > dayHours) {
+    console.log(
+      `Factura no completada: ${hours} > ${dayHours} → compensatorio ${compensatoryDay}`,
+    );
+
+    return compensatoryDay;
+  }
+
+  // ✅ USAR TIEMPO REAL, LIMITADO AL MÁXIMO DIARIO
+  const effectiveHours = Math.min(hours, dayHours);
+
+  const compensatoryHours =
+    effectiveHours * compensatoryPerHour;
+
+  console.log('Horas efectivas:', effectiveHours);
+  console.log('Compensatorio final:', compensatoryHours);
+
+  return compensatoryHours;
+}
 
   /**
    * Procesa grupos con unidad de medida HORAS

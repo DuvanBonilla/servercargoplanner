@@ -65,16 +65,16 @@ export const normalizeColombianDate = (date: Date | string | number): Date => {
     tempDate = new Date(date);
   }
 
-  // Normalizar a zona horaria colombiana y asegurar que sea el día correcto
-  const colombianDate = new Date(
-    tempDate.toLocaleString('en-US', { timeZone: 'America/Bogota' }),
-  );
-
-  // Retornar fecha al mediodía para evitar problemas con cambios de horario
+  // Los campos de solo fecha (@db.Date) llegan como objetos Date que representan
+  // medianoche UTC del día correcto. Se usan getters UTC para extraer año/mes/día:
+  // el anti-patrón `new Date(tempDate.toLocaleString('en-US', {timeZone:...}))` que
+  // había aquí antes retrocedía un día, porque medianoche UTC cae en la tarde del
+  // día anterior en Bogotá (UTC-5) y luego se reinterpretaba esa hora local como si
+  // fuera hora del servidor al reparsear el string.
   return new Date(
-    colombianDate.getFullYear(),
-    colombianDate.getMonth(),
-    colombianDate.getDate(),
+    tempDate.getUTCFullYear(),
+    tempDate.getUTCMonth(),
+    tempDate.getUTCDate(),
     12,
     0,
     0,

@@ -33,11 +33,17 @@ export class WorkerGroupAnalysisService {
       await this.configurationService.findByName(configName);
     const hourSemanal =
       configuration && 'value' in configuration ? configuration.value : null;
-    const hourSemanalInteger = hourSemanal
-      ? parseInt(hourSemanal, 10)
-      : hasSunday
-        ? 48
-        : 44;
+    // const hourSemanalInteger = hourSemanal
+    //   ? parseInt(hourSemanal, 10)
+    //   : hasSunday
+    //     ? 48
+    //     : 44;
+    if (!hourSemanal) {
+  throw new Error(
+    `No se encontró la configuración ${configName}`,
+  );
+}
+const hourSemanalInteger = Number(hourSemanal);
 
     // Solo calcular compensatorio si NO hay domingo
     if (hasSunday) {
