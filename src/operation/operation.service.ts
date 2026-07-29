@@ -8,7 +8,7 @@ import { UpdateOperationDto } from './dto/update-operation.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { OperationWorkerService } from 'src/operation-worker/operation-worker.service';
 // import { BillService } from 'src/bill/bill.service';
-import { BillStatus, StatusComplete, StatusOperation, TokenStatus, YES_NO } from '@prisma/client';
+import { BillStatus, Role, StatusComplete, StatusOperation, TokenStatus, YES_NO } from '@prisma/client';
 import { OperationFinderService } from './services/operation-finder.service';
 import { OperationRelationService } from './services/operation-relation.service';
 import { OperationFilterDto } from './dto/fliter-operation.dto';
@@ -889,6 +889,8 @@ export class OperationService {
 
     const tokenFinalStatus =
       action === 'APPROVE' ? TokenStatus.CONFIRMED : TokenStatus.REJECTED;
+
+
 
     const result = await this.prisma.$transaction(async (tx) => {
       const updatedOperation = await tx.operation.update({
@@ -2754,212 +2756,163 @@ export class OperationService {
     return updateData;
   }
   /**
-   * Elimina un grupo específico de una operación
-   * @param id - ID de la operación
-   * @param id_group - ID del grupo a eliminar
-   * @param userId - ID del usuario que realiza la eliminación
-   * @returns Resultado de la eliminación
-   */
-  async removeGroup(
-    id: number,
-    id_group: string,
-    id_site?: number,
-    id_subsite?: number,
-    userId?: number,
-  ) {
-    try {
-      // Validar que la operación existe
-      const validateOperation = await this.findOne(id);
-      if (validateOperation['status'] === 404) {
-        return validateOperation;
-      }
+ * Elimina un grupo específico de una operación
+ * @param id - ID de la operación
+ * @param id_group - ID del grupo a eliminar
+ * @param userId - ID del usuario que realiza la eliminación
+ * @returns Resultado de la eliminación
+ */
+async removeGroup(
+  id: number,
+  id_group: string,
+  id_site?: number,
+  id_subsite?: number,
+  userId?: number,
+) {
+  try {
+    // Validar operación
+    const validateOperation = await this.findOne(id);
 
-      if (id_site !== undefined) {
-        if (validateOperation.id_site !== id_site) {
-          return { message: 'Site does not match', status: 400 };
-        }
-      }
+    if (validateOperation['status'] === 404) {
+      return validateOperation;
+    }
 
-      if (id_subsite !== undefined) {
-        if (validateOperation.id_subsite !== id_subsite) {
-          return { message: 'Subsite does not match', status: 400 };
-        }
-      }
+    if (
+      id_site !== undefined &&
+      validateOperation.id_site !== id_site
+    ) {
+      return {
+        message: 'Site does not match',
+        status: 400,
+      };
+    }
 
-      // ✅ VALIDAR QUE LA FACTURA DEL GRUPO NO ESTÉ COMPLETED
-      const billInGroup = await this.prisma.bill.findFirst({
+    if (
+      id_subsite !== undefined &&
+      validateOperation.id_subsite !== id_subsite
+    ) {
+      return {
+        message: 'Subsite does not match',
+        status: 400,
+      };
+    }
+    
+    // Iniciar transacción
+    return await this.prisma.$transaction(async (tx) => {
+      // Buscar Bill del grupo
+      const bill = await tx.bill.findFirst({
         where: {
           id_operation: id,
           id_group: id_group,
         },
         select: {
           id: true,
-          status: true,
-          week_number: true,
-          id_group: true,
+        },
+      });
+      // Obtener trabajadores del grupo
+      const workersInGroup = await tx.operation_Worker.findMany({
+        where: {
+          id_operation: id,
+          id_group: id_group,
+        },
+        select: {
+          id: true,
+          id_worker: true,
         },
       });
 
-      if (billInGroup && billInGroup.status === 'COMPLETED') {
-        // console.log(
-        //   `[OperationService] ❌ Intento de eliminar grupo con factura COMPLETED`,
-        // );
-        return {
-          message: `No se puede eliminar el grupo porque la factura asociada (ID: ${billInGroup.id}) tiene estado COMPLETED. Las facturas completadas no pueden ser modificadas.`,
-          status: 403,
-        };
-      }
+      const workerIds = workersInGroup.map(
+        worker => worker.id_worker,
+      );
+      // Eliminar BillDetail
+      if (bill) {
 
-      // ✅ VALIDAR SEMANA PARA SUPERVISOR/PROGRAMMER
-      if (userId) {
-        const user = await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { role: true },
+        await tx.billDetail.deleteMany({
+          where: {
+            id_bill: bill.id,
+          },
         });
 
-        if ((user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER') && billInGroup?.status === 'ACTIVE') {
-          // Obtener semana actual
-          const currentDate = new Date();
-          const currentWeekNumber = getWeekNumber(currentDate);
-
-
-
-          if (billInGroup.week_number !== currentWeekNumber) {
-            // console.log(
-            //   `[OperationService] ❌ SUPERVISOR intenta eliminar grupo de semana diferente`,
-            // );
-            return {
-              message: `No tiene permitido eliminar este grupo porque pertenece a la semana ${billInGroup.week_number} y la semana actual es ${currentWeekNumber}. Los supervisores solo pueden eliminar grupos de la semana actual.`,
-              status: 403,
-            };
-          }
-        }
       }
+      // Eliminar Bill
+      if (bill) {
 
-      // Usar transacción para eliminar el grupo y sus dependencias
-      return await this.prisma.$transaction(async (tx) => {
-        // 1. Obtener los trabajadores del grupo primero
-        const workersInGroup = await tx.operation_Worker.findMany({
+        await tx.bill.delete({
+          where: {
+            id: bill.id,
+          },
+        });
+
+      }
+      // Eliminar WorkerFeeding
+      if (workerIds.length > 0) {
+
+        await tx.workerFeeding.deleteMany({
           where: {
             id_operation: id,
-            id_group: id_group,
+            id_worker: {
+              in: workerIds,
+            },
           },
-          select: { id: true, id_worker: true },
         });
 
-        const workerIds = workersInGroup.map((w) => w.id_worker);
-        const operationWorkerIds = workersInGroup.map((w) => w.id);
-
-        // console.log(
-        //   `[OperationService] Grupo tiene ${workerIds.length} trabajadores: ${workerIds.join(', ')}`,
-        // );
-        // console.log(
-        //   `[OperationService] Operation_Worker IDs: ${operationWorkerIds.join(', ')}`,
-        // );
-
-        // 2. PRIMERO: Eliminar TODOS los BillDetails que referencian a los Operation_Worker del grupo
-        if (operationWorkerIds.length > 0) {
-          // console.log(
-          // `[OperationService] Eliminando TODOS los BillDetails que referencian a los ${operationWorkerIds.length} Operation_Worker del grupo`,
-          // );
-
-          const deletedAllBillDetails = await tx.billDetail.deleteMany({
-            where: {
-              id_operation_worker: { in: operationWorkerIds }
-            },
-          });
-
-          // console.log(
-          //   `[OperationService] ✅ Eliminados ${deletedAllBillDetails.count} BillDetails que referenciaban a los Operation_Worker`,
-          // );
-        }
-
-        // 3. Si hay factura del grupo y quedó vacía (sin BillDetails), eliminarla
-        if (billInGroup && billInGroup.status === 'ACTIVE') {
-          // Verificar si la factura tiene BillDetails restantes
-          const remainingBillDetails = await tx.billDetail.count({
-            where: { id_bill: billInGroup.id },
-          });
-
-          if (remainingBillDetails === 0) {
-            // console.log(
-            //   `[OperationService] Eliminando factura ${billInGroup.id} del grupo ${id_group} (sin BillDetails restantes)`,
-            // );
-            await tx.bill.delete({
-              where: { id: billInGroup.id },
-            });
-            // console.log(
-            //   `[OperationService] ✅ Factura ${billInGroup.id} eliminada`,
-            // );
-          } else {
-
-            // console.log(
-            //   `[OperationService] ℹ️ Factura ${billInGroup.id} conservada (tiene ${remainingBillDetails} BillDetails de otros grupos)`,
-            // );
-          }
-        }
-
-        // 4. Eliminar WorkerFeeding asociados a esta operación y trabajadores del grupo
-        if (workerIds.length > 0) {
-          // console.log(
-          //   `[OperationService] Eliminando WorkerFeeding de ${workerIds.length} trabajadores`,
-          // );
-          await tx.workerFeeding.deleteMany({
-            where: {
-              id_operation: id,
-              id_worker: { in: workerIds },
-            },
-          });
-        }
-
-        // 5. Eliminar Operation_Workers del grupo - SIEMPRE (basado en id_group)
-        // console.log(
-        //   `[OperationService] Eliminando ${operationWorkerIds.length} registros de Operation_Worker del grupo ${id_group}`,
-        // );
-
-        const deletedWorkers = await tx.operation_Worker.deleteMany({
+      }
+      // Eliminar Operation_Worker
+     const deletedWorkers =
+        await tx.operation_Worker.deleteMany({
           where: {
             id_operation: id,
             id_group: id_group,
           },
         });
-
-        // console.log(
-        //   `[OperationService] ✅ Eliminados ${deletedWorkers.count} Operation_Worker del grupo ${id_group}`,
-        // );
-
-        // 5. Liberar trabajadores si ya no están en otras operaciones
-        for (const workerId of workerIds) {
-          const remainingAssignments = await tx.operation_Worker.count({
-            where: { id_worker: workerId },
-          });
-
-          if (remainingAssignments === 0) {
-            // console.log(
-            //   `[OperationService] Liberando trabajador ${workerId} (sin más asignaciones)`,
-            // );
-            await tx.worker.update({
-              where: { id: workerId },
-              data: { status: 'AVALIABLE' },
-            });
-          }
-        }
-
-        // console.log(
-        //   `[OperationService] ✅ Grupo ${id_group} eliminado exitosamente de operación ${id}`,
-        // );
-
-        return {
-          message: `Grupo eliminado exitosamente`,
-          deletedWorkers: deletedWorkers.count,
+      // Eliminar OperationGroup
+      await tx.operationGroup.deleteMany({
+        where: {
+          id_operation: id,
           id_group: id_group,
-        };
+        },
       });
-    } catch (error) {
-      console.error('[OperationService] Error eliminando grupo:', (error as Error).message);
-      throw new Error((error as Error).message);
-    }
+      // Liberar trabajadores
+      for (const workerId of workerIds) {
+
+        const remainingAssignments =
+          await tx.operation_Worker.count({
+            where: {
+              id_worker: workerId,
+            },
+          });
+
+        if (remainingAssignments === 0) {
+
+          await tx.worker.update({
+            where: {
+              id: workerId,
+            },
+            data: {
+              status: 'AVALIABLE',
+            },
+          });
+
+        }
+
+      }
+      return {
+        message: 'Grupo eliminado exitosamente.',
+        deletedWorkers: deletedWorkers.count,
+        id_group,
+      };
+
+    });
+
+  } catch (error) {
+    console.error(
+      '[OperationService] Error eliminando grupo:',
+      (error as Error).message,
+    );
+
+    throw new Error((error as Error).message);
   }
+}
 
   /**
    * Elimina una operación por su ID o un grupo específico
@@ -2968,194 +2921,96 @@ export class OperationService {
    * @param userId - ID del usuario que realiza la eliminación
    * @returns Operación eliminada o información de grupos disponibles
    */
-  async remove(
-    id: number,
-    id_site?: number,
-    id_subsite?: number,
-    id_group?: string,
-    userId?: number,
-  ) {
-    try {
-      const validateOperation = await this.findOne(id);
-      if (validateOperation['status'] === 404) {
-        return validateOperation;
-      }
+async remove(
+  id: number,
+  id_site?: number,
+  id_subsite?: number,
+  id_group?: string,
+  userId?: number,
+  confirmDelete = false,
+) {
+  try {
+    const validateOperation = await this.findOne(id);
 
-      if (id_site !== undefined) {
-        if (validateOperation.id_site !== id_site) {
-          return { message: 'Site does not match', status: 400 };
-        }
-      }
+    if (validateOperation['status'] === 404) {
+      return validateOperation;
+    }
 
-      if (id_subsite !== undefined) {
-        if (validateOperation.id_subsite !== id_subsite) {
-          return { message: 'Subsite does not match', status: 400 };
-        }
-      }
+    if (
+      id_site !== undefined &&
+      validateOperation.id_site !== id_site
+    ) {
+      return {
+        status: 400,
+        message: 'Site does not match',
+      };
+    }
 
-      // ✅ SI SE PROPORCIONA id_group, ELIMINAR SOLO ESE GRUPO
-      if (id_group) {
-        return await this.removeGroup(id, id_group, id_site, id_subsite, userId);
-      }
+    if (
+      id_subsite !== undefined &&
+      validateOperation.id_subsite !== id_subsite
+    ) {
+      return {
+        status: 400,
+        message: 'Subsite does not match',
+      };
+    }
 
-      // ✅ SI NO SE PROPORCIONA id_group, VERIFICAR CUÁNTOS GRUPOS HAY
-      const groups = await this.prisma.operation_Worker.findMany({
-        where: { id_operation: id },
-        select: { id_group: true },
-        distinct: ['id_group'],
+    if (!id_group) {
+      return {
+        status: 400,
+        message: 'id_group es obligatorio.',
+      };
+    }
+
+    // Obtener grupos de la operación
+    const groups = await this.prisma.operation_Worker.findMany({
+      where: { id_operation: id },
+      select: { id_group: true },
+      distinct: ['id_group'],
+    });
+
+    // Solo existe un grupo -> eliminar TODA la operación
+    if (groups.length === 1) {
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
       });
 
-      const uniqueGroups = groups
-        .map((g) => g.id_group)
-        .filter((groupId): groupId is string => Boolean(groupId));
-
-      if (uniqueGroups.length === 0) {
-        // No hay grupos, eliminar la operación completa
-        return await this.removeOperationCompletely(id, id_site, id_subsite);
-      } else if (uniqueGroups.length === 1) {
-        // Solo hay un grupo, eliminarlo y luego eliminar la operación
-        // console.log(
-        //   `[OperationService] Solo hay un grupo (${uniqueGroups[0]}), eliminando grupo y operación completa`,
-        // );
-
-        // Eliminar el grupo primero
-        const groupResult = await this.removeGroup(
-          id,
-          uniqueGroups[0],
-          id_site,
-          id_subsite,
-          userId,
-        );
-
-        // Si hubo error al eliminar el grupo, retornar el error
-        if (groupResult['status'] === 403 || groupResult['status'] === 400 || groupResult['status'] === 404) {
-          return groupResult;
-        }
-
-        // console.log(`[OperationService] Grupo eliminado, ahora eliminando operación ${id} completa`);
-
-        // Eliminar la operación completa usando transacción
-        try {
-          await this.prisma.$transaction(async (tx) => {
-            // 1. Verificar que no queden grupos
-            const remainingGroups = await tx.operation_Worker.count({
-              where: { id_operation: id },
-            });
-
-            if (remainingGroups > 0) {
-              // console.log(`[OperationService] ⚠️ Aún quedan ${remainingGroups} trabajadores, no se elimina la operación`);
-              return;
-            }
-
-            // 2. Buscar y eliminar facturas
-            const bills = await tx.bill.findMany({
-              where: { id_operation: id },
-              select: { id: true },
-            });
-
-            if (bills.length > 0) {
-              const billIds = bills.map(bill => bill.id);
-
-              // console.log(`[OperationService] Eliminando ${bills.length} factura(s) de operación ${id}`);
-
-              await tx.billDetail.deleteMany({
-                where: { id_bill: { in: billIds } },
-              });
-
-              await tx.bill.deleteMany({
-                where: { id_operation: id },
-              });
-            }
-
-            // 3. Eliminar WorkerFeeding
-            await tx.workerFeeding.deleteMany({
-              where: { id_operation: id },
-            });
-
-            // 4. Eliminar InChargeOperation
-            try {
-              await tx.inChargeOperation.deleteMany({
-                where: { id_operation: id },
-              });
-            } catch (error) {
-              // Si la tabla no existe, continuar
-            }
-
-            // 5. Eliminar la operación
-            await tx.operation.delete({
-              where: { id },
-            });
-
-            // console.log(`[OperationService] ✅ Operación ${id} eliminada exitosamente`);
-          });
-
-          return {
-            message: `Grupo y operación eliminados exitosamente`,
-            deletedWorkers: groupResult['deletedWorkers'] || 0,
-            id_group: uniqueGroups[0],
-            operationDeleted: true,
-          };
-        } catch (error) {
-          console.error(`[OperationService] Error eliminando operación ${id}:`, error);
-          // Si falla la eliminación de la operación, al menos el grupo se eliminó
-          return {
-            ...groupResult,
-            warning: 'El grupo se eliminó pero hubo un error al eliminar la operación completa',
-            error: (error as Error).message,
-          };
-        }
-      } else {
-        // Hay múltiples grupos, obtener información de cada uno
-        const groupsInfo = await Promise.all(
-          uniqueGroups.map(async (groupId) => {
-            const bill = await this.prisma.bill.findFirst({
-              where: {
-                id_operation: id,
-                id_group: groupId,
-              },
-              select: {
-                id: true,
-                status: true,
-                observation: true,
-              },
-            });
-
-            const workersCount = await this.prisma.operation_Worker.count({
-              where: {
-                id_operation: id,
-                id_group: groupId,
-              },
-            });
-
-            return {
-              id_group: groupId,
-              workersCount: workersCount,
-              bill: bill
-                ? {
-                  id: bill.id,
-                  status: bill.status,
-                  observation: bill.observation,
-                  canDelete: bill.status === 'ACTIVE',
-                }
-                : null,
-              canDelete: !bill || bill.status === 'ACTIVE',
-            };
-          }),
-        );
-
+      if (
+        !user ||
+        (user.role !== Role.ADMIN &&
+          user.role !== Role.SUPERADMIN)
+      ) {
         return {
+          status: 403,
           message:
-            'La operación tiene múltiples grupos. Especifique el id_group que desea eliminar.',
-          status: 400,
-          groups: groupsInfo,
-          hint: 'Use el parámetro id_group en la query para especificar el grupo a eliminar. Solo se pueden eliminar grupos con facturas en estado ACTIVE o sin factura.',
+            'Solo ADMIN y SUPERADMIN pueden eliminar una operación completa.',
         };
       }
-    } catch (error) {
-      throw new Error((error as Error).message);
-    }
-  }
 
+      const response =  await this.removeOperationCompletely(
+        id,
+        id_site,
+        id_subsite,
+        confirmDelete,
+      );
+      return response;
+    }
+
+    // Hay varios grupos -> eliminar únicamente el grupo solicitado
+    return await this.removeGroup(
+      id,
+      id_group,
+      id_site,
+      id_subsite,
+      userId,
+    );
+  } catch (error) {
+    throw new Error((error as Error).message);
+  }
+}
   /**
    * Elimina múltiples grupos de una operación
    * @param id - ID de la operación
@@ -3165,309 +3020,347 @@ export class OperationService {
    * @param userId - ID del usuario que realiza la eliminación
    * @returns Resultado de la eliminación múltiple
    */
-  async removeMultipleGroups(
-    id: number,
-    id_groups: string[],
-    id_site?: number,
-    id_subsite?: number,
-    userId?: number,
-  ) {
-    try {
-      // console.log(`[OperationService] Iniciando eliminación múltiple de ${id_groups.length} grupos`);
+async removeMultipleGroups(
+  id: number,
+  id_groups: string[],
+  id_site?: number,
+  id_subsite?: number,
+  userId?: number,
+  confirmDelete = false,
+) {
+  try {
+    const results = {
+      success: [] as Array<{
+        id_group: string;
+        deletedWorkers: number;
+        operationDeleted?: boolean;
+      }>,
+      failed: [] as Array<{
+        id_group: string;
+        reason: string;
+        status: number;
+      }>,
+      totalRequested: id_groups.length,
+    };
 
-      // Validar que la operación existe
-      const validateOperation = await this.findOne(id);
-      if (validateOperation['status'] === 404) {
-        return validateOperation;
-      }
+    let operationDeleted = false;
 
-      if (id_site !== undefined) {
-        if (validateOperation.id_site !== id_site) {
-          return { message: 'Site does not match', status: 400 };
-        }
-      }
+    for (const id_group of id_groups) {
+      try {
+        const result = await this.remove(
+          id,
+          id_site,
+          id_subsite,
+          id_group,
+          userId,
+           confirmDelete,
+        );
 
-      if (id_subsite !== undefined) {
-        if (validateOperation.id_subsite !== id_subsite) {
-          return { message: 'Subsite does not match', status: 400 };
-        }
-      }
-
-      const results = {
-        success: [] as Array<{
-          id_group: string;
-          deletedWorkers: number;
-        }>,
-        failed: [] as Array<{
-          id_group: string;
-          reason: string;
-          status: number;
-        }>,
-        totalRequested: id_groups.length,
-      };
-
-      // Procesar cada grupo
-      for (const id_group of id_groups) {
-        // console.log(`[OperationService] Procesando grupo: ${id_group}`);
-
-        try {
-          const result = await this.removeGroup(
-            id,
-            id_group,
-            id_site,
-            id_subsite,
-            userId,
-          );
-
-          // Verificar si la eliminación fue exitosa
-          if (result['status'] === 403 || result['status'] === 400 || result['status'] === 404) {
-            results.failed.push({
-              id_group,
-              reason: result['message'],
-              status: result['status'],
-            });
-          } else {
-            results.success.push({
-              id_group,
-              deletedWorkers: result['deletedWorkers'] || 0,
-            });
-          }
-        } catch (error) {
-          console.error(`[OperationService] Error eliminando grupo ${id_group}:`, error);
+        if (
+          result['status'] === 400 ||
+          result['status'] === 403 ||
+          result['status'] === 404
+        ) {
           results.failed.push({
             id_group,
-            reason: (error as Error).message,
-            status: 500,
+            reason: result['message'],
+            status: result['status'],
           });
+
+          continue;
         }
-      }
 
-      // console.log(`[OperationService] Eliminación múltiple completada: ${results.success.length} exitosos, ${results.failed.length} fallidos`);
-
-      // ✅ VERIFICAR SI LA OPERACIÓN QUEDÓ SIN GRUPOS Y ELIMINARLA
-      let operationDeleted = false;
-      if (results.success.length > 0) {
-        // console.log(`[OperationService] Verificando si la operación ${id} quedó sin grupos...`);
-
-        const remainingGroups = await this.prisma.operation_Worker.count({
-          where: { id_operation: id },
+        results.success.push({
+          id_group,
+          deletedWorkers: result['deletedWorkers'] || 0,
+          operationDeleted: result['operationDeleted'] || false,
         });
 
-        // console.log(`[OperationService] Grupos restantes en operación ${id}: ${remainingGroups}`);
-
-        if (remainingGroups === 0) {
-          // console.log(`[OperationService] No quedan grupos, eliminando operación ${id} completa`);
-
-          try {
-            await this.prisma.$transaction(async (tx) => {
-              // 1. Buscar y eliminar facturas
-              const bills = await tx.bill.findMany({
-                where: { id_operation: id },
-                select: { id: true },
-              });
-
-              if (bills.length > 0) {
-                const billIds = bills.map(bill => bill.id);
-
-                // console.log(`[OperationService] Eliminando ${bills.length} factura(s) de operación ${id}`);
-
-                await tx.billDetail.deleteMany({
-                  where: { id_bill: { in: billIds } },
-                });
-
-                await tx.bill.deleteMany({
-                  where: { id_operation: id },
-                });
-              }
-
-              // 2. Eliminar WorkerFeeding
-              await tx.workerFeeding.deleteMany({
-                where: { id_operation: id },
-              });
-
-              // 3. Eliminar InChargeOperation
-              try {
-                await tx.inChargeOperation.deleteMany({
-                  where: { id_operation: id },
-                });
-              } catch (error) {
-                // Si la tabla no existe, continuar
-              }
-
-              // 4. Eliminar la operación
-              await tx.operation.delete({
-                where: { id },
-              });
-
-              // console.log(`[OperationService] ✅ Operación ${id} eliminada exitosamente`);
-            });
-
-            operationDeleted = true;
-          } catch (error) {
-            console.error(`[OperationService] Error eliminando operación ${id}:`, error);
-            // No lanzar error, solo informar que los grupos se eliminaron pero la operación no
-          }
+        // Si remove() eliminó la operación, ya no tiene sentido seguir
+        if (result['operationDeleted']) {
+          operationDeleted = true;
+          break;
         }
+      } catch (error) {
+        results.failed.push({
+          id_group,
+          reason: (error as Error).message,
+          status: 500,
+        });
       }
+    }
 
-      // Determinar el código de estado apropiado
-      if (results.failed.length === 0) {
-        // Todos los grupos se eliminaron exitosamente
-        return {
-          message: operationDeleted
-            ? `Se eliminaron exitosamente ${results.success.length} grupo(s) y la operación completa`
-            : `Se eliminaron exitosamente ${results.success.length} grupo(s)`,
-          status: 200,
-          results,
-          operationDeleted,
-        };
-      } else if (results.success.length === 0) {
-        // Ningún grupo se eliminó
-        return {
-          message: 'No se pudo eliminar ningún grupo',
-          status: 400,
-          results,
-          operationDeleted: false,
-        };
-      } else {
-        // Algunos grupos se eliminaron, otros no (Multi-Status)
-        return {
-          message: operationDeleted
-            ? `Se eliminaron ${results.success.length} grupo(s) y la operación completa, pero ${results.failed.length} grupos fallaron`
-            : `Se eliminaron ${results.success.length} grupo(s), pero ${results.failed.length} fallaron`,
-          status: 207,
-          results,
-          operationDeleted,
-        };
-      }
-    } catch (error) {
-      console.error('[OperationService] ❌ Error crítico en eliminación múltiple:', (error as Error).message);
+    if (results.failed.length === 0) {
       return {
-        message: `Error crítico en eliminación múltiple: ${(error as Error).message}`,
-        status: 500,
-        error: (error as Error).message,
+        status: 200,
+        message: operationDeleted
+          ? 'Se eliminaron los grupos y la operación completa.'
+          : `Se eliminaron ${results.success.length} grupo(s).`,
+        results,
+        operationDeleted,
       };
     }
+
+    if (results.success.length === 0) {
+      return {
+        status: 400,
+        message: 'No se pudo eliminar ningún grupo.',
+        results,
+        operationDeleted: false,
+      };
+    }
+
+    return {
+      status: 207,
+      message: operationDeleted
+        ? 'Se eliminaron algunos grupos y posteriormente la operación completa.'
+        : 'Algunos grupos fueron eliminados y otros fallaron.',
+      results,
+      operationDeleted,
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      message: (error as Error).message,
+    };
   }
+}
 
-  /**
-   * Elimina completamente una operación (método auxiliar)
-   * @param id - ID de la operación a eliminar
-   * @returns Operación eliminada
-   */
-  private async removeOperationCompletely(
-    id: number,
-    id_site?: number,
-    id_subsite?: number,
-  ) {
-    try {
-      const validateOperation = await this.findOne(id);
-      if (validateOperation['status'] === 404) {
-        return validateOperation;
+ /* Elimina completamente una operación (método auxiliar)
+ * @param id - ID de la operación a eliminar
+ * @returns Operación eliminada
+ */
+private async removeOperationCompletely(
+  id: number,
+  id_site?: number,
+  id_subsite?: number,
+  confirmDelete = false,
+) {
+  try {
+    const validateOperation = await this.findOne(id);
+
+    if (validateOperation['status'] === 404) {
+      return validateOperation;
+    }
+
+    if (
+      id_site !== undefined &&
+      validateOperation.id_site !== id_site
+    ) {
+      return {
+        message: 'Site does not match',
+        status: 400,
+      };
+    }
+
+    if (
+      id_subsite !== undefined &&
+      validateOperation.id_subsite !== id_subsite
+    ) {
+      return {
+        message: 'Subsite does not match',
+        status: 400,
+      };
+    }
+
+    const feedingCount =
+    await this.prisma.workerFeeding.count({
+        where: {
+            id_operation: id,
+        },
+    });
+
+if (feedingCount > 0 && !confirmDelete) {
+
+    return {
+        status: 409,
+        requireConfirmation: true,
+        feedingCount,
+        message:
+            `La operación tiene ${feedingCount} registro(s) de alimentación. ` +
+            `Si continúa, dichos registros también serán eliminados. ` +
+            `¿Desea continuar?`,
+    };
+
+}
+
+    return await this.prisma.$transaction(async (tx) => {
+
+      // ==========================================
+      // Obtener trabajadores para liberarlos luego
+      // ==========================================
+
+      const workers = await tx.operation_Worker.findMany({
+        where: {
+          id_operation: id,
+        },
+        select: {
+          id_worker: true,
+        },
+      });
+
+      const workerIds = [...new Set(workers.map(w => w.id_worker))];
+
+      // ==========================================
+      // Buscar Bills
+      // ==========================================
+
+      const bills = await tx.bill.findMany({
+        where: {
+          id_operation: id,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const billIds = bills.map(b => b.id);
+
+      // ==========================================
+      // BillDetail
+      // ==========================================
+
+      if (billIds.length > 0) {
+        await tx.billDetail.deleteMany({
+          where: {
+            id_bill: {
+              in: billIds,
+            },
+          },
+        });
       }
 
-      if (id_site !== undefined) {
-        if (validateOperation.id_site !== id_site) {
-          return { message: 'Site does not match', status: 400 };
-        }
-      }
+      // ==========================================
+      // Bill
+      // ==========================================
 
-      if (id_subsite !== undefined) {
-        if (validateOperation.id_subsite !== id_subsite) {
-          return { message: 'Subsite does not match', status: 400 };
-        }
-      }
+      await tx.bill.deleteMany({
+        where: {
+          id_operation: id,
+        },
+      });
 
-      // Usar transacción para eliminar la operación y sus dependencias
-      return await this.prisma.$transaction(async (tx) => {
-        // 1. Buscar facturas asociadas a esta operación
-        const bills = await tx.bill.findMany({
-          where: { id_operation: id },
-          select: { id: true },
+      // ==========================================
+      // Token
+      // OperationConfirmation
+      // ==========================================
+
+      const confirmation =
+        await tx.operationConfirmation.findUnique({
+          where: {
+            id_operation: id,
+          },
+          select: {
+            id: true,
+          },
         });
 
-        // 2. Si hay facturas, eliminar primero los detalles de las facturas
-        if (bills.length > 0) {
-          const billIds = bills.map(bill => bill.id);
+      if (confirmation) {
 
-          // console.log(`[OperationService] Eliminando detalles de ${bills.length} factura(s) asociadas a operación ${id}`);
+        await tx.token.deleteMany({
+          where: {
+            id_confirmation: confirmation.id,
+          },
+        });
 
-          await tx.billDetail.deleteMany({
+        await tx.operationConfirmation.delete({
+          where: {
+            id: confirmation.id,
+          },
+        });
+
+      }
+
+      // ==========================================
+      // WorkerFeeding
+      // ==========================================
+
+      await tx.workerFeeding.deleteMany({
+        where: {
+          id_operation: id,
+        },
+      });
+
+      // ==========================================
+      // InChargeOperation
+      // ==========================================
+
+      await tx.inChargeOperation.deleteMany({
+        where: {
+          id_operation: id,
+        },
+      });
+
+      // ==========================================
+      // Operation_Worker
+      // ==========================================
+
+      await tx.operation_Worker.deleteMany({
+        where: {
+          id_operation: id,
+        },
+      });
+
+      // ==========================================
+      // OperationGroup
+      // ==========================================
+
+      await tx.operationGroup.deleteMany({
+        where: {
+          id_operation: id,
+        },
+      });
+
+      // ==========================================
+      // Liberar trabajadores
+      // ==========================================
+
+      for (const workerId of workerIds) {
+
+        const remainingAssignments =
+          await tx.operation_Worker.count({
             where: {
-              id_bill: { in: billIds }
+              id_worker: workerId,
             },
           });
 
-          // 3. Eliminar las facturas
-          // console.log(`[OperationService] Eliminando ${bills.length} factura(s) de operación ${id}`);
+        if (remainingAssignments === 0) {
 
-          await tx.bill.deleteMany({
-            where: { id_operation: id },
+          await tx.worker.update({
+            where: {
+              id: workerId,
+            },
+            data: {
+              status: 'AVALIABLE',
+            },
           });
+
         }
 
-        // 4. Eliminar registros de WorkerFeeding asociados a esta operación
-        // console.log(`[OperationService] Eliminando registros de alimentación de operación ${id}`);
-        await tx.workerFeeding.deleteMany({
-          where: { id_operation: id },
-        });
-
-
-
-        // 6. Eliminar todos los trabajadores asignados a la operación
-        await tx.operation_Worker.deleteMany({
-          where: { id_operation: id },
-        });
-
-        // 7. Eliminar encargados si existen
-        try {
-          await tx.inChargeOperation.deleteMany({
-            where: { id_operation: id },
-          });
-        } catch (error) {
-          // Si la tabla no existe, continuar
-        }
-
-        // 8. Eliminar la operación
-        const response = await tx.operation.delete({
-          where: { id },
-        });
-
-        // console.log(`[OperationService] ✅ Operación ${id} eliminada exitosamente`);
-
-        return response;
-      });
-    } catch (error) {
-      throw new Error((error as Error).message);
-    }
-  }
-
-  /**
-   * Elimina completamente una operación cancelada (para uso del cron)
-   * @param id - ID de la operación a eliminar
-   */
-  async removeCompletely(id: number) {
-    return await this.prisma.$transaction(async (tx) => {
-      // 1. Eliminar Operation_Worker
-      await tx.operation_Worker.deleteMany({
-        where: { id_operation: id },
-      });
-
-      // 2. Eliminar InCharged
-      try {
-        await tx.inChargeOperation.deleteMany({
-          where: { id_operation: id },
-        });
-      } catch (error) {
-        // Continuar si la tabla no existe
       }
 
-      // 3. Eliminar la operación
-      return await tx.operation.delete({
-        where: { id },
+      // ==========================================
+      // Operation
+      // ==========================================
+
+      const response = await tx.operation.delete({
+        where: {
+          id,
+        },
       });
+
+      return {
+        ...response,
+        operationDeleted: true,
+      };
+
     });
+
+  } catch (error) {
+    throw new Error((error as Error).message);
   }
+}
+
 
   private async processWorkersOperationsV2(operationId: number, workersOps: any, isCompleted: boolean = false) {
     // console.log('[OperationService] Procesando operaciones de trabajadores V2:', JSON.stringify(workersOps, null, 2));

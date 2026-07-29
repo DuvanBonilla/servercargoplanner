@@ -1173,108 +1173,132 @@ export class OperationController {
     return response;
   }
 
-  @Delete(':id')
-  @ApiOperation({
-    summary: 'Eliminar operación o grupo específico',
-    description:
-      'Si id_group no se proporciona: si hay un solo grupo se elimina automáticamente, si hay múltiples grupos devuelve la lista para que el usuario elija. Solo se pueden eliminar grupos con facturas en estado ACTIVE.',
-  })
-  @ApiQuery({
-    name: 'id_group',
-    required: false,
-    type: String,
-    description: 'ID del grupo a eliminar (opcional)',
-  })
-  async remove(
-    @Param('id', ParseIntPipe) id: number,
-    @Query('id_group') id_group: string,
-    @CurrentUser('userId') userId: number,
-    @CurrentUser('isSupervisor') isSupervisor: number,
-    @CurrentUser('isProgrammer') isProgrammer: number,
-    @CurrentUser('isAdmin') isAdmin: number,
-    @CurrentUser('siteId') siteId: number,
-    @CurrentUser('subsiteId') subsiteId: number,
-  ) {
-    const response = await this.operationService.remove(
-      id,
-      isAdmin ? siteId : undefined,
-      (isSupervisor || isProgrammer) ? subsiteId : undefined,
-      id_group || undefined,
-      userId,
+@Delete(':id')
+@ApiOperation({
+  summary: 'Eliminar operación o grupo',
+  description:
+    'Siempre se debe enviar un id_group. Si la operación solo tiene un grupo, se elimina toda la operación (solo ADMIN y SUPERADMIN). Si tiene varios grupos, únicamente se elimina el grupo indicado.',
+})
+@ApiQuery({
+  name: 'id_group',
+  required: true,
+  type: String,
+  description: 'UUID del grupo a eliminar',
+})
+async remove(
+  @Param('id', ParseIntPipe) id: number,
+  @Query('id_group') id_group: string,
+  @CurrentUser('userId') userId: number,
+  @CurrentUser('isSupervisor') isSupervisor: number,
+  @CurrentUser('isProgrammer') isProgrammer: number,
+  @CurrentUser('isAdmin') isAdmin: number,
+  @CurrentUser('siteId') siteId: number,
+  @CurrentUser('subsiteId') subsiteId: number,
+  @Query('confirmDelete') confirmDelete?: string,
+) {
+  if (!id_group) {
+    throw new BadRequestException(
+      'El parámetro id_group es obligatorio.',
     );
-    if (response['status'] === 404) {
-      throw new NotFoundException(response['message']);
-    } else if (response['status'] === 400) {
-      throw new BadRequestException(response['message']);
-    } else if (response['status'] === 403) {
-      throw new ForbiddenException(response['message']);
-    }
-
-    return response;
   }
 
-  @Delete(':id/groups/bulk')
-  @ApiOperation({
-    summary: 'Eliminar múltiples grupos de una operación',
-    description:
-      'Elimina varios grupos a la vez aplicando las mismas validaciones: no permite eliminar grupos con facturas COMPLETED y SUPERVISOR solo puede eliminar de la semana actual.',
-  })
-  @ApiBody({
-    description: 'Array de IDs de grupos a eliminar',
-    schema: {
-      type: 'object',
-      properties: {
-        id_groups: {
-          type: 'array',
-          items: {
-            type: 'string',
-          },
-          example: [
-            '83f2e536-f56c-4af4-8cf6-28b880b89309',
-            'a19a3bde-a8c8-4b7e-a8cc-cd24e51f8d67',
-            'f4d3c2b1-a0e9-4d8c-b7a6-5e4d3c2b1a09',
-          ],
-          description: 'Lista de UUIDs de los grupos a eliminar',
+  const response = await this.operationService.remove(
+    id,
+    isAdmin ? siteId : undefined,
+    (isSupervisor || isProgrammer) ? subsiteId : undefined,
+    id_group,
+    userId,
+    confirmDelete === 'true',
+  );
+
+  if (response['status'] === 404) {
+    throw new NotFoundException(response['message']);
+  }
+
+  if (response['status'] === 400) {
+    throw new BadRequestException(response['message']);
+  }
+
+  if (response['status'] === 403) {
+    throw new ForbiddenException(response['message']);
+  }
+  if (response['status'] === 409) {
+    return response;
+}
+
+  return response;
+}
+@Delete(':id/groups/bulk')
+@ApiOperation({
+  summary: 'Eliminar múltiples grupos de una operación',
+  description:
+    'Elimina múltiples grupos. Si al eliminar un grupo este corresponde al último grupo de la operación, se eliminará automáticamente toda la operación (solo ADMIN y SUPERADMIN).',
+})
+@ApiBody({
+  description: 'Array de IDs de grupos a eliminar',
+  schema: {
+    type: 'object',
+    properties: {
+      id_groups: {
+        type: 'array',
+        items: {
+          type: 'string',
         },
+        example: [
+          '83f2e536-f56c-4af4-8cf6-28b880b89309',
+          'a19a3bde-a8c8-4b7e-a8cc-cd24e51f8d67',
+          'f4d3c2b1-a0e9-4d8c-b7a6-5e4d3c2b1a09',
+        ],
+        description: 'Lista de UUIDs de los grupos a eliminar',
       },
-      required: ['id_groups'],
     },
-  })
-  async removeMultipleGroups(
-    @Param('id', ParseIntPipe) id: number,
-    @Body('id_groups') id_groups: string[],
-    @CurrentUser('userId') userId: number,
-    @CurrentUser('isSupervisor') isSupervisor: number,
-    @CurrentUser('isProgrammer') isProgrammer: number,
-    @CurrentUser('isAdmin') isAdmin: number,
-    @CurrentUser('siteId') siteId: number,
-    @CurrentUser('subsiteId') subsiteId: number,
-  ) {
-    if (!id_groups || !Array.isArray(id_groups) || id_groups.length === 0) {
-      throw new BadRequestException('Se requiere un array de id_groups con al menos un elemento');
-    }
-
-    const response = await this.operationService.removeMultipleGroups(
-      id,
-      id_groups,
-      isAdmin ? siteId : undefined,
-      (isSupervisor || isProgrammer) ? subsiteId : undefined,
-      userId,
+    required: ['id_groups'],
+  },
+})
+async removeMultipleGroups(
+  @Param('id', ParseIntPipe) id: number,
+  @Body('id_groups') id_groups: string[],
+  @CurrentUser('userId') userId: number,
+  @CurrentUser('isSupervisor') isSupervisor: number,
+  @CurrentUser('isProgrammer') isProgrammer: number,
+  @CurrentUser('isAdmin') isAdmin: number,
+  @CurrentUser('siteId') siteId: number,
+  @CurrentUser('subsiteId') subsiteId: number,
+  @Query('confirmDelete') confirmDelete?: string,
+) {
+  if (!id_groups || !Array.isArray(id_groups) || id_groups.length === 0) {
+    throw new BadRequestException(
+      'Se requiere un array de id_groups con al menos un elemento',
     );
+  }
 
-    if (response['status'] === 404) {
-      throw new NotFoundException(response['message']);
-    } else if (response['status'] === 400) {
-      throw new BadRequestException(response['message']);
-    } else if (response['status'] === 403) {
-      throw new ForbiddenException(response['message']);
-    } else if (response['status'] === 207) {
-      // 207 Multi-Status: algunos grupos se eliminaron, otros no
-      return response;
-    }
+  const response = await this.operationService.removeMultipleGroups(
+    id,
+    id_groups,
+    isAdmin ? siteId : undefined,
+    (isSupervisor || isProgrammer) ? subsiteId : undefined,
+    userId,
+    confirmDelete === 'true',
+  );
 
+  if (response['status'] === 404) {
+    throw new NotFoundException(response['message']);
+  }
+
+  if (response['status'] === 400) {
+    throw new BadRequestException(response['message']);
+  }
+
+  if (response['status'] === 403) {
+    throw new ForbiddenException(response['message']);
+  }
+
+  if (response['status'] === 207) {
     return response;
   }
+
+  return response;
+}
 
 
   // Nuevo endpoint para exportar operaciones
