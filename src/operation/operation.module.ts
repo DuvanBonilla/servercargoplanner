@@ -17,6 +17,7 @@ import { BillModule } from 'src/bill/bill.module';
 import { OperationExportService } from './services/operation-export.service';
 import { OperationTokenService } from './services/operation-token.service';
 import { OperationEmailService } from './services/operation-email.service';
+import { ConfigurationModule } from 'src/configuration/configuration.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { OperationEmailService } from './services/operation-email.service';
     AuthModule,
     OperationWorkerModule,
     TariffModule,
+    ConfigurationModule,
     forwardRef(() => WorkerModule),
     forwardRef(() => BillModule),
   ],

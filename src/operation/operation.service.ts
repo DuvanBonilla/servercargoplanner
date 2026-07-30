@@ -8,7 +8,7 @@ import { UpdateOperationDto } from './dto/update-operation.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { OperationWorkerService } from 'src/operation-worker/operation-worker.service';
 // import { BillService } from 'src/bill/bill.service';
-import { BillStatus, Role, StatusComplete, StatusOperation, TokenStatus, YES_NO } from '@prisma/client';
+import { BillStatus, Role, StatusActivation, StatusComplete, StatusOperation, TokenStatus, YES_NO } from '@prisma/client';
 import { OperationFinderService } from './services/operation-finder.service';
 import { OperationRelationService } from './services/operation-relation.service';
 import { OperationFilterDto } from './dto/fliter-operation.dto';
@@ -21,6 +21,7 @@ import { TokenGenerationFailedException } from './exceptions/token-generation-fa
 import { formatColombianDate, getColombianDateTime } from 'src/common/utils/dateColombia';
 import { OperationTokenService } from './services/operation-token.service';
 import { OperationEmailService } from './services/operation-email.service';
+import { ConfigurationService } from 'src/configuration/configuration.service';
 // ... otras importaciones
 /**
  * Servicio para gestionar operaciones
@@ -41,6 +42,7 @@ export class OperationService {
     private moduleRef: ModuleRef,
     private operationTokenService: OperationTokenService,
     private operationEmailService: OperationEmailService,
+    private configurationService: ConfigurationService,
     // private billService: BillService,
   ) { }
   /**
@@ -2153,23 +2155,29 @@ export class OperationService {
       });
       // console.log('[OperationService] ==> Usuario encontrado:', user);
 
-      // Validar fecha para SUPERVISOR
+      // Validar fecha para SUPERVISOR/PROGRAMMER
       if ((user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER') && createOperationDto.dateStart) {
-        // console.log('[OperationService] ==> Validando fecha para SUPERVISOR');
-        // Si el usuario existe y su rol es 'SUPERVISOR', y además se proporcionó dateStart en el DTO
-        const now = new Date(); // Obtener la fecha/hora actual
-        const dateStart = new Date(createOperationDto.dateStart); // Convertir la fecha proporcionada a un objeto Date
-        const diffMs = now.getTime() - dateStart.getTime(); // Calcular la diferencia en milisegundos entre ahora y dateStart
-        const diffHours = diffMs / (1000 * 60 * 60); // Convertir la diferencia de ms a horas: $diffHours = \\frac{diffMs}{1000\\times60\\times60}$
+        // El límite de antigüedad depende de la configuración HORAS_REGISTRO_OPERACIONES:
+        // si está INACTIVE no se aplica límite; si está ACTIVE se usa su "value" como horas máximas.
+        const horasRegistroConfig = await this.configurationService.findOneByName(
+          'HORAS_REGISTRO_OPERACIONES',
+        );
+        const isConfigActive =
+          horasRegistroConfig && horasRegistroConfig.status === StatusActivation.ACTIVE;
 
-        if (diffHours >= 120) {
-          // console.log('[OperationService] ==> Error: SUPERVISOR intenta crear operación muy antigua');
-          // Si la diferencia es mayor o igual a 120 horas (5 días), devolver un objeto con mensaje y estado 400
-          return {
-            message:
-              'Como SUPERVISOR/PROGRAMMER solo puedes crear operaciones con máximo o igual a 120 horas de antigüedad.',
-            status: 400,
-          };
+        if (isConfigActive) {
+          const hoursLimit = Number(horasRegistroConfig.value);
+          const now = new Date(); // Obtener la fecha/hora actual
+          const dateStart = new Date(createOperationDto.dateStart); // Convertir la fecha proporcionada a un objeto Date
+          const diffMs = now.getTime() - dateStart.getTime(); // Calcular la diferencia en milisegundos entre ahora y dateStart
+          const diffHours = diffMs / (1000 * 60 * 60); // Convertir la diferencia de ms a horas
+
+          if (diffHours >= hoursLimit) {
+            return {
+              message: `Como SUPERVISOR/PROGRAMMER solo puedes crear operaciones con máximo o igual a ${hoursLimit} horas de antigüedad.`,
+              status: 400,
+            };
+          }
         }
       }
 
