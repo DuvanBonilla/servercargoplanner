@@ -44,6 +44,7 @@ export class ConfigurationController {
   }
 
   @Get()
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.GH)
   async findAll() {
     const response = await this.configurationService.findAll();
     if (response['status'] === 404) {
@@ -53,6 +54,7 @@ export class ConfigurationController {
   }
 
   @Get('by-name')
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.GH)
   @ApiQuery({
     name: 'name',
     required: true,
@@ -67,6 +69,7 @@ export class ConfigurationController {
   }
 
   @Get(':id')
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.GH)
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const response = await this.configurationService.findOne(id);
     if (response['status'] === 404) {

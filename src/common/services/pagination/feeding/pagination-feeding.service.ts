@@ -164,8 +164,14 @@ export class PaginationFeedingService {
         ];
       }
     } else if (filters.id_site) {
-      // Solo filtro por id_site sin búsqueda
-      whereClause.worker = { id_site: filters.id_site };
+      // Solo filtro por id_site sin búsqueda.
+      // Las alimentaciones adheridas al grupo (id_worker null, ver
+      // feedingAddedToService) no tienen worker propio, así que se
+      // incluyen filtrando por el sitio de la operación en su lugar.
+      whereClause.OR = [
+        { worker: { id_site: filters.id_site } },
+        { id_worker: null, operation: { id_site: filters.id_site } },
+      ];
     }
 
     // console.log('[PaginationFeedingService] whereClause construido:', JSON.stringify(whereClause, null, 2));

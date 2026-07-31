@@ -15,7 +15,7 @@ import { OperationFilterDto } from './dto/fliter-operation.dto';
 import { WorkerService } from 'src/worker/worker.service';
 import { RemoveWorkerFromOperationService } from '../operation-worker/service/remove-worker-from-operation/remove-worker-from-operation.service';
 import { ModuleRef } from '@nestjs/core';
-import { getWeekNumber } from 'src/common/utils/dateType';
+import { getWeekNumber, getStartOfWeek, toLocalDate } from 'src/common/utils/dateType';
 import { OperationNotFoundException } from './exceptions/operation-not-found.exception';
 import { TokenGenerationFailedException } from './exceptions/token-generation-failed.exception';
 import { formatColombianDate, getColombianDateTime } from 'src/common/utils/dateColombia';
@@ -2155,26 +2155,33 @@ export class OperationService {
       });
       // console.log('[OperationService] ==> Usuario encontrado:', user);
 
-      // Validar fecha para SUPERVISOR/PROGRAMMER
+      // Validar fecha para SUPERVISOR/PROGRAMMER (ADMIN y SUPERADMIN no tienen esta restricción)
       if ((user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER') && createOperationDto.dateStart) {
-        // El límite de antigüedad depende de la configuración HORAS_REGISTRO_OPERACIONES:
-        // si está INACTIVE no se aplica límite; si está ACTIVE se usa su "value" como horas máximas.
-        const horasRegistroConfig = await this.configurationService.findOneByName(
-          'HORAS_REGISTRO_OPERACIONES',
+        // El límite de antigüedad para CREAR operaciones depende de la configuración
+        // SEMANAS_CREACION_OPERACIONES: si está INACTIVE/no existe no se aplica límite;
+        // si está ACTIVE, su "value" indica cuántas semanas hacia atrás (incluyendo la
+        // semana actual) puede fecharse una operación nueva. Ej: value=2 permite crear
+        // operaciones con fecha de la semana actual o de la semana inmediatamente anterior.
+        const semanasCreacionConfig = await this.configurationService.findOneByName(
+          'SEMANAS_CREACION_OPERACIONES',
         );
-        const isConfigActive =
-          horasRegistroConfig && horasRegistroConfig.status === StatusActivation.ACTIVE;
+        const isWeeksConfigActive =
+          semanasCreacionConfig && semanasCreacionConfig.status === StatusActivation.ACTIVE;
 
-        if (isConfigActive) {
-          const hoursLimit = Number(horasRegistroConfig.value);
-          const now = new Date(); // Obtener la fecha/hora actual
-          const dateStart = new Date(createOperationDto.dateStart); // Convertir la fecha proporcionada a un objeto Date
-          const diffMs = now.getTime() - dateStart.getTime(); // Calcular la diferencia en milisegundos entre ahora y dateStart
-          const diffHours = diffMs / (1000 * 60 * 60); // Convertir la diferencia de ms a horas
+        if (isWeeksConfigActive) {
+          const weeksLimit = Number(semanasCreacionConfig.value);
+          const dateStart = toLocalDate(createOperationDto.dateStart);
 
-          if (diffHours >= hoursLimit) {
+          // Inicio (lunes) de la semana actual, en hora colombiana
+          const startOfCurrentWeek = getStartOfWeek(getColombianDateTime());
+
+          // Límite inferior: retroceder (weeksLimit - 1) semanas desde el inicio de la semana actual
+          const lowerBoundDate = new Date(startOfCurrentWeek);
+          lowerBoundDate.setDate(startOfCurrentWeek.getDate() - (weeksLimit - 1) * 7);
+
+          if (dateStart < lowerBoundDate) {
             return {
-              message: `Como SUPERVISOR/PROGRAMMER solo puedes crear operaciones con máximo o igual a ${hoursLimit} horas de antigüedad.`,
+              message: `Como SUPERVISOR/PROGRAMMER solo puedes crear operaciones dentro de las últimas ${weeksLimit} semanas (a partir del ${formatColombianDate(lowerBoundDate)}).`,
               status: 400,
             };
           }

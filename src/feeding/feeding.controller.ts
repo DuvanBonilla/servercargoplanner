@@ -27,6 +27,7 @@ import { BooleanTransformPipe } from 'src/pipes/boolean-transform/boolean-transf
 import { SiteInterceptor } from 'src/common/interceptors/site.interceptor';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { CreateBulkFeedingDto } from './dto/create-bulk-feeding.dto';
+import { CreateFeedingAddedToServiceDto } from './dto/create-feeding-added-to-service.dto';
 
 
 @Controller('feeding')
@@ -45,6 +46,30 @@ export class FeedingController {
   ) {
     createFeedingDto.id_user = userId;
     const response = await this.feedingService.create(createFeedingDto, siteId);
+    if (response['status'] === 404) {
+      throw new NotFoundException(response['message']);
+    } else if (response['status'] === 409) {
+      throw new ConflictException(response['message']);
+    }
+    return response;
+  }
+
+  @Post('added-to-service')
+  @UsePipes(DateTransformPipe)
+  @ApiOperation({
+    summary:
+      'Registrar una alimentación adherida al grupo (OperationGroup) y no a un trabajador específico',
+  })
+  async feedingAddedToService(
+    @Body() dto: CreateFeedingAddedToServiceDto,
+    @CurrentUser('siteId') siteId: number,
+    @CurrentUser('userId') userId: number,
+  ) {
+    dto.id_user = userId;
+    const response = await this.feedingService.feedingAddedToService(
+      dto,
+      siteId,
+    );
     if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
     } else if (response['status'] === 409) {

@@ -1,4 +1,4 @@
-import { format, getDay, getWeek } from 'date-fns';
+import { format, getDay, getWeek, startOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { normalizeColombianDate } from './dateColombia';
 
@@ -88,6 +88,17 @@ export function getWeekInfo(date: Date | string): { weekNumber: number; year: nu
     weekNumber: getWeekNumber(normalizedDate),
     year: normalizedDate.getFullYear(),
   };
+}
+
+/**
+ * Obtiene el lunes 00:00:00 (hora local) de la semana ISO a la que pertenece
+ * la fecha dada (semana inicia en lunes, igual que getWeekNumber/getWeekInfo).
+ * @param date Fecha para la cual se quiere el inicio de semana
+ * @returns Date del lunes correspondiente, sin componente de hora
+ */
+export function getStartOfWeek(date: Date | string): Date {
+  const normalizedDate = toLocalDate(date);
+  return startOfWeek(normalizedDate, { weekStartsOn: 1 });
 }
 
 /**

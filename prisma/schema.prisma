@@ -297,8 +297,12 @@ model InChargeOperation {
 
 model WorkerFeeding {
   id           Int           @id @default(autoincrement())
-  id_worker    Int
+  id_worker    Int?
   id_operation Int
+  // Código de OperationGroup (siempre numérico) al que se adhiere la
+  // alimentación cuando NO pertenece a un trabajador específico
+  // (ver FeedingService.feedingAddedToService).
+  code_group   Int?
   dateFeeding  DateTime      @db.Date
   type         FeedingStatus
   createAt     DateTime      @default(now())
@@ -306,11 +310,12 @@ model WorkerFeeding {
   id_user      Int?
   user         User?         @relation(fields: [id_user], references: [id])
   operation    Operation     @relation(fields: [id_operation], references: [id])
-  worker       Worker        @relation(fields: [id_worker], references: [id])
+  worker       Worker?       @relation(fields: [id_worker], references: [id])
 
   @@index([id_worker])
   @@index([id_operation])
   @@index([id_user])
+  @@index([code_group])
   @@index([dateFeeding])
 }
 

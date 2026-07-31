@@ -6,6 +6,7 @@ import { ValidationService } from 'src/common/validation/validation.service';
 import { FilterWorkerFeedingDto } from './dto/filter-worker-feeding.dto';
 import { PaginationFeedingService } from 'src/common/services/pagination/feeding/pagination-feeding.service';
 import { CreateBulkFeedingDto } from './dto/create-bulk-feeding.dto';
+import { CreateFeedingAddedToServiceDto } from './dto/create-feeding-added-to-service.dto';
 
 @Injectable()
 export class FeedingService {
@@ -458,6 +459,95 @@ export class FeedingService {
   }
 
   /**
+   * Registra una alimentación adherida al GRUPO (OperationGroup) de una
+   * operación, no a un trabajador específico. Se usa cuando la comida llega
+   * para todo el grupo pero uno o más trabajadores ya no están disponibles
+   * para recibirla de forma individual (ej. se retiraron de la operación),
+   * de modo que el conteo total del reporte Bill siga reflejando la cantidad
+   * real de alimentaciones entregadas.
+   */
+  async feedingAddedToService(
+    dto: CreateFeedingAddedToServiceDto,
+    id_site?: number,
+  ) {
+    try {
+      const validation = await this.validation.validateAllIds({
+        id_operation: dto.id_operation,
+      });
+      if (validation && 'status' in validation && validation.status === 404) {
+        return validation;
+      }
+
+      const operation = validation['operation'];
+      if (id_site !== undefined && operation?.id_site !== id_site) {
+        return {
+          message: 'Not authorized to create feeding for this operation',
+          status: 409,
+        };
+      }
+
+      const operationGroup = await this.prisma.operationGroup.findFirst({
+        where: {
+          id_operation: dto.id_operation,
+          code: String(dto.code_group),
+        },
+      });
+
+      if (!operationGroup) {
+        return {
+          message: `No se encontró el grupo con código ${dto.code_group} para esta operación`,
+          status: 404,
+        };
+      }
+
+      const feedingDate = dto.dateFeeding
+        ? new Date(dto.dateFeeding)
+        : new Date();
+
+      // Cada unidad solicitada (ej. 2 almuerzos + 1 desayuno extra) se
+      // registra como un registro independiente por tipo, igual que
+      // ocurriría si fueran trabajadores distintos, para que el conteo del
+      // reporte Bill sea exacto.
+      const rowsToInsert = dto.items.flatMap((item) => {
+        const quantity = item.quantity ?? 1;
+        return Array.from({ length: quantity }, () => ({
+          id_operation: dto.id_operation,
+          code_group: dto.code_group,
+          type: item.type,
+          id_user: dto.id_user,
+          dateFeeding: feedingDate,
+        }));
+      });
+
+      await this.prisma.workerFeeding.createMany({ data: rowsToInsert });
+
+      const createdByType = await this.prisma.workerFeeding.findMany({
+        where: {
+          id_operation: dto.id_operation,
+          code_group: dto.code_group,
+          type: { in: dto.items.map((item) => item.type) },
+          dateFeeding: feedingDate,
+        },
+        orderBy: { id: 'desc' },
+        take: rowsToInsert.length,
+      });
+
+      const summary = dto.items.map((item) => ({
+        type: item.type,
+        quantity: item.quantity ?? 1,
+      }));
+
+      return {
+        message: `Se registraron ${rowsToInsert.length} alimentaciones para el grupo ${dto.code_group}`,
+        summary,
+        feedings: createdByType,
+      };
+    } catch (error) {
+      throw new Error(String(error));
+    }
+  }
+
+  /**
    * Método público para obtener las comidas disponibles para una operación
    */
   async getAvailableMealsForOperation(operationId: number) {
@@ -545,22 +635,35 @@ export class FeedingService {
 
   async findAll(id_site?: number, id_subsite?: number | null) {
     try {
-      const whereClause: any = {};
+      const workerFilter: any = {};
+      const operationFilter: any = {};
 
       // Siempre filtra por sitio si viene
       if (id_site) {
-        whereClause['worker'] = { id_site };
+        workerFilter.id_site = id_site;
+        operationFilter.id_site = id_site;
       }
 
       // Solo filtra por subsede si es un número válido
       if (typeof id_subsite === 'number' && !isNaN(id_subsite)) {
-        whereClause['worker'] = {
-          ...(whereClause['worker'] || {}),
-          id_subsite,
-        };
+        workerFilter.id_subsite = id_subsite;
+        operationFilter.id_subsite = id_subsite;
       }
 
-      const response = await this.prisma.workerFeeding.findMany({ 
+      // Las alimentaciones adheridas al grupo (id_worker null, ver
+      // feedingAddedToService) no tienen worker propio, así que se filtran
+      // por el sitio/subsede de la operación en su lugar.
+      const whereClause: any =
+        Object.keys(workerFilter).length > 0
+          ? {
+              OR: [
+                { worker: workerFilter },
+                { id_worker: null, operation: operationFilter },
+              ],
+            }
+          : {};
+
+      const response = await this.prisma.workerFeeding.findMany({
         where: whereClause,
         include: {
           operation: {
@@ -607,9 +710,13 @@ export class FeedingService {
       const response = await this.prisma.workerFeeding.findUnique({
         where: {
           id,
-          worker: {
-            id_site,
-          },
+          ...(id_site !== undefined && {
+            OR: [
+              { worker: { id_site } },
+              // Alimentación adherida al grupo (sin worker propio)
+              { id_worker: null, operation: { id_site } },
+            ],
+          }),
         },
         include: {
           operation: {
@@ -702,9 +809,11 @@ export class FeedingService {
         where: {
           id_operation,
           ...(id_site && {
-            worker: {
-              id_site,
-            },
+            OR: [
+              { worker: { id_site } },
+              // Alimentaciones adheridas al grupo (sin worker propio)
+              { id_worker: null },
+            ],
           }),
         },
         include: {
@@ -794,11 +903,12 @@ const allFeedings = await this.prisma.workerFeeding.findMany({
 const feedingsByWorker = new Map<number, typeof allFeedings>();
 
 for (const feeding of allFeedings) {
-  if (!feedingsByWorker.has(feeding.id_worker)) {
-    feedingsByWorker.set(feeding.id_worker, []);
+  const feedingWorkerId = feeding.id_worker!; // filtro `id_worker: { in: workerIds }` garantiza que no sea null
+  if (!feedingsByWorker.has(feedingWorkerId)) {
+    feedingsByWorker.set(feedingWorkerId, []);
   }
 
-  feedingsByWorker.get(feeding.id_worker)!.push(feeding);
+  feedingsByWorker.get(feedingWorkerId)!.push(feeding);
 }
     const now = new Date(),
       td = new Date(now.getFullYear(), now.getMonth(), now.getDate()),
@@ -1151,11 +1261,12 @@ const allFeedings = await this.prisma.workerFeeding.findMany({
 const feedingsByWorker = new Map<number, typeof allFeedings>();
 
 for (const feeding of allFeedings) {
-  if (!feedingsByWorker.has(feeding.id_worker)) {
-    feedingsByWorker.set(feeding.id_worker, []);
+  const feedingWorkerId = feeding.id_worker!; // filtro `id_worker: { in: workerIds }` garantiza que no sea null
+  if (!feedingsByWorker.has(feedingWorkerId)) {
+    feedingsByWorker.set(feedingWorkerId, []);
   }
 
-  feedingsByWorker.get(feeding.id_worker)!.push(feeding);
+  feedingsByWorker.get(feedingWorkerId)!.push(feeding);
 }
 
     const result: {
