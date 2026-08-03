@@ -4834,26 +4834,31 @@ export class BillService {
       select: {
         id_operation: true,
         id_worker: true,
+        code_group: true,
       },
     });
 
     // ✅ CREAR MAPS UNA SOLA VEZ
-    const feedingsMap = new Map<number, any[]>();
     const feedingsByWorkerMap = new Map<string, number>();
+    // Alimentaciones adheridas al grupo (sin worker propio, ver
+    // FeedingService.feedingAddedToService), contadas por operación + código
+    // de grupo (OperationGroup.code) para no mezclarlas entre grupos de una
+    // misma operación.
+    const feedingsByGroupMap = new Map<string, number>();
 
     feedings.forEach((f) => {
       const opId = f.id_operation;
       const workerId = f.id_worker;
 
-      // por operación
-      if (!feedingsMap.has(opId)) {
-        feedingsMap.set(opId, []);
+      if (f.code_group != null) {
+        // alimentación de grupo
+        const groupKey = `${opId}-${f.code_group}`;
+        feedingsByGroupMap.set(groupKey, (feedingsByGroupMap.get(groupKey) || 0) + 1);
+      } else {
+        // por worker
+        const key = `${opId}-${workerId}`;
+        feedingsByWorkerMap.set(key, (feedingsByWorkerMap.get(key) || 0) + 1);
       }
-      feedingsMap.get(opId)!.push(f);
-
-      // por worker
-      const key = `${opId}-${workerId}`;
-      feedingsByWorkerMap.set(key, (feedingsByWorkerMap.get(key) || 0) + 1);
     });
 
     // console.log('📦 Bills encontradas:', bills.length);
@@ -4994,8 +4999,26 @@ export class BillService {
       const groupKey = `${bill.id_operation}-${bill.billDetails?.[0]?.operationWorker?.id_group}`;
       groupCompensatoryMap.set(groupKey, (groupCompensatoryMap.get(groupKey) || 0) + totalCompensatoryThisBill);
       const totalCompensatorioGrupo = groupCompensatoryMap.get(groupKey) || 0;
-      const totalFeeding = feedingsMap.get(bill.id_operation)?.length || 0;
       const grupoCode = this.resolveGroupCode(bill.operation, firstDetail.operationWorker?.id_group);
+      // Alimentación individual de los trabajadores de ESTE grupo (bill) +
+      // alimentación adherida a ESTE grupo (code_group), sin mezclar con la
+      // de otros grupos de la misma operación.
+      const individualFeedingCount = (bill.billDetails || []).reduce(
+        (sum, detail) => {
+          const workerId = detail.operationWorker?.worker?.id;
+          if (!workerId) return sum;
+          return (
+            sum +
+            (feedingsByWorkerMap.get(`${bill.id_operation}-${workerId}`) || 0)
+          );
+        },
+        0,
+      );
+      const groupFeedingCount =
+        typeof grupoCode === 'number'
+          ? feedingsByGroupMap.get(`${bill.id_operation}-${grupoCode}`) || 0
+          : 0;
+      const totalFeeding = individualFeedingCount + groupFeedingCount;
       //Columnas de la hoja "Datos" para cada bill
       const row = worksheetData.addRow([
         bill.id_operation ?? '', //1 - Código
@@ -5034,7 +5057,7 @@ export class BillService {
         totalBillHours.HFED, //34 HFED
         totalBillHours.HFEN,  //35 HFEN
         bill.operation?.motorShip ?? '', // 36 Buque
-        totalFeeding, //37 Total Alimentación (pendiente de cálculo, se puede agregar lógica similar a compensatory si es necesario)
+        totalFeeding, //37 Total Alimentación 
         bill.operation?.clientProgramming?.service_request ?? '', //38 solicitud SC (service_request)
         bill.operation?.subSite?.name ?? 'N/A',//39 Subsede
         bill.user?.name ?? '', //40 Usuario
