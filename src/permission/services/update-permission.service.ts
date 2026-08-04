@@ -29,18 +29,24 @@ export class UpdatePermissionService {
       where: {
         dateDisableStart: new Date(today),
       },
-      select: { id_worker: true },
+      select: { id_worker: true, dateDisableStart: true, dateDisableEnd: true },
     });
 
-    const workerIds = startingPermissions.map(p => p.id_worker);
-
-    if (workerIds.length > 0) {
-      await this.prisma.worker.updateMany({
-        where: { id: { in: workerIds } },
-        data: { status: 'PERMISSION' },
-      });
-      // this.logger.log(`Actualizados ${workerIds.length} trabajadores a PERMISSION por permisos que inician hoy`);
-    }
+    // Actualiza cada worker con las fechas de SU permiso (no solo el status),
+    // para que dateDisableStart/dateDisableEnd reflejen el permiso vigente.
+    await Promise.all(
+      startingPermissions.map((p) =>
+        this.prisma.worker.update({
+          where: { id: p.id_worker },
+          data: {
+            status: 'PERMISSION',
+            dateDisableStart: p.dateDisableStart,
+            dateDisableEnd: p.dateDisableEnd,
+          },
+        }),
+      ),
+    );
+    // this.logger.log(`Actualizados ${startingPermissions.length} trabajadores a PERMISSION por permisos que inician hoy`);
   }
 
   

@@ -60,20 +60,29 @@ export class BillService {
 
     // console.log('[BillService] ✅ Operación validada correctamente');
 
+    // ✅ EVITAR FACTURAS DUPLICADAS/OBSOLETAS: si alguno de estos grupos ya tenía una Bill
+    // generada anteriormente (p. ej. la operación fue RECHAZADA, se le cambió el servicio a
+    // uno de otra unidad_de_medida -JORNAL -> HORAS- y se reenvió), esa Bill vieja ya no
+    // corresponde a los campos/horas del nuevo servicio. Se elimina (junto con sus
+    // BillDetail) antes de crear la nueva, para que solo quede una factura vigente por grupo.
+    await this.deleteExistingBillsForGroups(
+      createBillDto.id_operation,
+      createBillDto.groups,
+    );
+
     // ================================
     // ✅ DETERMINAR EL ESTADO DE LA BILL
+    // Una operación solo se considera "especial" (requiere aprobación del cliente)
+    // si TODOS sus grupos usan un servicio especial. Si es una mezcla (algunos
+    // grupos especiales y otros no), tratarla como especial rompía el flujo de
+    // facturación normal de los grupos no especiales. La app móvil ya exige esto.
     // ================================
-    const isSpecialOperation = await this.prisma.operation_Worker.count({
-      where: {
-        id_operation: createBillDto.id_operation,
-        tariff: {
-          isSpecial: 'YES',
-        },
-      },
-    });
+    const isSpecialOperation = await this.isOperationFullySpecial(
+      createBillDto.id_operation,
+    );
 
     const billStatus =
-      isSpecialOperation > 0
+      isSpecialOperation
         ? BillStatus.TO_APPROVED
         : BillStatus.ACTIVE;
 
@@ -113,6 +122,69 @@ export class BillService {
     return {
       message: 'Cálculos y guardado de facturación realizados con éxito',
     };
+  }
+
+  /**
+   * Elimina las Bill (y sus BillDetail) previamente generadas para los grupos indicados
+   * de una operación. Se usa antes de (re)crear facturas para esos grupos, típicamente
+   * cuando una operación RECHAZADA se corrige y reenvía: si el servicio de un grupo cambió
+   * de unidad de medida (p. ej. JORNAL -> HORAS), la factura anterior ya no es válida para
+   * los nuevos campos/horas y debe desaparecer en vez de quedar duplicada junto a la nueva.
+   */
+  private async deleteExistingBillsForGroups(
+    id_operation: number,
+    groups: { id?: string }[],
+  ) {
+    const groupIds = groups
+      .map((g) => g.id)
+      .filter((id): id is string => !!id);
+
+    if (groupIds.length === 0) return;
+
+    const staleBills = await this.prisma.bill.findMany({
+      where: {
+        id_operation,
+        id_group: { in: groupIds },
+      },
+      select: { id: true },
+    });
+
+    if (staleBills.length === 0) return;
+
+    const staleBillIds = staleBills.map((b) => b.id);
+    console.log(
+      `[BillService] 🧹 Eliminando ${staleBillIds.length} factura(s) previa(s) de la operación ${id_operation} (grupos: ${groupIds.join(', ')}) antes de regenerarlas`,
+    );
+
+    await this.prisma.$transaction([
+      this.prisma.billDetail.deleteMany({ where: { id_bill: { in: staleBillIds } } }),
+      this.prisma.bill.deleteMany({ where: { id: { in: staleBillIds } } }),
+    ]);
+  }
+
+  /**
+   * Una operación solo se considera "especial" (requiere aprobación del cliente vía
+   * QR/token, factura en TO_APPROVED) cuando TODOS sus trabajadores/grupos usan una
+   * tarifa con isSpecial = YES. Antes se marcaba especial con que UNO solo lo fuera,
+   * lo que hacía que operaciones mixtas (un grupo especial + uno normal) quedaran
+   * completas/aprobadas apenas se facturaba el grupo especial, sin pedir los demás.
+   */
+  private async isOperationFullySpecial(operationId: number): Promise<boolean> {
+    const totalWorkers = await this.prisma.operation_Worker.count({
+      where: { id_operation: operationId, id_worker: { not: -1 } },
+    });
+
+    if (totalWorkers === 0) return false;
+
+    const specialWorkers = await this.prisma.operation_Worker.count({
+      where: {
+        id_operation: operationId,
+        id_worker: { not: -1 },
+        tariff: { isSpecial: 'YES' },
+      },
+    });
+
+    return specialWorkers === totalWorkers;
   }
 
   // Validar operación
@@ -2104,6 +2176,15 @@ export class BillService {
       // await this.updateBillGroupDates(id, updateBillDto, userId);
     }
 
+    // ✅ Recalcular group_hours ANTES de recalcular los totales: si esto se hiciera
+    // después (como antes), recalculateBillTotals usaría el group_hours viejo (stale)
+    // guardado en BD, calculando total_bill/total_paysheet con la duración anterior
+    // del grupo en vez de la fecha/hora recién editada.
+    await this.recalculateGroupHoursFromWorkerDates(
+      billDb.id_operation,
+      groupId,
+    );
+
     const validateOperationID = await this.validateOperation(
       billDb.id_operation,
     );
@@ -2145,14 +2226,6 @@ export class BillService {
         billDb.id_operation,
       );
     }
-
-
-
-    // ✅ Recalcular group_hours automáticamente después de editar la Bill
-    await this.recalculateGroupHoursFromWorkerDates(
-      billDb.id_operation,
-      groupId,
-    );
 
     const billDB = await this.findOne(id);
     return billDB;
@@ -2555,11 +2628,45 @@ export class BillService {
       newWeekNumber = getWeekNumber(new Date(matchingGroupSummary.schedule.dateStart));
     }
 
+    // ✅ total_bill/total_paysheet son Decimal(15,3): máximo 12 dígitos enteros.
+    // Redondeamos a 3 decimales (la escala de la columna) y validamos el rango
+    // ANTES de escribir en BD: si algún cálculo de horas/tarifas se disparó por
+    // un error de datos, preferimos fallar con un mensaje claro en vez de dejar
+    // que Postgres tire "desbordamiento de campo numeric" sin contexto.
+    const MAX_DECIMAL_15_3 = 999_999_999_999.999;
+    const roundedTotalAmount = Math.round(totalAmount * 1000) / 1000;
+    const roundedTotalPaysheet = Math.round(totalPaysheet * 1000) / 1000;
+
+    if (
+      !Number.isFinite(roundedTotalAmount) ||
+      Math.abs(roundedTotalAmount) > MAX_DECIMAL_15_3 ||
+      !Number.isFinite(roundedTotalPaysheet) ||
+      Math.abs(roundedTotalPaysheet) > MAX_DECIMAL_15_3
+    ) {
+      console.error('❌ [recalculateBillTotals] Total fuera de rango, no se guarda en BD:', {
+        billId: id,
+        groupId: group.id,
+        totalAmount,
+        totalPaysheet,
+        numberOfWorkers,
+        group_hours: matchingGroupSummary.group_hours,
+        facturation_tariff: matchingGroupSummary.facturation_tariff,
+        paysheet_tariff: matchingGroupSummary.paysheet_tariff,
+        workerCount: matchingGroupSummary.workerCount,
+        full_tariff: matchingGroupSummary.full_tariff,
+        billHoursDistribution: group.billHoursDistribution,
+        paysheetHoursDistribution: group.paysheetHoursDistribution,
+      });
+      throw new ConflictException(
+        `El total calculado para la factura ${id} es inválido (facturación: ${totalAmount}, nómina: ${totalPaysheet}). Revise las horas, tarifas y fechas del grupo antes de guardar.`,
+      );
+    }
+
     await this.prisma.bill.update({
       where: { id },
       data: {
-        total_bill: totalAmount,
-        total_paysheet: totalPaysheet,
+        total_bill: roundedTotalAmount,
+        total_paysheet: roundedTotalPaysheet,
         number_of_workers: numberOfWorkers,
         week_number: newWeekNumber, // ✅ ACTUALIZAR week_number
         updatedAt: new Date(),
@@ -3427,18 +3534,12 @@ export class BillService {
       // if (pendingBills > 0) {
       //   return;
       // }
-      // 1.5. Determinar si la operación es especial
-      const isSpecialOperation = await this.prisma.operation_Worker.count({
-        where: {
-          id_operation: operationId,
-          tariff: {
-            isSpecial: 'YES',
-          },
-        },
-      });
+      // 1.5. Determinar si la operación es especial (TODOS los grupos deben usar
+      // un servicio especial; ver comentario en create()).
+      const isSpecialOperation = await this.isOperationFullySpecial(operationId);
 
       const operationStatus =
-        isSpecialOperation > 0
+        isSpecialOperation
           ? StatusOperation.TO_APPROVED
           : StatusOperation.COMPLETED;
 

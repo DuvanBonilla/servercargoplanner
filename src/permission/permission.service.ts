@@ -7,6 +7,7 @@ import { ca } from 'date-fns/locale';
 import { FilterPermissionDto } from './dto/filter-permission.dto';
 import { getColombianDateTime } from 'src/common/utils/dateColombia';
 import { isPermissionActive } from 'src/common/utils/permission.utils';
+import { isInabilityActive } from 'src/common/utils/inability.utils';
 
 @Injectable()
 export class PermissionService {
@@ -14,6 +15,58 @@ export class PermissionService {
     private prisma: PrismaService,
     private validate: ValidationService,
   ) {}
+
+  /**
+   * Sincroniza el status y las fechas dateDisableStart/dateDisableEnd del
+   * Worker con su situación vigente AHORA. Las incapacidades tienen
+   * prioridad: si hay una vigente, el worker queda DISABLE con las fechas
+   * de esa incapacidad sin importar los permisos. Si no, y hay un permiso
+   * vigente, queda PERMISSION con las fechas de ese permiso. Si no hay
+   * nada vigente, queda AVALIABLE y esas fechas se limpian (null) en vez
+   * de dejar las del permiso/incapacidad que ya terminó.
+   */
+  private async syncWorkerDisableState(workerId: number) {
+    const allInabilities = await this.prisma.inability.findMany({
+      where: { id_worker: workerId },
+    });
+    const activeInability = allInabilities.find((i) => isInabilityActive(i));
+
+    if (activeInability) {
+      return this.prisma.worker.update({
+        where: { id: workerId },
+        data: {
+          status: 'DISABLE',
+          dateDisableStart: activeInability.dateDisableStart,
+          dateDisableEnd: activeInability.dateDisableEnd,
+        },
+      });
+    }
+
+    const allPermissions = await this.prisma.permission.findMany({
+      where: { id_worker: workerId },
+    });
+    const activePermission = allPermissions.find((p) => isPermissionActive(p));
+
+    if (activePermission) {
+      return this.prisma.worker.update({
+        where: { id: workerId },
+        data: {
+          status: 'PERMISSION',
+          dateDisableStart: activePermission.dateDisableStart,
+          dateDisableEnd: activePermission.dateDisableEnd,
+        },
+      });
+    }
+
+    return this.prisma.worker.update({
+      where: { id: workerId },
+      data: {
+        status: 'AVALIABLE',
+        dateDisableStart: null,
+        dateDisableEnd: null,
+      },
+    });
+  }
 
   /**
    * Normaliza las fechas YYYY-MM-DD a DateTime (@db.Date) usando UTC
@@ -139,25 +192,14 @@ export class PermissionService {
       data: normalizedData,
     });
 
-    // Verificar si el permiso está vigente AHORA
-    const isPermissionVigent = isPermissionActive(response);
-    
-    // console.log(`[PermissionService] CREATE: Permiso ${response.id} - ¿Vigente AHORA? ${isPermissionVigent}`);
-
-    if (isPermissionVigent) {
-      console.log(`[PermissionService] CREATE: Permiso VIGENTE AHORA - Cambiando worker ${createPermissionDto.id_worker} a PERMISSION`);
-      try {
-        const updatedWorker = await this.prisma.worker.update({
-          where: { id: createPermissionDto.id_worker },
-          data: { status: 'PERMISSION' },
-        });
-        console.log(`[PermissionService] CREATE: Worker actualizado exitosamente - nuevo status: ${updatedWorker.status}`);
-      } catch (error) {
-        console.error(`[PermissionService] CREATE: ERROR al actualizar worker - ${error}`);
-        throw error;
-      }
-    } else {
-      console.log(`[PermissionService] CREATE: Permiso NO vigente AHORA - NO se cambiará el estado del worker`);
+    // Sincroniza status + dateDisableStart/dateDisableEnd del worker con la
+    // incapacidad/permiso vigente AHORA (puede ser este permiso u otro
+    // registro ya existente)
+    try {
+      await this.syncWorkerDisableState(createPermissionDto.id_worker);
+    } catch (error) {
+      console.error(`[PermissionService] CREATE: ERROR al sincronizar worker - ${error}`);
+      throw error;
     }
 
     return response;
@@ -324,40 +366,16 @@ export class PermissionService {
         data: normalizedData,
       });
 
-      // Obtener el permiso COMPLETO después de actualizar
-      const updatedPermissionFull = await this.prisma.permission.findUnique({
-        where: { id },
-      });
-
-      // Verificar si el permiso está vigente AHORA
-      const isPermissionVigent = isPermissionActive(updatedPermissionFull);
-      
-      // console.log(`[PermissionService] UPDATE: Permiso ${id} - ¿Vigente AHORA? ${isPermissionVigent}`);
-
-      if (isPermissionVigent) {
-        // console.log(`[PermissionService] UPDATE: Permiso VIGENTE AHORA - Cambiando worker ${workerId} a PERMISSION`);
-        try {
-          const updatedWorker = await this.prisma.worker.update({
-            where: { id: workerId },
-            data: { status: 'PERMISSION' },
-          });
-          console.log(`[PermissionService] UPDATE: Worker actualizado exitosamente - nuevo status: ${updatedWorker.status}`);
-        } catch (error) {
-          console.error(`[PermissionService] UPDATE: ERROR al actualizar worker - ${error}`);
-          throw error;
-        }
-      } else {
-        console.log(`[PermissionService] UPDATE: Permiso NO vigente AHORA - Cambiar worker a AVALIABLE`);
-        try {
-          const updatedWorker = await this.prisma.worker.update({
-            where: { id: workerId },
-            data: { status: 'AVALIABLE' },
-          });
-          console.log(`[PermissionService] UPDATE: Worker actualizado exitosamente - nuevo status: ${updatedWorker.status}`);
-        } catch (error) {
-          console.error(`[PermissionService] UPDATE: ERROR al actualizar worker - ${error}`);
-          throw error;
-        }
+      // Sincroniza status + dateDisableStart/dateDisableEnd del worker con
+      // la incapacidad/permiso vigente AHORA. Si este permiso ya no está
+      // vigente y no hay ninguna otra incapacidad/permiso activo, el worker
+      // vuelve a AVALIABLE y esas fechas se limpian (null) en vez de dejar
+      // las del permiso que ya terminó.
+      try {
+        await this.syncWorkerDisableState(workerId);
+      } catch (error) {
+        console.error(`[PermissionService] UPDATE: ERROR al sincronizar worker - ${error}`);
+        throw error;
       }
 
       return response;
@@ -397,47 +415,15 @@ export class PermissionService {
         where: { id },
       });
 
-      // Actualizar el estado del trabajador basándose en permisos vigentes
-      const allPermissions = await this.prisma.permission.findMany({
-        where: { id_worker: workerId },
-      });
-
-      // console.log(`[PermissionService] REMOVE: Verificando si hay permisos vigentes para worker ${workerId}`);
-      // console.log(`[PermissionService] REMOVE: Total permisos en BD: ${allPermissions.length}`);
-
-      // Buscar si hay ALGÚN permiso vigente AHORA
-      const hasActivePermissions = allPermissions.some(p => {
-        const isActive = isPermissionActive(p);
-        // console.log(`[PermissionService] REMOVE: Permiso ${p.id} - ¿Vigente AHORA? ${isActive}`);
-        return isActive;
-      });
-
-      // console.log(`[PermissionService] REMOVE: ¿Hay permisos vigentes? ${hasActivePermissions}`);
-
-      if (hasActivePermissions) {
-        // console.log(`[PermissionService] REMOVE: SÍ hay permisos vigentes - Mantener worker ${workerId} en PERMISSION`);
-        try {
-          const updatedWorker = await this.prisma.worker.update({
-            where: { id: workerId },
-            data: { status: 'PERMISSION' },
-          });
-          // console.log(`[PermissionService] REMOVE: Worker actualizado exitosamente - status: ${updatedWorker.status}`);
-        } catch (error) {
-          console.error(`[PermissionService] REMOVE: ERROR al actualizar worker - ${error}`);
-          throw error;
-        }
-      } else {
-        // console.log(`[PermissionService] REMOVE: NO hay permisos vigentes - Cambiar worker ${workerId} a AVALIABLE`);
-        try {
-          const updatedWorker = await this.prisma.worker.update({
-            where: { id: workerId },
-            data: { status: 'AVALIABLE' },
-          });
-          // console.log(`[PermissionService] REMOVE: Worker actualizado exitosamente - status: ${updatedWorker.status}`);
-        } catch (error) {
-          console.error(`[PermissionService] REMOVE: ERROR al actualizar worker - ${error}`);
-          throw error;
-        }
+      // Sincroniza status + dateDisableStart/dateDisableEnd del worker: si
+      // queda otro permiso (o una incapacidad) vigente se toman sus fechas,
+      // si no, se limpian (null) en vez de dejar las del permiso ya
+      // eliminado.
+      try {
+        await this.syncWorkerDisableState(workerId);
+      } catch (error) {
+        console.error(`[PermissionService] REMOVE: ERROR al sincronizar worker - ${error}`);
+        throw error;
       }
 
       return response;

@@ -2498,6 +2498,44 @@ export class OperationService {
 
       const isCompletedOperation = currentOperation?.status === 'COMPLETED';
 
+      // ✅ Si la operación estaba RECHAZADA y este guardado trae un cambio de
+      // servicio (id_tariff) para algún grupo, las facturas generadas antes del
+      // rechazo ya no son válidas (la unidad de medida pudo cambiar, p. ej.
+      // JORNAL -> HORAS). Se eliminan TODAS (Bill + BillDetail) de la operación de
+      // una vez, para que el flujo de "Completar" vuelva a pedir los datos de cada
+      // grupo desde cero.
+      //
+      // OJO: esto solo debe ocurrir en el guardado PRINCIPAL de edición (el que
+      // envía id_tariff por grupo desde AddOperationDialog), NO en cada envío
+      // individual del paso a paso de "Completar" (ese solo manda dateEnd/timeEnd,
+      // sin id_tariff). Si se disparara en cada paso, la Bill recién creada del
+      // grupo 1 se borraría al enviar el grupo 2, dejando el conteo de
+      // "grupos ya facturados" (areAllGroupsCompleted) siempre incompleto y la
+      // operación en un bucle infinito pidiendo Completar sin avanzar nunca.
+      const updateIncludesServiceChange = Array.isArray(workers?.update)
+        ? workers.update.some(
+            (w: any) => w?.id_tariff !== undefined && w?.id_tariff !== null,
+          )
+        : false;
+
+      if (currentOperation?.status === 'REJECTED' && updateIncludesServiceChange) {
+        const staleBills = await this.prisma.bill.findMany({
+          where: { id_operation: id },
+          select: { id: true },
+        });
+
+        if (staleBills.length > 0) {
+          const staleBillIds = staleBills.map((b) => b.id);
+          console.log(
+            `[OperationService] 🧹 Operación ${id} reenviada desde RECHAZADA: eliminando ${staleBillIds.length} factura(s) previa(s)`,
+          );
+          await this.prisma.$transaction([
+            this.prisma.billDetail.deleteMany({ where: { id_bill: { in: staleBillIds } } }),
+            this.prisma.bill.deleteMany({ where: { id: { in: staleBillIds } } }),
+          ]);
+        }
+      }
+
       // Process workers
       if (workers) {
         // console.log('[OperationService] Procesando workers con nuevo flujo V2');

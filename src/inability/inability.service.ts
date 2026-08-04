@@ -4,8 +4,8 @@ import { UpdateInabilityDto } from './dto/update-inability.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ValidationService } from 'src/common/validation/validation.service';
 import { FilterInabilityDto } from './dto/filter-inability';
-import { getColombianDateTime } from 'src/common/utils/dateColombia';
 import { isPermissionActive } from 'src/common/utils/permission.utils';
+import { isInabilityActive } from 'src/common/utils/inability.utils';
 
 @Injectable()
 export class InabilityService {
@@ -13,40 +13,6 @@ export class InabilityService {
     private prisma: PrismaService,
     private validate: ValidationService,
   ) {}
-
-  /**
-   * Obtiene la fecha de hoy en formato YYYY-MM-DD (UTC)
-   */
-  // private getTodayUTC(): string {
-  //   const now = new Date();
-  //   return now.toISOString().split('T')[0];
-  // }
-
-  private getTodayColombia(): string {
-  return new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'America/Bogota',
-  }).format(new Date());
-}
-
-  /**
-   * Convierte una fecha a string YYYY-MM-DD (UTC)
-   */
-  // private dateToString(date: Date | string): string {
-  //   if (typeof date === 'string') {
-  //     return date;
-  //   }
-  //   return date.toISOString().split('T')[0];
-  // }
-
-  private dateToString(date: Date | string): string {
-  if (typeof date === 'string') {
-    return date.slice(0, 10);
-  }
-
-  return new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'America/Bogota',
-  }).format(date);
-}
 
   /**
    * Convierte fechas en formato YYYY-MM-DD a ISO-8601 DateTime válido usando UTC
@@ -74,27 +40,48 @@ export class InabilityService {
   }
 
   /**
-   * Verifica si una incapacidad es vigente AHORA (la fecha actual está dentro del rango)
-   * Para incapacidades, consideramos todo el día como vigente (00:00 a 23:59)
+   * Sincroniza el status y las fechas dateDisableStart/dateDisableEnd del
+   * Worker con la incapacidad vigente AHORA (si existe alguna). Se recalcula
+   * a partir de TODAS las incapacidades del trabajador para no depender de
+   * si la que se acaba de crear/actualizar/eliminar era o no la vigente.
+   * Si no hay ninguna vigente, limpia esas fechas (null) y cae a PERMISSION
+   * o AVALIABLE según corresponda.
    */
-  private isInabilityActive(inability: any): boolean {
-    const now = new Date();
-    // const today = now.toISOString().split('T')[0];
-    const today = this.getTodayColombia();
+  private async syncWorkerDisableState(workerId: number) {
+    const allInabilities = await this.prisma.inability.findMany({
+      where: { id_worker: workerId },
+    });
 
-    const startDate = this.dateToString(inability.dateDisableStart);
-    const endDate = this.dateToString(inability.dateDisableEnd);
+    const activeInability = allInabilities.find((i) =>
+      isInabilityActive(i),
+    );
 
-    // Comparar fechas: si hoy está entre inicio y fin (inclusive)
-    const isActive = today >= startDate && today <= endDate;
+    if (activeInability) {
+      return this.prisma.worker.update({
+        where: { id: workerId },
+        data: {
+          status: 'DISABLE',
+          dateDisableStart: activeInability.dateDisableStart,
+          dateDisableEnd: activeInability.dateDisableEnd,
+        },
+      });
+    }
 
-    // console.log(`[InabilityService] DEBUG: Comparando`);
-    // console.log(`  - Inicio: ${startDate}`);
-    // console.log(`  - Fin: ${endDate}`);
-    // console.log(`  - Hoy: ${today}`);
-    // console.log(`  - ¿Vigente AHORA? ${isActive}`);
+    const allPermissions = await this.prisma.permission.findMany({
+      where: { id_worker: workerId },
+    });
+    const hasActivePermissions = allPermissions.some((p) =>
+      isPermissionActive(p),
+    );
 
-    return isActive;
+    return this.prisma.worker.update({
+      where: { id: workerId },
+      data: {
+        status: hasActivePermissions ? 'PERMISSION' : 'AVALIABLE',
+        dateDisableStart: null,
+        dateDisableEnd: null,
+      },
+    });
   }
 
   /**
@@ -182,25 +169,13 @@ export class InabilityService {
       data: this.normalizeDateFields(createInabilityDto),
     });
 
-    // ÚNICO criterio: verifica si AHORA MISMO está dentro del rango de la incapacidad
-    const isInabilityVigent = this.isInabilityActive(response);
-    
-    // console.log(`[InabilityService] CREATE: Incapacidad ${response.id} - ¿Vigente AHORA? ${isInabilityVigent}`);
-
-    if (isInabilityVigent) {
-      // console.log(`[InabilityService] CREATE: Incapacidad VIGENTE AHORA - Cambiar worker ${createInabilityDto.id_worker} a DISABLE`);
-      try {
-        const updatedWorker = await this.prisma.worker.update({
-          where: { id: createInabilityDto.id_worker },
-          data: { status: 'DISABLE' },
-        });
-        // console.log(`[InabilityService] CREATE: Worker actualizado exitosamente - nuevo status: ${updatedWorker.status}`);
-      } catch (error) {
-        console.error(`[InabilityService] CREATE: ERROR al actualizar worker - ${error}`);
-        throw error;
-      }
-    } else {
-      // console.log(`[InabilityService] CREATE: Incapacidad NO vigente AHORA - Guardar pero NO cambiar estado`);
+    // Sincroniza status + dateDisableStart/dateDisableEnd del worker con la
+    // incapacidad vigente AHORA (puede ser esta u otra ya existente)
+    try {
+      await this.syncWorkerDisableState(createInabilityDto.id_worker);
+    } catch (error) {
+      console.error(`[InabilityService] CREATE: ERROR al sincronizar worker - ${error}`);
+      throw error;
     }
 
       return response;
@@ -386,40 +361,14 @@ export class InabilityService {
         data: this.normalizeDateFields(updateInabilityDto),
       });
 
-      // Obtener la incapacidad COMPLETA después de actualizar (por si solo se actualizaron algunos campos)
-      const updatedInabilityFull = await this.prisma.inability.findUnique({
-        where: { id },
-      });
-
-      // ÚNICO criterio: verifica si AHORA MISMO está dentro del rango de la incapacidad actualizada
-      const isInabilityVigent = this.isInabilityActive(updatedInabilityFull);
-      
-      // console.log(`[InabilityService] UPDATE: Incapacidad ${id} - ¿Vigente AHORA? ${isInabilityVigent}`);
-
-      if (isInabilityVigent) {
-        // console.log(`[InabilityService] UPDATE: Incapacidad VIGENTE AHORA - Cambiar worker ${workerId} a DISABLE`);
-        try {
-          const updatedWorker = await this.prisma.worker.update({
-            where: { id: workerId },
-            data: { status: 'DISABLE' },
-          });
-          // console.log(`[InabilityService] UPDATE: Worker actualizado exitosamente - nuevo status: ${updatedWorker.status}`);
-        } catch (error) {
-          console.error(`[InabilityService] UPDATE: ERROR al actualizar worker - ${error}`);
-          throw error;
-        }
-      } else {
-        // console.log(`[InabilityService] UPDATE: Incapacidad NO vigente AHORA - Cambiar worker a AVALIABLE`);
-        try {
-          const updatedWorker = await this.prisma.worker.update({
-            where: { id: workerId },
-            data: { status: 'AVALIABLE' },
-          });
-          // console.log(`[InabilityService] UPDATE: Worker actualizado exitosamente - nuevo status: ${updatedWorker.status}`);
-        } catch (error) {
-          console.error(`[InabilityService] UPDATE: ERROR al actualizar worker - ${error}`);
-          throw error;
-        }
+      // Sincroniza status + dateDisableStart/dateDisableEnd del worker con la
+      // incapacidad vigente AHORA (puede ser esta u otra ya existente). Si
+      // ninguna sigue vigente, limpia las fechas en vez de dejarlas obsoletas.
+      try {
+        await this.syncWorkerDisableState(workerId);
+      } catch (error) {
+        console.error(`[InabilityService] UPDATE: ERROR al sincronizar worker - ${error}`);
+        throw error;
       }
 
       return response;
@@ -440,52 +389,14 @@ export class InabilityService {
         where: { id },
       });
 
-      // Verificar si hay incapacidades vigentes AHORA después de eliminar
-      const allInabilities = await this.prisma.inability.findMany({
-        where: { id_worker: workerId },
-      });
-
-      // Buscar si hay incapacidades vigentes AHORA
-      const hasActiveInabilities = allInabilities.some(i => this.isInabilityActive(i));
-
-      // console.log(`[InabilityService] REMOVE: Total incapacidades: ${allInabilities.length}, ¿Hay alguna vigente AHORA? ${hasActiveInabilities}`);
-
-      if (hasActiveInabilities) {
-        // console.log(`[InabilityService] REMOVE: Mantener worker ${workerId} en DISABLE`);
-        try {
-          const updatedWorker = await this.prisma.worker.update({
-            where: { id: workerId },
-            data: { status: 'DISABLE' },
-          });
-          // console.log(`[InabilityService] REMOVE: Worker actualizado exitosamente - status: ${updatedWorker.status}`);
-        } catch (error) {
-          console.error(`[InabilityService] REMOVE: ERROR al actualizar worker - ${error}`);
-          throw error;
-        }
-      } else {
-        // console.log(`[InabilityService] REMOVE: NO hay incapacidades vigentes - Verificando permisos vigentes...`);
-        
-        // Verificar si hay permisos vigentes
-        const allPermissions = await this.prisma.permission.findMany({
-          where: { id_worker: workerId },
-        });
-
-        const hasActivePermissions = allPermissions.some(p => isPermissionActive(p));
-        // console.log(`[InabilityService] REMOVE: ¿Hay permisos vigentes AHORA? ${hasActivePermissions}`);
-
-        const newStatus: 'AVALIABLE' | 'PERMISSION' = hasActivePermissions ? 'PERMISSION' : 'AVALIABLE';
-
-        // console.log(`[InabilityService] REMOVE: Cambiar worker ${workerId} a ${newStatus}`);
-        try {
-          const updatedWorker = await this.prisma.worker.update({
-            where: { id: workerId },
-            data: { status: newStatus },
-          });
-          // console.log(`[InabilityService] REMOVE: Worker actualizado exitosamente - status: ${updatedWorker.status}`);
-        } catch (error) {
-          console.error(`[InabilityService] REMOVE: ERROR al actualizar worker - ${error}`);
-          throw error;
-        }
+      // Sincroniza status + dateDisableStart/dateDisableEnd del worker: si
+      // queda otra incapacidad vigente se toman sus fechas, si no, se
+      // limpian (null) en vez de dejar las de la incapacidad ya eliminada.
+      try {
+        await this.syncWorkerDisableState(workerId);
+      } catch (error) {
+        console.error(`[InabilityService] REMOVE: ERROR al sincronizar worker - ${error}`);
+        throw error;
       }
 
       return response;

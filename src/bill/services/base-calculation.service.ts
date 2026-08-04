@@ -32,11 +32,11 @@ export class BaseCalculationService {
     const hoursDetail = {};
   
     // Detectar si hay domingo en el rango
-        const sundayHoursConfig =  this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
-    const weekHoursConfig =  this.configurationService.findOneByName('HORAS_SEMANALES');
     const hasSunday = startDate && endDate ? hasSundayInRange(startDate, endDate) : false;
-    const weeklyHoursLimit = hasSunday ? sundayHoursConfig : weekHoursConfig;
-    const dailyHoursLimit = await weeklyHoursLimit / 6; // 8 horas para domingo, 7.33 para días normales
+    const configName = hasSunday ? 'HORAS_SEMANALES_DOMINGO' : 'HORAS_SEMANALES';
+    const hoursConfig = await this.configurationService.findOneByName(configName);
+    const weeklyHoursLimit = Number(hoursConfig?.value) || 44;
+    const dailyHoursLimit = weeklyHoursLimit / 6; // 8 horas para domingo, 7.33 para días normales
   
     // Mapeo correcto de tipos de horas a claves de multiplicadores
     const hourTypeMapping = {
@@ -97,7 +97,22 @@ export class BaseCalculationService {
           }
 
           // Calcular el monto (las horas se mantienen, pero el contexto de cálculo cambia)
-          const hourAmount = effectiveHours * (group.workerCount || group.workers.length) * tariff * specialMultiplier;
+          const workerCountUsed = group.workerCount || group.workers.length;
+          const hourAmount = effectiveHours * workerCountUsed * tariff * specialMultiplier;
+
+          if (!Number.isFinite(hourAmount) || Math.abs(hourAmount) > 999_999_999_999) {
+            console.error('[DEBUG calculateHoursByDistribution] Monto fuera de rango', {
+              groupId: group.groupId,
+              hourType,
+              multiplierKey,
+              effectiveHours,
+              workerCountUsed,
+              tariff,
+              specialMultiplier,
+              hourAmount,
+            });
+          }
+
           totalHours += effectiveHours;
           totalAmount += hourAmount;
   
