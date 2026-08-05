@@ -328,7 +328,9 @@ private calculateBaseAmountWithPayUnits(
   }
 
   // ✅ SUMAR TODAS LAS UNIDADES DE PAGO Y MULTIPLICAR POR TARIFA
-  const totalPayUnits = pays.reduce((sum, pay) => sum + (pay.pay || 1), 0);
+  // Number(pay.pay) es obligatorio: si pay llega como string (ej. "2" desde el
+  // frontend), "+" concatena en vez de sumar y el resultado explota a ~1e20.
+  const totalPayUnits = pays.reduce((sum, pay) => sum + (Number(pay.pay) || 1), 0);
   return totalPayUnits * tariff;
 }
 
@@ -345,7 +347,8 @@ private calculateAdditionalHoursWithPayUnits(
   const details = {};
 
   // ✅ CALCULAR TOTAL DE UNIDADES DE PAGO
-  const totalPayUnits = pays?.reduce((sum, pay) => sum + (pay.pay || 1), 0) || group.workerCount;
+  // Number(pay.pay): mismo riesgo de concatenación de strings que en calculateBaseAmountWithPayUnits.
+  const totalPayUnits = pays?.reduce((sum, pay) => sum + (Number(pay.pay) || 1), 0) || group.workerCount;
 
   for (const [hourType, hours] of Object.entries(additionalHours)) {
     const normalizedHourType = hourType.startsWith('H')

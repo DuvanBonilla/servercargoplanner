@@ -141,6 +141,7 @@ export class UpdateBillDto {
   })
   @IsOptional()
   @ValidateNested({ each: true })
+  @Type(() => WorkerPay)
   pays!: WorkerPay[];
 
   

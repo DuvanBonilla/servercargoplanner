@@ -193,14 +193,14 @@ export class HoursCalculationService {
   const compensatoryDay = dayHours / 6;
   const compensatoryPerHour = compensatoryDay / dayHours;
 
-  console.log('========== CÁLCULO COMPENSATORIO ==========');
-  console.log('Horas trabajadas:', hours);
-  console.log('Estado factura:', billStatus);
-  console.log('Horas semanales configuradas:', weekHours);
-  console.log('Máximo diario:', dayHours);
-  console.log('Compensatorio día completo:', compensatoryDay);
-  console.log('Compensatorio por hora:', compensatoryPerHour);
-  console.log('===========================================');
+  // console.log('========== CÁLCULO COMPENSATORIO ==========');
+  // console.log('Horas trabajadas:', hours);
+  // console.log('Estado factura:', billStatus);
+  // console.log('Horas semanales configuradas:', weekHours);
+  // console.log('Máximo diario:', dayHours);
+  // console.log('Compensatorio día completo:', compensatoryDay);
+  // console.log('Compensatorio por hora:', compensatoryPerHour);
+  // console.log('===========================================');
 
   // ✅ FACTURA NO COMPLETADA
   // Antes:

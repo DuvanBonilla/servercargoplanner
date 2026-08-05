@@ -1132,13 +1132,13 @@ export class BillService {
       const compensatoryPerHour = compensatoryDay / dayHours; // compensatorio por hora
 
 
-      // 🔍 Imprimir valores en consola
-      console.log('========== CÁLCULO COMPENSATORIO ==========');
-      console.log('weekHours:', weekHours);
-      console.log('dayHours:', dayHours);
-      console.log('compensatoryDay:', compensatoryDay);
-      console.log('compensatoryPerHour:', compensatoryPerHour);
-      console.log('===========================================');
+      // // 🔍 Imprimir valores en consola
+      // console.log('========== CÁLCULO COMPENSATORIO ==========');
+      // console.log('weekHours:', weekHours);
+      // console.log('dayHours:', dayHours);
+      // console.log('compensatoryDay:', compensatoryDay);
+      // console.log('compensatoryPerHour:', compensatoryPerHour);
+      // console.log('===========================================');
 
       // ✅ USAR DURACIÓN REAL DEL GRUPO, LIMITADA AL MÁXIMO DIARIO
       const effectiveHours = Math.min(groupDuration, dayHours);
@@ -1497,8 +1497,8 @@ export class BillService {
       let payRate;
       if (facturationUnit !== 'HORAS' && facturationUnit !== 'JORNAL') {
         const totalUnitPays =
-          group.pays?.reduce((sum, p) => sum + (p.pay || 0), 0) || 1;
-        payRate = (group.amount / totalUnitPays) * (payWorker?.pay || 1);
+          group.pays?.reduce((sum, p) => sum + (Number(p.pay) || 0), 0) || 1;
+        payRate = (group.amount / totalUnitPays) * (Number(payWorker?.pay) || 1);
       } else {
         payRate = payWorker?.pay || 1;
       }
@@ -1544,7 +1544,7 @@ export class BillService {
       );
 
       const totalUnitPays = group.pays.reduce(
-        (sum, p) => sum + (p.pay || 0),
+        (sum, p) => sum + (Number(p.pay) || 0),
         0,
       );
       const payWorker = group.pays.find((p) => p.id_worker === worker.id);
@@ -1666,7 +1666,7 @@ export class BillService {
   ) {
     let payUnits = 1;
     if (Array.isArray(group.pays) && group.pays.length > 0) {
-      payUnits = group.pays.reduce((sum, p) => sum + (p.pay || 0), 0);
+      payUnits = group.pays.reduce((sum, p) => sum + (Number(p.pay) || 0), 0);
     } else if (workers?.length) {
       payUnits = workers.length;
     }
@@ -1675,7 +1675,7 @@ export class BillService {
     const payObj = Array.isArray(group.pays)
       ? group.pays.find((p) => p.id_worker === worker.id)
       : null;
-    const individualPayment = payObj?.pay ?? 1;
+    const individualPayment = payObj?.pay != null ? Number(payObj.pay) : 1;
 
     const totalWorker = (totalGroup / payUnits) * individualPayment
 
@@ -3103,7 +3103,7 @@ export class BillService {
 
       if (facturationUnit !== 'HORAS' && facturationUnit !== 'JORNAL') {
         const totalUnitPays = groupPay.reduce(
-          (sum, p) => sum + (p.pay || 0),
+          (sum, p) => sum + (Number(p.pay) || 0),
           0,
         );
         const safeAmount = Number(group.amount) || existingBill.amount || 0;
@@ -3119,7 +3119,7 @@ export class BillService {
         return payValue;
       }
     } else if (isQuantityGroup) {
-      const totalUnidades = groupPay.reduce((sum, p) => sum + (p.pay || 0), 0);
+      const totalUnidades = groupPay.reduce((sum, p) => sum + (Number(p.pay) || 0), 0);
       const safeAmount = Number(group.amount) || existingBill.amount || 0;
       const safeTotalUnidades = Number(totalUnidades) || 1;
       const safePayValue =

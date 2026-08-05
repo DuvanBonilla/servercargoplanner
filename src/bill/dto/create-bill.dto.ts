@@ -93,6 +93,7 @@ export class GroupBillDto {
 
   @IsOptional()
   @ValidateNested({ each: true })
+  @Type(() => WorkerPay)
   pays!: WorkerPay[];
 
    @IsOptional()

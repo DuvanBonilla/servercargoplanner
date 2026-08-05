@@ -2157,13 +2157,13 @@ export class OperationService {
 
       // Validar fecha para SUPERVISOR/PROGRAMMER (ADMIN y SUPERADMIN no tienen esta restricción)
       if ((user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER') && createOperationDto.dateStart) {
-        // El límite de antigüedad para CREAR operaciones depende de la configuración
-        // SEMANAS_CREACION_OPERACIONES: si está INACTIVE/no existe no se aplica límite;
+        // El límite de antigüedad para Completar operaciones depende de la configuración
+        // SEMANAS_COMPLETAR_OPERACIONES: si está INACTIVE/no existe no se aplica límite;
         // si está ACTIVE, su "value" indica cuántas semanas hacia atrás (incluyendo la
-        // semana actual) puede fecharse una operación nueva. Ej: value=2 permite crear
+        // semana actual) puede completarse una operación nueva. Ej: value=2 permite crear
         // operaciones con fecha de la semana actual o de la semana inmediatamente anterior.
         const semanasCreacionConfig = await this.configurationService.findOneByName(
-          'SEMANAS_CREACION_OPERACIONES',
+          'SEMANAS_COMPLETAR_OPERACIONES',
         );
         const isWeeksConfigActive =
           semanasCreacionConfig && semanasCreacionConfig.status === StatusActivation.ACTIVE;
