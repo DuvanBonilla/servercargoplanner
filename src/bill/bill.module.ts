@@ -9,6 +9,7 @@ import { PayrollCalculationService } from './services/payroll-calculation.servic
 import { ConfigurationModule } from 'src/configuration/configuration.module';
 import { HoursCalculationService } from './services/hours-calculation.service';
 import { BaseCalculationService } from './services/base-calculation.service';
+import { BillTariffSnapshotService } from './services/bill-tariff-snapshot.service';
 
 @Module({
   imports: [
@@ -22,7 +23,8 @@ import { BaseCalculationService } from './services/base-calculation.service';
     WorkerGroupAnalysisService,
     PayrollCalculationService,
     HoursCalculationService,
-    BaseCalculationService
+    BaseCalculationService,
+    BillTariffSnapshotService
   ],
   exports:[BillService],
 })

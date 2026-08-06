@@ -19,6 +19,7 @@ import { Response } from 'express';
 import { Operation } from 'src/operation/entities/operation.entity';
 import { ModuleRef } from '@nestjs/core';
 import { OperationService } from 'src/operation/operation.service';
+import { BillTariffSnapshotService } from './services/bill-tariff-snapshot.service';
 
 @Injectable()
 export class BillService {
@@ -32,7 +33,20 @@ export class BillService {
     private configurationService: ConfigurationService,
     @Inject(forwardRef(() => OperationService))
     private readonly operationService: OperationService,
+    private billTariffSnapshotService: BillTariffSnapshotService,
   ) { }
+
+  /**
+   * Busca el tariffDetails crudo (forma de TariffTransformerService.transformTariffResponse)
+   * de un grupo dentro de validateOperationID.workerGroups, para congelarlo en
+   * BillTariffSnapshot al crear la Bill de ese grupo.
+   */
+  private getRawTariffDetails(validateOperationID: any, groupId: string | number) {
+    const group = validateOperationID?.workerGroups?.find(
+      (g: any) => String(g.groupId) === String(groupId),
+    );
+    return group?.tariffDetails ?? null;
+  }
   async create(createBillDto: CreateBillDto, userId: number) {
     console.log('=== [BillService] Iniciando creación de factura ===');
 
@@ -260,6 +274,11 @@ export class BillService {
 
       // console.log(`Bill creada con ID: ${billSaved.id} para grupo: ${result.groupId}`);
 
+      await this.billTariffSnapshotService.create(
+        billSaved.id,
+        this.getRawTariffDetails(validateOperationID, result.groupId),
+      );
+
       await this.processBillDetails(
         result.workers,
         billSaved.id,
@@ -336,6 +355,11 @@ export class BillService {
         },
       });
 
+      await this.billTariffSnapshotService.create(
+        billSaved.id,
+        this.getRawTariffDetails(validateOperationID, matchingGroupSummary.groupId),
+      );
+
       await this.processHoursBillDetails(
         matchingGroupSummary.workers,
         billSaved.id,
@@ -406,6 +430,11 @@ export class BillService {
           status: billStatus, // ✅ Asignar el estado de la factura
         },
       });
+
+      await this.billTariffSnapshotService.create(
+        billSaved.id,
+        this.getRawTariffDetails(validateOperationID, matchingGroupSummary.groupId),
+      );
 
       await this.processAlternativeServiceBillDetails(
         matchingGroupSummary.workers,
@@ -519,6 +548,11 @@ export class BillService {
           status: billStatus, // ✅ Asignar el estado de la factura
         },
       });
+
+      await this.billTariffSnapshotService.create(
+        billSaved.id,
+        this.getRawTariffDetails(validateOperationID, matchingGroupSummary.groupId),
+      );
 
       await this.processQuantityBillDetails(
         matchingGroupSummary.workers,
@@ -2574,6 +2608,14 @@ export class BillService {
       );
     }
 
+    // ✅ Usar la tarifa congelada al momento de crear la Bill (si existe) en vez de la
+    // tarifa en vivo, para que recalcular una factura vieja no traiga valores actuales.
+    const tariffSnapshot = await this.billTariffSnapshotService.findByBillId(id);
+    if (tariffSnapshot) {
+      matchingGroupSummary.tariffDetails =
+        this.billTariffSnapshotService.toTariffDetailsShape(tariffSnapshot);
+    }
+
     // ✅ OBTENER LA DURACIÓN ACTUALIZADA DEL GRUPO DESDE LA BD
     const currentBill = await this.prisma.bill.findUnique({
       where: { id },
@@ -2886,6 +2928,14 @@ export class BillService {
         (summary) => summary.groupId === group.id,
       );
       if (!matchingGroupSummary) continue;
+
+      // ✅ Usar la tarifa congelada al momento de crear la Bill (si existe) en vez de la
+      // tarifa en vivo, para que recalcular una factura vieja no traiga valores actuales.
+      const tariffSnapshot = await this.billTariffSnapshotService.findByBillId(id);
+      if (tariffSnapshot) {
+        matchingGroupSummary.tariffDetails =
+          this.billTariffSnapshotService.toTariffDetailsShape(tariffSnapshot);
+      }
 
       const operationWorkers = await this.prisma.operation_Worker.findMany({
         where: {
