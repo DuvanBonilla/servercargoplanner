@@ -1158,12 +1158,14 @@ export class OperationController {
     @Body() updateOperationDto: UpdateOperationDto,
     @CurrentUser('siteId') siteId: number,
     @CurrentUser('subsiteId') subsiteId: number,
+    @CurrentUser('isSupervisor') isSupervisor: boolean,
   ) {
     const response = await this.operationService.update(
       id,
       updateOperationDto,
       subsiteId,
       siteId,
+      isSupervisor,
     );
     if (response && response['status'] === 404) {
       throw new NotFoundException(response['message']);
@@ -1209,6 +1211,7 @@ async remove(
     id_group,
     userId,
     confirmDelete === 'true',
+    !!isSupervisor,
   );
 
   if (response['status'] === 404) {
@@ -1279,6 +1282,7 @@ async removeMultipleGroups(
     (isSupervisor || isProgrammer) ? subsiteId : undefined,
     userId,
     confirmDelete === 'true',
+    !!isSupervisor,
   );
 
   if (response['status'] === 404) {

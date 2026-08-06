@@ -2126,6 +2126,113 @@ export class OperationService {
   }
 
   /**
+   * Combina una fecha (solo día) con una hora "HH:MM" en un único Date local.
+   * Si no se recibe hora, retorna la fecha a medianoche.
+   */
+  private combineDateAndTime(date: Date | string, time?: string): Date {
+    const combined = toLocalDate(date);
+    if (time) {
+      const [hours, minutes] = time.split(':').map(Number);
+      combined.setHours(hours || 0, minutes || 0, 0, 0);
+    }
+    return combined;
+  }
+
+  /**
+   * Restricción por SEMANAS_COMPLETAR_OPERACIONES: solo aplica al SUPERVISOR y gobierna
+   * el alcance hacia atrás para CREAR/EDITAR una operación (iniciar, completar y eliminar
+   * no se ven afectados por esta configuración). Si está ACTIVE, su "value" indica cuántas
+   * semanas hacia atrás (incluyendo la semana actual) puede crear/editar una operación.
+   * Ej: value=2 habilita crear/editar operaciones con dateStart de la semana actual o de
+   * la semana inmediatamente anterior; más atrás de eso queda bloqueado. Si está INACTIVE
+   * no se aplica ningún límite.
+   */
+  private async validateWeeksLimitForEdit(
+    isSupervisor: boolean,
+    dateStart?: string | Date | null,
+  ): Promise<{ message: string; status: number } | null> {
+    if (!isSupervisor || !dateStart) return null;
+
+    const semanasConfig = await this.configurationService.findOneByName(
+      'SEMANAS_COMPLETAR_OPERACIONES',
+    );
+    const isWeeksConfigActive =
+      semanasConfig && semanasConfig.status === StatusActivation.ACTIVE;
+    if (!isWeeksConfigActive) return null;
+
+    const weeksLimit = Number(semanasConfig.value);
+    const operationDate = toLocalDate(dateStart);
+
+    // Inicio (lunes) de la semana actual, en hora colombiana
+    const startOfCurrentWeek = getStartOfWeek(getColombianDateTime());
+
+    // Límite inferior: retroceder (weeksLimit - 1) semanas desde el inicio de la semana actual
+    const lowerBoundDate = new Date(startOfCurrentWeek);
+    lowerBoundDate.setDate(startOfCurrentWeek.getDate() - (weeksLimit - 1) * 7);
+
+    if (operationDate < lowerBoundDate) {
+      return {
+        message: `Como SUPERVISOR solo puedes crear/editar operaciones dentro de las últimas ${weeksLimit} semanas (a partir del ${formatColombianDate(lowerBoundDate)}).`,
+        status: 400,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Restricción por HORAS_REGISTRO_OPERACIONES: solo aplica al SUPERVISOR y gobierna
+   * COMPLETAR y ELIMINAR (crear/editar se rigen por SEMANAS_COMPLETAR_OPERACIONES e
+   * iniciar no tiene restricción). Si está ACTIVE, solo se puede completar/eliminar una
+   * operación cuyo dateStart caiga en la semana ACTUAL y, además, mientras no hayan
+   * pasado más de "value" horas desde su dateStart+timeStrat. Fuera de la semana actual,
+   * o pasadas esas horas dentro de la semana actual, queda bloqueado. Si está INACTIVE
+   * no se aplica ningún límite.
+   */
+  private async validateHoursLimitForCompleteOrDelete(
+    isSupervisor: boolean,
+    dateStart?: string | Date | null,
+    timeStrat?: string | null,
+  ): Promise<{ message: string; status: number } | null> {
+    if (!isSupervisor || !dateStart) return null;
+
+    const horasConfig = await this.configurationService.findOneByName(
+      'HORAS_REGISTRO_OPERACIONES',
+    );
+    const isHoursConfigActive =
+      horasConfig && horasConfig.status === StatusActivation.ACTIVE;
+    if (!isHoursConfigActive) return null;
+
+    const hoursLimit = Number(horasConfig.value);
+    const now = getColombianDateTime();
+    const startOfCurrentWeek = getStartOfWeek(now);
+    const startOfNextWeek = new Date(startOfCurrentWeek);
+    startOfNextWeek.setDate(startOfCurrentWeek.getDate() + 7);
+
+    const operationDate = toLocalDate(dateStart);
+
+    // Solo se puede completar/eliminar dentro de la semana actual
+    if (operationDate < startOfCurrentWeek || operationDate >= startOfNextWeek) {
+      return {
+        message: `Como SUPERVISOR solo puedes completar o eliminar operaciones de la semana actual.`,
+        status: 400,
+      };
+    }
+
+    const operationDateTime = this.combineDateAndTime(operationDate, timeStrat || undefined);
+    const limitDateTime = new Date(
+      operationDateTime.getTime() + hoursLimit * 60 * 60 * 1000,
+    );
+
+    if (now > limitDateTime) {
+      return {
+        message: `Como SUPERVISOR ya pasaron las ${hoursLimit} horas permitidas para completar o eliminar esta operación de la semana actual.`,
+        status: 400,
+      };
+    }
+    return null;
+  }
+
+  /**
    * Crea una nueva operación y asigna trabajadores
    * @param createOperationDto - Datos de la operación a crear
    * @returns Operación creada
@@ -2155,38 +2262,14 @@ export class OperationService {
       });
       // console.log('[OperationService] ==> Usuario encontrado:', user);
 
-      // Validar fecha para SUPERVISOR/PROGRAMMER (ADMIN y SUPERADMIN no tienen esta restricción)
-      if ((user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER') && createOperationDto.dateStart) {
-        // El límite de antigüedad para Completar operaciones depende de la configuración
-        // SEMANAS_COMPLETAR_OPERACIONES: si está INACTIVE/no existe no se aplica límite;
-        // si está ACTIVE, su "value" indica cuántas semanas hacia atrás (incluyendo la
-        // semana actual) puede completarse una operación nueva. Ej: value=2 permite crear
-        // operaciones con fecha de la semana actual o de la semana inmediatamente anterior.
-        const semanasCreacionConfig = await this.configurationService.findOneByName(
-          'SEMANAS_COMPLETAR_OPERACIONES',
-        );
-        const isWeeksConfigActive =
-          semanasCreacionConfig && semanasCreacionConfig.status === StatusActivation.ACTIVE;
-
-        if (isWeeksConfigActive) {
-          const weeksLimit = Number(semanasCreacionConfig.value);
-          const dateStart = toLocalDate(createOperationDto.dateStart);
-
-          // Inicio (lunes) de la semana actual, en hora colombiana
-          const startOfCurrentWeek = getStartOfWeek(getColombianDateTime());
-
-          // Límite inferior: retroceder (weeksLimit - 1) semanas desde el inicio de la semana actual
-          const lowerBoundDate = new Date(startOfCurrentWeek);
-          lowerBoundDate.setDate(startOfCurrentWeek.getDate() - (weeksLimit - 1) * 7);
-
-          if (dateStart < lowerBoundDate) {
-            return {
-              message: `Como SUPERVISOR/PROGRAMMER solo puedes crear operaciones dentro de las últimas ${weeksLimit} semanas (a partir del ${formatColombianDate(lowerBoundDate)}).`,
-              status: 400,
-            };
-          }
-        }
-      }
+      // Validar semanas para SUPERVISOR (PROGRAMMER, ADMIN y SUPERADMIN no tienen esta restricción):
+      // SEMANAS_COMPLETAR_OPERACIONES limita cuántas semanas hacia atrás puede el SUPERVISOR
+      // crear una operación (completar/eliminar se rigen por HORAS_REGISTRO_OPERACIONES).
+      const weeksLimitError = await this.validateWeeksLimitForEdit(
+        user?.role === Role.SUPERVISOR,
+        createOperationDto.dateStart,
+      );
+      if (weeksLimitError) return weeksLimitError;
 
       // console.log('[OperationService] ==> Validando user ID');
       // Validaciones
@@ -2423,6 +2506,7 @@ export class OperationService {
     updateOperationDto: UpdateOperationDto,
     id_subsite?: number,
     id_site?: number,
+    isSupervisor?: boolean,
   ) {
     try {
       // --- PATCH: Actualizar status de ClientProgramming si cambia y site == 1 ---
@@ -2492,11 +2576,35 @@ export class OperationService {
       // ✅ VERIFICAR SI LA OPERACIÓN ESTÁ COMPLETADA ANTES DE PROCESAR TRABAJADORES
       const currentOperation = await this.prisma.operation.findUnique({
         where: { id },
-        select: { status: true },
+        select: { status: true, dateStart: true, timeStrat: true },
       });
 
 
       const isCompletedOperation = currentOperation?.status === 'COMPLETED';
+
+      // Fecha/hora de inicio "efectiva" para las validaciones de SUPERVISOR: la que
+      // viene en este guardado si el usuario la está cambiando, o si no la actual en BD.
+      const effectiveDateStart = dateStart ?? currentOperation?.dateStart ?? undefined;
+      const effectiveTimeStrat = timeStrat ?? currentOperation?.timeStrat ?? undefined;
+
+      // Iniciar (status -> INPROGRESS) no tiene restricción alguna para SUPERVISOR.
+      // Completar (status -> COMPLETED) se rige por HORAS_REGISTRO_OPERACIONES (semana
+      // actual + horas desde dateStart+timeStrat). Cualquier otro guardado es una simple
+      // edición y se rige por SEMANAS_COMPLETAR_OPERACIONES.
+      if (directFields.status === StatusOperation.COMPLETED) {
+        const hoursLimitError = await this.validateHoursLimitForCompleteOrDelete(
+          !!isSupervisor,
+          effectiveDateStart,
+          effectiveTimeStrat,
+        );
+        if (hoursLimitError) return hoursLimitError;
+      } else if (directFields.status !== StatusOperation.INPROGRESS) {
+        const weeksLimitError = await this.validateWeeksLimitForEdit(
+          !!isSupervisor,
+          effectiveDateStart,
+        );
+        if (weeksLimitError) return weeksLimitError;
+      }
 
       // ✅ Si la operación estaba RECHAZADA y este guardado trae un cambio de
       // servicio (id_tariff) para algún grupo, las facturas generadas antes del
@@ -2981,6 +3089,7 @@ async remove(
   id_group?: string,
   userId?: number,
   confirmDelete = false,
+  isSupervisor?: boolean,
 ) {
   try {
     const validateOperation = await this.findOne(id);
@@ -2988,6 +3097,15 @@ async remove(
     if (validateOperation['status'] === 404) {
       return validateOperation;
     }
+
+    // HORAS_REGISTRO_OPERACIONES: eliminar un grupo/operación se rige igual que
+    // completar (semana actual + horas desde dateStart+timeStrat).
+    const hoursLimitError = await this.validateHoursLimitForCompleteOrDelete(
+      !!isSupervisor,
+      validateOperation.dateStart,
+      validateOperation.timeStrat,
+    );
+    if (hoursLimitError) return hoursLimitError;
 
     if (
       id_site !== undefined &&
@@ -3080,6 +3198,7 @@ async removeMultipleGroups(
   id_subsite?: number,
   userId?: number,
   confirmDelete = false,
+  isSupervisor?: boolean,
 ) {
   try {
     const results = {
@@ -3107,6 +3226,7 @@ async removeMultipleGroups(
           id_group,
           userId,
            confirmDelete,
+          isSupervisor,
         );
 
         if (
