@@ -2105,8 +2105,45 @@ export class BillService {
 
     if (!billDB) return null;
 
-    // Calcular compensatorio
+    // Calcular compensatorio (usa la tarifa vigente en billDB, sin tocar
+    // el cálculo financiero existente)
     const compensatory = await this.calculateCompensatoryForBill(billDB);
+
+    // ✅ Para MOSTRAR el detalle, sustituir la tarifa "en vivo" por la tarifa
+    // congelada al momento de crear la Bill (BillTariffSnapshot), para que el
+    // detalle de la operación no cambie si luego se edita/elimina la Tariff
+    // original.
+    const tariffSnapshot = await this.billTariffSnapshotService.findByBillId(id);
+    if (tariffSnapshot) {
+      const snapshotTariff = {
+        id: tariffSnapshot.id_tariff,
+        code: tariffSnapshot.code,
+        id_subtask: tariffSnapshot.id_subtask,
+        id_costCenter: tariffSnapshot.id_costCenter,
+        id_unidOfMeasure: tariffSnapshot.id_unidOfMeasure,
+        id_facturation_unit: tariffSnapshot.id_facturation_unit,
+        paysheet_tariff: Number(tariffSnapshot.paysheet_tariff),
+        facturation_tariff: Number(tariffSnapshot.facturation_tariff),
+        full_tariff: tariffSnapshot.full_tariff,
+        compensatory: tariffSnapshot.compensatory,
+        isSpecial: tariffSnapshot.isSpecial,
+        alternative_paid_service: tariffSnapshot.alternative_paid_service,
+        group_tariff: tariffSnapshot.group_tariff,
+        settle_payment: tariffSnapshot.settle_payment,
+        subTask: tariffSnapshot.id_subtask
+          ? {
+              id: tariffSnapshot.id_subtask,
+              name: tariffSnapshot.subTaskName,
+              code: null,
+            }
+          : null,
+      };
+      billDB.billDetails?.forEach((detail) => {
+        if (detail.operationWorker) {
+          (detail.operationWorker as any).tariff = snapshotTariff;
+        }
+      });
+    }
 
     // ✅ OBTENER FECHAS DEL GRUPO desde operation_worker
     // const groupDates = await this.getGroupDatesFromOperationWorkers(
