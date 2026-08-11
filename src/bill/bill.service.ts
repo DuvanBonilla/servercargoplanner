@@ -2185,6 +2185,16 @@ export class BillService {
       groupId,
     );
 
+    // ✅ Mantener sincronizados dateStart/timeStrat/dateEnd/timeEnd y op_duration
+    // de la Operation con el mínimo inicio y máximo fin de TODOS sus grupos
+    // (Operation_Worker). Sin esto, al editar la fecha/hora de un grupo desde el
+    // reporte de facturación, la Operation queda con fechas desactualizadas
+    // (ver recalculateGroupHoursFromWorkerDates, que solo toca group_hours/op_duration
+    // como suma de horas, pero no las fechas límite de la Operation).
+    if (shouldUpdateGroupDates) {
+      await this.recalculateOperationDatesFromWorkers(billDb.id_operation);
+    }
+
     const validateOperationID = await this.validateOperation(
       billDb.id_operation,
     );
@@ -2428,6 +2438,34 @@ export class BillService {
       id: updatedBill.id,
       status: updatedBill.status,
       message: `Estado de la factura actualizado a ${status}`,
+    };
+  }
+
+  /**
+   * Actualiza únicamente la observación de un Bill (factura de grupo), sin
+   * recalcular horas, distribuciones ni totales. Pensado para edición rápida
+   * de la observación desde la pantalla de detalle de la Bill una vez que la
+   * operación ya finalizó.
+   */
+  async updateObservation(id: number, observation: string, userId: number) {
+    const existingBill = await this.prisma.bill.findUnique({ where: { id } });
+    if (!existingBill) {
+      throw new NotFoundException(`No se encontró la factura con ID: ${id}`);
+    }
+
+    const updatedBill = await this.prisma.bill.update({
+      where: { id },
+      data: {
+        observation,
+        updatedAt: new Date(),
+        id_user: userId,
+      },
+    });
+
+    return {
+      id: updatedBill.id,
+      observation: updatedBill.observation,
+      message: 'Observación de la factura actualizada exitosamente',
     };
   }
 
@@ -3358,6 +3396,87 @@ export class BillService {
     } catch (error) {
       console.error(`[BillService] ❌ Error recalculando group_hours:`, error);
       throw new ConflictException(`Error al recalcular las horas del grupo: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Recalcula dateStart/timeStrat/dateEnd/timeEnd y op_duration de la Operation
+   * a partir del mínimo inicio y el máximo fin entre TODOS los grupos
+   * (Operation_Worker) de la operación. Debe llamarse cada vez que se editen
+   * las fechas/horas de un grupo (p. ej. desde el reporte de facturación),
+   * para que la Operation nunca quede con fechas desactualizadas frente a
+   * sus grupos.
+   */
+  private async recalculateOperationDatesFromWorkers(
+    id_operation: number,
+  ): Promise<void> {
+    try {
+      const workers = await this.prisma.operation_Worker.findMany({
+        where: {
+          id_operation,
+          id_worker: { not: -1 },
+          dateStart: { not: null },
+          timeStart: { not: null },
+          dateEnd: { not: null },
+          timeEnd: { not: null },
+        },
+        select: {
+          dateStart: true,
+          timeStart: true,
+          dateEnd: true,
+          timeEnd: true,
+        },
+      });
+
+      if (workers.length === 0) return;
+
+      let earliestStartMs: number | null = null;
+      let earliestStart: { date: Date; time: string } | null = null;
+      let latestEndMs: number | null = null;
+      let latestEnd: { date: Date; time: string } | null = null;
+
+      for (const worker of workers) {
+        if (!worker.dateStart || !worker.timeStart || !worker.dateEnd || !worker.timeEnd) continue;
+
+        const [sh, sm] = worker.timeStart.split(':').map(Number);
+        const startDateTime = new Date(worker.dateStart);
+        startDateTime.setHours(sh, sm, 0, 0);
+
+        const [eh, em] = worker.timeEnd.split(':').map(Number);
+        const endDateTime = new Date(worker.dateEnd);
+        endDateTime.setHours(eh, em, 0, 0);
+
+        if (earliestStartMs === null || startDateTime.getTime() < earliestStartMs) {
+          earliestStartMs = startDateTime.getTime();
+          earliestStart = { date: worker.dateStart, time: worker.timeStart };
+        }
+
+        if (latestEndMs === null || endDateTime.getTime() > latestEndMs) {
+          latestEndMs = endDateTime.getTime();
+          latestEnd = { date: worker.dateEnd, time: worker.timeEnd };
+        }
+      }
+
+      if (!earliestStart || !latestEnd || earliestStartMs === null || latestEndMs === null) return;
+
+      const durationHours = Math.max(
+        0,
+        Math.round(((latestEndMs - earliestStartMs) / 3_600_000) * 100) / 100,
+      );
+
+      await this.prisma.operation.update({
+        where: { id: id_operation },
+        data: {
+          dateStart: earliestStart.date,
+          timeStrat: earliestStart.time,
+          dateEnd: latestEnd.date,
+          timeEnd: latestEnd.time,
+          op_duration: durationHours,
+        },
+      });
+    } catch (error) {
+      console.error(`[BillService] ❌ Error recalculando fechas de la operación ${id_operation}:`, error);
+      // No lanzar error para no bloquear la actualización de la Bill
     }
   }
 

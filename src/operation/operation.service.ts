@@ -2496,6 +2496,35 @@ export class OperationService {
     return newOperation;
   }
   /**
+   * Actualiza únicamente la embarcación (motorShip) de una operación, sin pasar
+   * por el flujo completo de `update` (que maneja trabajadores, grupos, cambios
+   * de estado, etc.). Pensado para edición rápida desde la pantalla de la Bill,
+   * incluso cuando la operación ya está COMPLETED.
+   */
+  async updateVessel(id: number, motorShip: string) {
+    const existingOperation = await this.prisma.operation.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!existingOperation) {
+      throw new OperationNotFoundException(id);
+    }
+
+    const updatedOperation = await this.prisma.operation.update({
+      where: { id },
+      data: { motorShip },
+      select: { id: true, motorShip: true },
+    });
+
+    return {
+      id: updatedOperation.id,
+      motorShip: updatedOperation.motorShip,
+      message: 'Embarcación actualizada exitosamente',
+    };
+  }
+
+  /**
    * Actualiza una operación existente
    * @param id - ID de la operación a actualizar
    * @param updateOperationDto - Datos de actualización

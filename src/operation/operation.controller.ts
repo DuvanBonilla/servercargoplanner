@@ -33,6 +33,7 @@ import { ConfirmOperationDto } from './dto/confirm-operation.dto';
 import { SendConfirmationEmailDto } from './dto/send-confirmation-email.dto';
 import { TokenPreviewDto } from './dto/token-preview.dto';
 import { SubmitRadicadoDto } from './dto/submit-radicado.dto';
+import { UpdateVesselDto } from './dto/update-vessel.dto';
 // import { OperationsCronService } from 'src/cron-job/cron-job.service';
 @Controller('operation')
 @UseInterceptors(SiteInterceptor)
@@ -1149,6 +1150,34 @@ export class OperationController {
       throw new NotFoundException(response['message']);
     }
     return response;
+  }
+
+  @Patch(':id/vessel')
+  @ApiOperation({
+    summary: 'Actualizar la embarcación (motorShip) de una operación',
+    description: `
+Actualiza únicamente el campo 'motorShip' (Embarcación) de la operación, sin
+pasar por el flujo completo de actualización (que maneja trabajadores, grupos
+y cambios de estado). Pensado para editarse rápidamente desde la pantalla de
+la Bill, incluso cuando la operación ya está COMPLETED.
+
+**Ejemplo de uso:**
+\`\`\`json
+PATCH /operation/17702/vessel
+{
+  "motorShip": "MSC ANNA"
+}
+\`\`\`
+    `,
+  })
+  @ApiParam({ name: 'id', description: 'ID de la operación', type: 'number' })
+  @ApiResponse({ status: 200, description: 'Embarcación actualizada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Operación no encontrada' })
+  async updateVessel(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateVesselDto: UpdateVesselDto,
+  ) {
+    return this.operationService.updateVessel(id, updateVesselDto.motorShip);
   }
 
   @Patch(':id')

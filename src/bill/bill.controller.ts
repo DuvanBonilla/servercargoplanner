@@ -25,6 +25,7 @@ import { Role, Status } from '@prisma/client';
 import { ParseIntPipe } from 'src/pipes/parse-int/parse-int.pipe';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { UpdateBillDto, UpdateBillStatusDto } from './dto/update-bill.dto';
+import { UpdateBillObservationDto } from './dto/update-bill-observation.dto';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import { FilterBillDto } from './dto/filter-bill.dto';
 import { ExportBillDto } from './dto/export-bill.dto';
@@ -353,6 +354,38 @@ PATCH /bill/955
     return this.billService.update(id, updateBillDto, userId);
   }
   
+  @Patch(':id/observation')
+  @ApiOperation({
+    summary: 'Actualizar la observación de una Bill (factura de grupo)',
+    description: `
+Actualiza únicamente el campo 'observation' de una Bill, sin tocar horas,
+distribuciones ni totales. Pensado para editar rápidamente la observación
+del grupo desde la pantalla de detalle de la factura, incluso cuando la
+operación ya terminó.
+
+**Ejemplo de uso:**
+\`\`\`json
+PATCH /bill/955/observation
+{
+  "observation": "El supervisor no quiso firmar el radicado"
+}
+\`\`\`
+    `,
+  })
+  @ApiResponse({ status: 200, description: 'Observación actualizada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Bill no encontrada' })
+  async updateObservation(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateBillObservationDto: UpdateBillObservationDto,
+    @CurrentUser('userId') userId: number,
+  ) {
+    return this.billService.updateObservation(
+      id,
+      updateBillObservationDto.observation,
+      userId,
+    );
+  }
+
   @Patch(':id/status')
   async updateStatus(
     @Param('id', ParseIntPipe) id: number,
