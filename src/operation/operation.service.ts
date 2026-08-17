@@ -2180,29 +2180,15 @@ export class OperationService {
   }
 
   /**
-   * Domingo 00:00:00 (hora local) de la semana "de calendario" (domingo-sábado) a la
-   * que pertenece la fecha dada. Usada SOLO por las dos excepciones puntuales de
-   * validateHoursLimitForCompleteOrDelete (ver abajo) — no reemplaza a getStartOfWeek
-   * (semana ISO lunes-domingo, la que sigue usando la regla normal de esa función y
-   * SEMANAS_COMPLETAR_OPERACIONES). Esta semana empieza en domingo porque así es como
-   * el SUPERVISOR ve el calendario en la UI (Do Lu Ma Mi Ju Vi Sa) y así describió las
-   * dos excepciones: "último día de la semana" = sábado, "primer día" = domingo.
-   */
-  private getStartOfSundayWeek(date: Date): Date {
-    const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    normalized.setDate(normalized.getDate() - normalized.getDay());
-    return normalized;
-  }
-
-  /**
    * Excepciones puntuales a HORAS_REGISTRO_OPERACIONES para operaciones que arrancan
-   * muy al final de una semana (domingo-sábado) y por eso legítimamente no se pueden
-   * cerrar sino ya entrada la semana siguiente. Son dos casos MUY específicos, no una
-   * regla general — si no calzan exactamente, no aplican y se sigue la regla normal:
+   * muy al final de una semana ISO (lunes-domingo: domingo es el último día, lunes es
+   * el primer día de la semana siguiente) y por eso legítimamente no se pueden cerrar
+   * sino ya entrada la semana siguiente. Son dos casos MUY específicos, no una regla
+   * general — si no calzan exactamente, no aplican y se sigue la regla normal:
    *
-   * 1) dateStart es SÁBADO (último día) de la semana inmediatamente anterior a "now",
-   *    Y dateEnd es ese mismo domingo siguiente (dateStart + 1 día, primer día de la
-   *    semana actual): se puede completar/eliminar hasta el final de ese domingo.
+   * 1) dateStart es DOMINGO (último día) de la semana inmediatamente anterior a "now",
+   *    Y dateEnd es ese mismo lunes siguiente (dateStart + 1 día, primer día de la
+   *    semana actual): se puede completar/eliminar hasta el final de ese lunes.
    * 2) dateStart es VIERNES de la semana inmediatamente anterior a "now", Y dateEnd es
    *    el MISMO día que dateStart (operación de un solo día): se puede completar/
    *    eliminar hasta el lunes de la semana actual — o el siguiente día hábil si ese
@@ -2216,19 +2202,18 @@ export class OperationService {
     dateEnd: Date | null,
     now: Date,
   ): { message: string; status: number } | null | undefined {
-    const startOfCurrentSundayWeek = this.getStartOfSundayWeek(now);
-    const startOfPreviousSundayWeek = new Date(startOfCurrentSundayWeek);
-    startOfPreviousSundayWeek.setDate(startOfCurrentSundayWeek.getDate() - 7);
+    const startOfCurrentWeek = getStartOfWeek(now); // lunes de la semana ISO actual
+    const startOfPreviousWeek = new Date(startOfCurrentWeek);
+    startOfPreviousWeek.setDate(startOfCurrentWeek.getDate() - 7);
 
-    const isInPreviousSundayWeek =
-      operationDate >= startOfPreviousSundayWeek &&
-      operationDate < startOfCurrentSundayWeek;
-    if (!isInPreviousSundayWeek) return undefined;
+    const isInPreviousWeek =
+      operationDate >= startOfPreviousWeek && operationDate < startOfCurrentWeek;
+    if (!isInPreviousWeek) return undefined;
 
     const dayOfWeek = operationDate.getDay(); // 0=domingo ... 6=sábado
 
-    // Caso 1: sábado -> se completa el domingo siguiente (dateEnd = dateStart + 1)
-    if (dayOfWeek === 6 && dateEnd) {
+    // Caso 1: domingo (último día) -> se completa el lunes siguiente (dateEnd = dateStart + 1)
+    if (dayOfWeek === 0 && dateEnd) {
       const expectedDateEnd = new Date(operationDate);
       expectedDateEnd.setDate(expectedDateEnd.getDate() + 1);
       if (dateEnd.getTime() === expectedDateEnd.getTime()) {
@@ -2247,11 +2232,12 @@ export class OperationService {
     // Caso 2: viernes, operación de un solo día -> plazo hasta el lunes (o el
     // siguiente día hábil si hay festivos) de la semana actual
     if (dayOfWeek === 5 && dateEnd && dateEnd.getTime() === operationDate.getTime()) {
-      const deadline = new Date(startOfCurrentSundayWeek);
-      deadline.setDate(deadline.getDate() + 1); // lunes
-      while (isHoliday(deadline)) {
-        deadline.setDate(deadline.getDate() + 1);
+      // startOfCurrentWeek ya ES el lunes de la semana actual (semana ISO)
+      const deadlineDay = new Date(startOfCurrentWeek);
+      while (isHoliday(deadlineDay)) {
+        deadlineDay.setDate(deadlineDay.getDate() + 1);
       }
+      const deadline = new Date(deadlineDay);
       deadline.setHours(23, 59, 59, 999);
 
       if (now > deadline) {
@@ -2274,7 +2260,7 @@ export class OperationService {
    * mientras no hayan pasado más de "value" horas desde su dateStart+timeStrat. Fuera
    * de la semana actual, o pasadas esas horas dentro de la semana actual, queda
    * bloqueado — SALVO que aplique una de las dos excepciones puntuales de
-   * getHoursLimitWeekendException (operación que arranca sábado o viernes de la
+   * getHoursLimitWeekendException (operación que arranca domingo o viernes de la
    * semana anterior). Si está INACTIVE no se aplica ningún límite.
    */
   private async validateHoursLimitForCompleteOrDelete(
