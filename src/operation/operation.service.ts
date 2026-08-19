@@ -15,7 +15,7 @@ import { OperationFilterDto } from './dto/fliter-operation.dto';
 import { WorkerService } from 'src/worker/worker.service';
 import { RemoveWorkerFromOperationService } from '../operation-worker/service/remove-worker-from-operation/remove-worker-from-operation.service';
 import { ModuleRef } from '@nestjs/core';
-import { getWeekNumber, getStartOfWeek, toLocalDate } from 'src/common/utils/dateType';
+import { getWeekNumber, getStartOfWeek, toLocalDate, isHoliday } from 'src/common/utils/dateType';
 import { OperationNotFoundException } from './exceptions/operation-not-found.exception';
 import { TokenGenerationFailedException } from './exceptions/token-generation-failed.exception';
 import { formatColombianDate, getColombianDateTime } from 'src/common/utils/dateColombia';
@@ -2180,18 +2180,108 @@ export class OperationService {
   }
 
   /**
+   * Domingo 00:00:00 (hora local) de la semana "de calendario" (domingo-sábado) a la
+   * que pertenece la fecha dada. Usada SOLO por las dos excepciones puntuales de
+   * validateHoursLimitForCompleteOrDelete (ver abajo) — no reemplaza a getStartOfWeek
+   * (semana ISO lunes-domingo, la que sigue usando la regla normal de esa función y
+   * SEMANAS_COMPLETAR_OPERACIONES). Esta semana empieza en domingo porque así es como
+   * el SUPERVISOR ve el calendario en la UI (Do Lu Ma Mi Ju Vi Sa) y así describió las
+   * dos excepciones: "último día de la semana" = sábado, "primer día" = domingo.
+   */
+  private getStartOfSundayWeek(date: Date): Date {
+    const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    normalized.setDate(normalized.getDate() - normalized.getDay());
+    return normalized;
+  }
+
+  /**
+   * Excepciones puntuales a HORAS_REGISTRO_OPERACIONES para operaciones que arrancan
+   * muy al final de una semana (domingo-sábado) y por eso legítimamente no se pueden
+   * cerrar sino ya entrada la semana siguiente. Son dos casos MUY específicos, no una
+   * regla general — si no calzan exactamente, no aplican y se sigue la regla normal:
+   *
+   * 1) dateStart es SÁBADO (último día) de la semana inmediatamente anterior a "now",
+   *    Y dateEnd es ese mismo domingo siguiente (dateStart + 1 día, primer día de la
+   *    semana actual): se puede completar/eliminar hasta el final de ese domingo.
+   * 2) dateStart es VIERNES de la semana inmediatamente anterior a "now", Y dateEnd es
+   *    el MISMO día que dateStart (operación de un solo día): se puede completar/
+   *    eliminar hasta el lunes de la semana actual — o el siguiente día hábil si ese
+   *    lunes (u los siguientes) es festivo.
+   *
+   * Devuelve el resultado de la excepción aplicable, o `undefined` si ninguna de las
+   * dos aplica (en cuyo caso el llamador debe seguir con la regla normal).
+   */
+  private getHoursLimitWeekendException(
+    operationDate: Date,
+    dateEnd: Date | null,
+    now: Date,
+  ): { message: string; status: number } | null | undefined {
+    const startOfCurrentSundayWeek = this.getStartOfSundayWeek(now);
+    const startOfPreviousSundayWeek = new Date(startOfCurrentSundayWeek);
+    startOfPreviousSundayWeek.setDate(startOfCurrentSundayWeek.getDate() - 7);
+
+    const isInPreviousSundayWeek =
+      operationDate >= startOfPreviousSundayWeek &&
+      operationDate < startOfCurrentSundayWeek;
+    if (!isInPreviousSundayWeek) return undefined;
+
+    const dayOfWeek = operationDate.getDay(); // 0=domingo ... 6=sábado
+
+    // Caso 1: sábado -> se completa el domingo siguiente (dateEnd = dateStart + 1)
+    if (dayOfWeek === 6 && dateEnd) {
+      const expectedDateEnd = new Date(operationDate);
+      expectedDateEnd.setDate(expectedDateEnd.getDate() + 1);
+      if (dateEnd.getTime() === expectedDateEnd.getTime()) {
+        const deadline = new Date(dateEnd);
+        deadline.setHours(23, 59, 59, 999);
+        if (now > deadline) {
+          return {
+            message: `Como SUPERVISOR ya pasó el plazo (${formatColombianDate(deadline)}) para completar o eliminar esta operación.`,
+            status: 400,
+          };
+        }
+        return null;
+      }
+    }
+
+    // Caso 2: viernes, operación de un solo día -> plazo hasta el lunes (o el
+    // siguiente día hábil si hay festivos) de la semana actual
+    if (dayOfWeek === 5 && dateEnd && dateEnd.getTime() === operationDate.getTime()) {
+      const deadline = new Date(startOfCurrentSundayWeek);
+      deadline.setDate(deadline.getDate() + 1); // lunes
+      while (isHoliday(deadline)) {
+        deadline.setDate(deadline.getDate() + 1);
+      }
+      deadline.setHours(23, 59, 59, 999);
+
+      if (now > deadline) {
+        return {
+          message: `Como SUPERVISOR ya pasó el plazo (${formatColombianDate(deadline)}) para completar o eliminar esta operación.`,
+          status: 400,
+        };
+      }
+      return null;
+    }
+
+    return undefined;
+  }
+
+  /**
    * Restricción por HORAS_REGISTRO_OPERACIONES: solo aplica al SUPERVISOR y gobierna
    * COMPLETAR y ELIMINAR (crear/editar se rigen por SEMANAS_COMPLETAR_OPERACIONES e
    * iniciar no tiene restricción). Si está ACTIVE, solo se puede completar/eliminar una
-   * operación cuyo dateStart caiga en la semana ACTUAL y, además, mientras no hayan
-   * pasado más de "value" horas desde su dateStart+timeStrat. Fuera de la semana actual,
-   * o pasadas esas horas dentro de la semana actual, queda bloqueado. Si está INACTIVE
-   * no se aplica ningún límite.
+   * operación cuyo dateStart caiga en la semana ACTUAL (ISO, lunes-domingo) y, además,
+   * mientras no hayan pasado más de "value" horas desde su dateStart+timeStrat. Fuera
+   * de la semana actual, o pasadas esas horas dentro de la semana actual, queda
+   * bloqueado — SALVO que aplique una de las dos excepciones puntuales de
+   * getHoursLimitWeekendException (operación que arranca sábado o viernes de la
+   * semana anterior). Si está INACTIVE no se aplica ningún límite.
    */
   private async validateHoursLimitForCompleteOrDelete(
     isSupervisor: boolean,
     dateStart?: string | Date | null,
     timeStrat?: string | null,
+    dateEnd?: string | Date | null,
   ): Promise<{ message: string; status: number } | null> {
     if (!isSupervisor || !dateStart) return null;
 
@@ -2204,11 +2294,19 @@ export class OperationService {
 
     const hoursLimit = Number(horasConfig.value);
     const now = getColombianDateTime();
+    const operationDate = toLocalDate(dateStart);
+    const operationEndDate = dateEnd ? toLocalDate(dateEnd) : null;
+
+    const exceptionResult = this.getHoursLimitWeekendException(
+      operationDate,
+      operationEndDate,
+      now,
+    );
+    if (exceptionResult !== undefined) return exceptionResult;
+
     const startOfCurrentWeek = getStartOfWeek(now);
     const startOfNextWeek = new Date(startOfCurrentWeek);
     startOfNextWeek.setDate(startOfCurrentWeek.getDate() + 7);
-
-    const operationDate = toLocalDate(dateStart);
 
     // Solo se puede completar/eliminar dentro de la semana actual
     if (operationDate < startOfCurrentWeek || operationDate >= startOfNextWeek) {
@@ -2605,7 +2703,7 @@ export class OperationService {
       // ✅ VERIFICAR SI LA OPERACIÓN ESTÁ COMPLETADA ANTES DE PROCESAR TRABAJADORES
       const currentOperation = await this.prisma.operation.findUnique({
         where: { id },
-        select: { status: true, dateStart: true, timeStrat: true },
+        select: { status: true, dateStart: true, timeStrat: true, dateEnd: true },
       });
 
 
@@ -2615,19 +2713,28 @@ export class OperationService {
       // viene en este guardado si el usuario la está cambiando, o si no la actual en BD.
       const effectiveDateStart = dateStart ?? currentOperation?.dateStart ?? undefined;
       const effectiveTimeStrat = timeStrat ?? currentOperation?.timeStrat ?? undefined;
+      const effectiveDateEnd = dateEnd ?? currentOperation?.dateEnd ?? undefined;
 
       // Iniciar (status -> INPROGRESS) no tiene restricción alguna para SUPERVISOR.
-      // Completar (status -> COMPLETED) se rige por HORAS_REGISTRO_OPERACIONES (semana
-      // actual + horas desde dateStart+timeStrat). Cualquier otro guardado es una simple
-      // edición y se rige por SEMANAS_COMPLETAR_OPERACIONES.
+      // Completar (status -> COMPLETED) se rige por HORAS_REGISTRO_OPERACIONES (horas
+      // desde dateStart+timeStrat). SEMANAS_COMPLETAR_OPERACIONES solo debe aplicar
+      // cuando el guardado realmente reprograma la operación (trae dateStart en el
+      // payload) — el flujo de "Completar" grupo por grupo (submitGroupHandler /
+      // groupCompletionForm) guarda dateEnd/timeEnd/facturación por grupo sin tocar el
+      // dateStart de nivel operación ni el status, así que NO debe quedar atrapado por
+      // esta restricción de reprogramación.
       if (directFields.status === StatusOperation.COMPLETED) {
         const hoursLimitError = await this.validateHoursLimitForCompleteOrDelete(
           !!isSupervisor,
           effectiveDateStart,
           effectiveTimeStrat,
+          effectiveDateEnd,
         );
         if (hoursLimitError) return hoursLimitError;
-      } else if (directFields.status !== StatusOperation.INPROGRESS) {
+      } else if (
+        directFields.status !== StatusOperation.INPROGRESS &&
+        dateStart !== undefined
+      ) {
         const weeksLimitError = await this.validateWeeksLimitForEdit(
           !!isSupervisor,
           effectiveDateStart,
@@ -3133,6 +3240,7 @@ async remove(
       !!isSupervisor,
       validateOperation.dateStart,
       validateOperation.timeStrat,
+      validateOperation.dateEnd,
     );
     if (hoursLimitError) return hoursLimitError;
 
@@ -3570,6 +3678,53 @@ if (feedingCount > 0 && !confirmDelete) {
     if (isCompleted) {
       // console.log('[OperationService] 🔄 Procesando cambios en operación COMPLETADA');
     }
+
+    // ✅ Capturar, ANTES de ejecutar los disconnects, la programación/tarifa
+    // vigente de cada grupo real referenciado por un connect. Si el disconnect
+    // elimina al último Operation_Worker de ese grupo (p. ej. reemplazar al
+    // único trabajador de un grupo en la misma petición), el connect ya no
+    // tendría de dónde heredar dateStart/timeStart/dateEnd/timeEnd/id_task/
+    // id_subtask/id_tariff — quedando el grupo "vacío" de tarifa aunque su
+    // id_group sobreviva.
+    const groupSnapshots = new Map<string, {
+      dateStart: Date | null;
+      dateEnd: Date | null;
+      timeStart: string | null;
+      timeEnd: string | null;
+      id_task: number | null;
+      id_subtask: number | null;
+      id_tariff: number | null;
+      observation: string | null;
+    }>();
+
+    if (workersOps.connect && Array.isArray(workersOps.connect)) {
+      for (const connectOp of workersOps.connect) {
+        const groupId = connectOp?.groupId;
+        const isTemp = typeof groupId === 'string' && groupId.startsWith('temp_');
+
+        if (!groupId || isTemp || connectOp.isNewGroup === true || groupSnapshots.has(groupId)) {
+          continue;
+        }
+
+        const existingGroupWorker = await this.prisma.operation_Worker.findFirst({
+          where: { id_operation: operationId, id_group: groupId },
+        });
+
+        if (existingGroupWorker) {
+          groupSnapshots.set(groupId, {
+            dateStart: existingGroupWorker.dateStart,
+            dateEnd: existingGroupWorker.dateEnd,
+            timeStart: existingGroupWorker.timeStart,
+            timeEnd: existingGroupWorker.timeEnd,
+            id_task: existingGroupWorker.id_task,
+            id_subtask: existingGroupWorker.id_subtask,
+            id_tariff: existingGroupWorker.id_tariff,
+            observation: existingGroupWorker.observation,
+          });
+        }
+      }
+    }
+
     // 1. DESCONECTAR/ELIMINAR TRABAJADORES (mantener igual)
     if (workersOps.disconnect && Array.isArray(workersOps.disconnect) && workersOps.disconnect.length > 0) {
       // console.log('[OperationService] Eliminando trabajadores:', workersOps.disconnect);
@@ -3829,33 +3984,12 @@ if (feedingCount > 0 && !confirmDelete) {
             // ✅ CASO: AGREGAR A GRUPO EXISTENTE REAL
             // console.log('[OperationService] 🔗 Agregando a grupo existente real:', connectOp.groupId);
 
-            // ✅ OBTENER VALORES DEL GRUPO EXISTENTE PARA HEREDARLOS
-            const existingGroupWorker = await this.prisma.operation_Worker.findFirst({
-              where: {
-                id_operation: operationId,
-                id_group: connectOp.groupId,
-              },
-              include: {
-                tariff: true,
-              },
-            });
-
-
-
-            // const assignData = {
-            //   id_operation: operationId,
-            //   workersWithSchedule: [{
-            //     workerIds: connectOp.workerIds.map(id => Number(id)),
-            //     id_group: connectOp.groupId, // ✅ USAR GRUPO EXISTENTE
-            //     dateStart: connectOp.dateStart,
-            //     dateEnd: connectOp.dateEnd || null,
-            //     timeStart: connectOp.timeStart,
-            //     timeEnd: connectOp.timeEnd || null,
-            //     id_task: connectOp.id_task,
-            //     id_subtask: connectOp.id_subtask,
-            //     id_tariff: connectOp.id_tariff,
-            //   }]
-            // };
+            // ✅ HEREDAR VALORES DEL GRUPO EXISTENTE desde el snapshot tomado ANTES
+            // de procesar los disconnects (ver arriba). Usar una consulta en vivo
+            // aquí sería incorrecto si el disconnect de esta misma petición ya
+            // eliminó al último Operation_Worker del grupo: ya no habría ningún
+            // registro del cual heredar id_task/id_subtask/id_tariff.
+            const existingGroupWorker = groupSnapshots.get(connectOp.groupId);
 
             const assignData = {
               id_operation: operationId,

@@ -25,6 +25,7 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { WorkerDistributionQueryDto } from './dto/worker-distribution-query.dto';
 import { getColombianDateTime } from 'src/common/utils/dateColombia';
+import { getColombiaHolidayDates } from 'src/common/utils/dateType';
 import { WorkerHoursReportQueryDto } from './dto/worker-hours-report-query.dto';
 import { OperationExportService } from './services/operation-export.service';
 import { ExportOperationsDto, ExportReportType } from './dto/export-operations.dto';
@@ -588,6 +589,30 @@ export class OperationController {
     return `${browser} on ${os}`;
   }
 
+
+  @Get('holidays')
+  @ApiOperation({
+    summary: 'Festivos colombianos de uno o más años',
+    description:
+      'Devuelve las fechas festivas colombianas (formato YYYY-MM-DD) del/los año(s) pedido(s). ' +
+      'Usado por móvil/web para evaluar client-side las excepciones de HORAS_REGISTRO_OPERACIONES ' +
+      'que dependen de festivos (ver validateHoursLimitForCompleteOrDelete), sin duplicar la ' +
+      'librería de festivos que ya usa el backend.',
+  })
+  @ApiQuery({ name: 'years', required: false, description: 'Años separados por coma, p.ej. "2026,2027". Por defecto el año actual y el siguiente.' })
+  @ApiResponse({ status: 200, description: 'Lista de fechas festivas' })
+  async getHolidays(@Query('years') years?: string) {
+    const currentYear = new Date().getFullYear();
+    const requestedYears = years
+      ? years.split(',').map((y) => parseInt(y.trim(), 10)).filter((y) => !isNaN(y))
+      : [currentYear, currentYear + 1];
+
+    const dates = Array.from(
+      new Set(requestedYears.flatMap((year) => getColombiaHolidayDates(year))),
+    ).sort();
+
+    return { dates };
+  }
 
   @Get('pending-status')
   @ApiOperation({

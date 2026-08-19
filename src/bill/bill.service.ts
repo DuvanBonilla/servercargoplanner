@@ -2092,11 +2092,11 @@ export class BillService {
       // Prioriza el id_group de operationWorker (misma fuente que usa el export a Excel) sobre bill.id_group,
       // que puede quedar desactualizado si el grupo se reasignó después de crear la factura.
       groupCode: this.resolveGroupCode(billDB.operation, operationWorker?.id_group || billDB.id_group),
-      // ✅ AGREGAR FECHAS DEL GRUPO
-      dateStart_group: operationWorker.dateStart,
-      timeStart_group: operationWorker.timeStart,
-      dateEnd_group: operationWorker.dateEnd,
-      timeEnd_group: operationWorker.timeEnd,
+      // ✅ AGREGAR FECHAS DEL GRUPO (billDetails puede estar vacío si el grupo quedó sin trabajadores)
+      dateStart_group: operationWorker?.dateStart ?? null,
+      timeStart_group: operationWorker?.timeStart ?? null,
+      dateEnd_group: operationWorker?.dateEnd ?? null,
+      timeEnd_group: operationWorker?.timeEnd ?? null,
       billHoursDistribution: {
         HOD: billDB.HOD,
         HON: billDB.HON,
@@ -2758,7 +2758,7 @@ export class BillService {
       matchingGroupSummary.workerCount =
         matchingGroupSummary.workers?.length || 0;
 
-      console.log(`🔧 [calculateGroupTotalsForUpdate] HORAS - workerCount: ${matchingGroupSummary.workerCount}`);
+      // console.log(`🔧 [calculateGroupTotalsForUpdate] HORAS - workerCount: ${matchingGroupSummary.workerCount}`);
 
       //INPORTANTE: PARA RECALCULAR LAS FECHAS SÍ ES DOMINGO O FESTIVO
       //reconstruye el dateRange para que traiga de nuevo las fechas de inicio y fin del grupo, si no las carga por defecto
@@ -2775,7 +2775,7 @@ export class BillService {
         billDb?.status,
       );
 
-      console.log('método calculateGroupTotalsForUpdate:', result);
+      // console.log('método calculateGroupTotalsForUpdate:', result);
 
       totalPaysheetGroup = result.totalFinalPayroll;
       totalFacturationGroup = result.totalFinalFacturation;
