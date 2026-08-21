@@ -72,30 +72,30 @@ export class OperationsCronService {
    * Inicializa operaciones PENDING a INPROGRESS cuando llega su fecha y hora programada
    * Se ejecuta cada 15 minutos para reducir carga en servidor DigitalOcean
   //  */
-  // @Cron('*/15 * * * *') // Cada 15 minutos (reducida de 5 para evitar desconexión)
-  // async handleUpdateInProgressOperations() {
-  //   // 🎛️ Verificar si el cron job está habilitado
-  //   if (!this.isEnabled) {
-  //     return; // Salir silenciosamente si está deshabilitado
-  //   }
+  @Cron('*/15 * * * *', { timeZone: 'America/Bogota' }) // Cada 15 minutos (reducida de 5 para evitar desconexión)
+  async handleUpdateInProgressOperations() {
+    // 🎛️ Verificar si el cron job está habilitado
+    if (!this.isEnabled) {
+      return; // Salir silenciosamente si está deshabilitado
+    }
 
-  //   try {
-  //     const result = await this.updateOperation.updateInProgressOperations();
-      
-  //     if (result.updatedCount > 0) {
-  //       this.logger.log(`✅ ${result.updatedCount} operaciones iniciadas automáticamente`);
-  //     }
-      
-  //     // 📊 Log informativo sobre optimizaciones
-  //     if (result.skipped && result.reason === 'Deep sleep mode') {
-  //       this.logger.debug(`😴 Modo sueño profundo activo (próxima verificación en ${result.nextCheck} minutos)`);
-  //     } else if (result.consecutiveEmptyRuns && result.consecutiveEmptyRuns >= 3) {
-  //       this.logger.debug(`📈 ${result.consecutiveEmptyRuns} ejecuciones consecutivas sin operaciones${result.willEnterDeepSleep ? ' - entrando en modo sueño profundo' : ''}`);
-  //     }
-  //   } catch (error) {
-  //     this.logger.error('Error in cron job updateInProgressOperations:', error);
-  //   }
-  // }
+    try {
+      const result = await this.updateOperation.updateInProgressOperations();
+
+      if (result.updatedCount > 0) {
+        this.logger.log(`✅ ${result.updatedCount} operaciones iniciadas automáticamente`);
+      }
+
+      // 📊 Log informativo sobre optimizaciones
+      if (result.skipped && result.reason === 'Deep sleep mode') {
+        this.logger.debug(`😴 Modo sueño profundo activo (próxima verificación en ${result.nextCheck} minutos)`);
+      } else if (result.consecutiveEmptyRuns && result.consecutiveEmptyRuns >= 3) {
+        this.logger.debug(`📈 ${result.consecutiveEmptyRuns} ejecuciones consecutivas sin operaciones${result.willEnterDeepSleep ? ' - entrando en modo sueño profundo' : ''}`);
+      }
+    } catch (error) {
+      this.logger.error('Error in cron job updateInProgressOperations:', error);
+    }
+  }
 
   /**
    * Actualiza los trabajadores con permisos que inician hoy
@@ -133,7 +133,7 @@ export class OperationsCronService {
    * Actualiza los trabajadores con incapacidades expiradas
    */
 
-@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'America/Bogota' })
 async handleUpdateWorkersWithExpiredInabilities() {
   try {
     await this.updateInability.updateWorkersWithExpiredInabilities();

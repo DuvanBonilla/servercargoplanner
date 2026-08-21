@@ -357,61 +357,35 @@ export class UpdateOperationService {
 //   }
 // }
 //---------------------------------------------------------------------
+// 🔎 FASE 1: clasificar operaciones (solo lectura, sin queries de escritura)
+const operationsToUpdate: typeof pendingOperations = [];
+
+// startOfDay ya representa la medianoche de Bogotá correctamente desplazada
+// (ver getColombianStartOfDay) — se reutiliza para "hoy" en vez de derivarlo
+// de `now.toISOString()`, que usa el día calendario UTC y falla entre las
+// 19:00 y las 00:00 hora Colombia.
+const todayIsoOnly = startOfDay.toISOString().slice(0, 10);
+
 for (const operation of pendingOperations) {
-  const [hours, minutes] = operation.timeStrat
-    .split(':')
-    .map(Number);
+  const [hours, minutes] = operation.timeStrat.split(':').map(Number);
 
-  // =====================================================
-  // ✅ CONSTRUIR FECHA/HORA REAL DE LA OPERACIÓN
-  // evitando problemas de timezone del servidor
-  // =====================================================
-
+  // Construir fecha/hora real de la operación evitando problemas de timezone del servidor
   const startDateTime = new Date(operation.dateStart);
+  startDateTime.setUTCHours(hours, minutes, 0, 0);
 
-  startDateTime.setUTCHours(
-    hours,
-    minutes,
-    0,
-    0,
-  );
+  const minutesDiff = differenceInMinutes(now, startDateTime);
 
-  // =====================================================
-  // ✅ DIFERENCIA EN MINUTOS
-  // =====================================================
-
-  const minutesDiff = differenceInMinutes(
-    now,
-    startDateTime,
-  );
-
-  // =====================================================
   // 🛡️ PERÍODO DE GRACIA
-  // =====================================================
-
-  const minutesSinceCreation =
-    differenceInMinutes(
-      now,
-      operation.createAt,
-    );
-
-  const isInGracePeriod =
-    minutesSinceCreation >= 0 &&
-    minutesSinceCreation < 3;
+  const minutesSinceCreation = differenceInMinutes(now, operation.createAt);
+  const isInGracePeriod = minutesSinceCreation >= 0 && minutesSinceCreation < 3;
 
   if (isInGracePeriod) {
     this.logger.debug(
       `⏳ Operación ${operation.id} en período de gracia (creada hace ${minutesSinceCreation} minutos), saltando activación automática`,
     );
-
     gracePeriodCount++;
-
     continue;
   }
-
-  // =====================================================
-  // ⚠️ DEBUG TIMEZONE
-  // =====================================================
 
   if (minutesSinceCreation < 0) {
     this.logger.warn(
@@ -419,144 +393,67 @@ for (const operation of pendingOperations) {
     );
   }
 
-  // =====================================================
-  // 📊 DEBUG GENERAL
-  // =====================================================
-
   this.logger.debug(
     `🕒 Operación ${operation.id} | now=${now.toISOString()} | start=${startDateTime.toISOString()} | diff=${minutesDiff}`,
   );
 
-  // =====================================================
-  // ✅ NUEVA LÓGICA
-  // =====================================================
-
   let shouldUpdate = false;
   let reason = '';
 
-  // =====================================================
-  // ✅ COMPARAR SOLO FECHAS YYYY-MM-DD
-  // =====================================================
+  const operationDateIsoOnly = operation.dateStart.toISOString().slice(0, 10);
 
-  const operationDateIsoOnly =
-    operation.dateStart
-      .toISOString()
-      .slice(0, 10);
-
-  const todayIsoOnly =
-    now.toISOString().slice(0, 10);
-
-  // =====================================================
-  // ✅ CASO 1:
-  // OPERACIONES DE DÍAS ANTERIORES
-  // =====================================================
-
-  if (
-    operationDateIsoOnly < todayIsoOnly
-  ) {
+  if (operationDateIsoOnly < todayIsoOnly) {
+    // CASO 1: operación de días anteriores → activar inmediatamente
     shouldUpdate = true;
-
-    reason =
-      'previous day operation';
-
-    this.logger.debug(
-      `📅 Operación ${operation.id} es de un día anterior → activando automáticamente`,
-    );
-  }
-
-  // =====================================================
-  // ✅ CASO 2:
-  // OPERACIONES DEL DÍA ACTUAL
-  // =====================================================
-
-  else if (
-    operationDateIsoOnly ===
-    todayIsoOnly
-  ) {
+    reason = 'previous day operation';
+    this.logger.debug(`📅 Operación ${operation.id} es de un día anterior → activando automáticamente`);
+  } else if (operationDateIsoOnly === todayIsoOnly) {
+    // CASO 2: operación de hoy → esperar 1 minuto después de la hora programada
     if (minutesDiff >= 1) {
       shouldUpdate = true;
-
-      reason =
-        'scheduled time passed';
-
-      this.logger.debug(
-        `⏰ Operación ${operation.id} ya cumplió el tiempo programado (${minutesDiff} minutos)`,
-      );
+      reason = 'scheduled time passed';
+      this.logger.debug(`⏰ Operación ${operation.id} ya cumplió el tiempo programado (${minutesDiff} minutos)`);
     } else {
-      this.logger.debug(
-        `⌛ Operación ${operation.id} aún no cumple tiempo programado (${minutesDiff} minutos)`,
-      );
+      this.logger.debug(`⌛ Operación ${operation.id} aún no cumple tiempo programado (${minutesDiff} minutos)`);
     }
+  } else {
+    // CASO 3: operación futura → permanece PENDING
+    this.logger.debug(`📆 Operación ${operation.id} programada para fecha futura (${operationDateIsoOnly}) → permanece PENDING`);
   }
-
-  // =====================================================
-  // ✅ CASO 3:
-  // OPERACIONES FUTURAS
-  // =====================================================
-
-  else {
-    this.logger.debug(
-      `📆 Operación ${operation.id} programada para fecha futura (${operationDateIsoOnly}) → permanece PENDING`,
-    );
-  }
-
-  // =====================================================
-  // ✅ ACTUALIZAR A INPROGRESS
-  // =====================================================
 
   if (shouldUpdate) {
-    this.logger.debug(
-      `🚀 Actualizando operación ${operation.id} a INPROGRESS (razón: ${reason})`,
-    );
-
-    await this.prisma.$transaction(
-      async (tx) => {
-        // ============================================
-        // ✅ ACTUALIZAR OPERACIÓN
-        // ============================================
-
-        await tx.operation.update({
-          where: {
-            id: operation.id,
-          },
-          data: {
-            status: 'INPROGRESS',
-          },
-        });
-
-        // ============================================
-        // ✅ ACTUALIZAR OPERATION_WORKER
-        // ============================================
-
-        await tx.operation_Worker.updateMany(
-          {
-            where: {
-              id_operation:
-                operation.id,
-
-              dateEnd: null,
-
-              timeEnd: null,
-            },
-
-            data: {
-              dateStart:
-                operation.dateStart,
-
-              timeStart:
-                operation.timeStrat,
-            },
-          },
-        );
-      },
-    );
-
-    updatedCount++;
-
-    this.logger.log(
-      `✅ Operación ${operation.id} actualizada correctamente a INPROGRESS`,
-    );
+    this.logger.debug(`🚀 Marcando operación ${operation.id} para pasar a INPROGRESS (razón: ${reason})`);
+    operationsToUpdate.push(operation);
   }
+}
+
+// 🔧 FASE 2: aplicar todas las actualizaciones en UNA sola transacción
+// (antes se abría una transacción por operación: hasta 50 BEGIN/COMMIT por
+// ejecución del cron, lo que multiplicaba la carga sobre Postgres sin necesidad)
+if (operationsToUpdate.length > 0) {
+  await this.prisma.$transaction(async (tx) => {
+    for (const operation of operationsToUpdate) {
+      await tx.operation.update({
+        where: { id: operation.id },
+        data: { status: 'INPROGRESS' },
+      });
+
+      await tx.operation_Worker.updateMany({
+        where: {
+          id_operation: operation.id,
+          dateEnd: null,
+          timeEnd: null,
+        },
+        data: {
+          dateStart: operation.dateStart,
+          timeStart: operation.timeStrat,
+        },
+      });
+    }
+  });
+
+  updatedCount = operationsToUpdate.length;
+  this.logger.log(`✅ ${updatedCount} operaciones actualizadas correctamente a INPROGRESS`);
 }
 
       if (updatedCount > 0) {

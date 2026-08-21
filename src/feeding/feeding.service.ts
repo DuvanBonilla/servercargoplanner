@@ -947,14 +947,12 @@ for (const feeding of allFeedings) {
           const st = (w.timeStart || '00:00').split(':').map(Number);
           const sp = st[0] * 60 + st[1];
           const todayM = now.getHours() * 60 + now.getMinutes();
-          // Protección contra fechas corruptas/antiguas: sin este límite, un
-          // dateStart erróneo (ej. de hace años) hace que el for-loop de abajo
-          // itere decenas de miles de días de forma síncrona y sature la CPU.
-          const MAX_LOOKBACK_MS = 31 * 24 * 60 * 60 * 1000;
+          // Solo se buscan comidas pendientes de los últimos 2 días: en la práctica
+          // no se registra alimentación pendiente más antigua, y limitar el rango
+          // evita que el for-loop de abajo itere días de más (dateStart lejano o
+          // corrupto) de forma síncrona y sature la CPU.
+          const MAX_LOOKBACK_MS = 2 * 24 * 60 * 60 * 1000;
           if (ed.getTime() - ss.getTime() > MAX_LOOKBACK_MS) {
-            console.warn(
-              `[FeedingService] Rango de fechas excesivo para worker ${w.id_worker} en operación ${o.id} (dateStart=${sd}); limitando a 31 días`,
-            );
             ss.setTime(ed.getTime() - MAX_LOOKBACK_MS);
           }
           // const feeds = await this.prisma.workerFeeding.findMany({

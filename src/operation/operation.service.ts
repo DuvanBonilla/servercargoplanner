@@ -2872,6 +2872,22 @@ export class OperationService {
           data: operationUpdateData,
         });
       }
+
+      // 🔔 DESPERTAR SISTEMA: si esta edición reprograma dateStart/timeStrat de una
+      // operación (p. ej. editar fechas desde la Bill), el cron de PENDING→INPROGRESS
+      // podría estar en modo sueño profundo y no revisar de nuevo hasta 30 minutos
+      // después. Lo despertamos aquí para que la próxima corrida (máx. 15 min) la
+      // procese en vivo en lugar de quedar atascada hasta el próximo ciclo de sueño.
+      if (dateStart || timeStrat) {
+        try {
+          const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
+          const updateOperationService = this.moduleRef.get(UpdateOperationService, { strict: false });
+          updateOperationService.wakeUpFromDeepSleep(`Operación reprogramada (ID: ${id})`);
+        } catch (error) {
+          console.warn('[OperationService] ⚠️ No se pudo despertar el sistema automático:', (error as Error).message);
+        }
+      }
+
       // ✅ RECALCULAR op_duration siempre que haya cambios en fechas u horas
       const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
