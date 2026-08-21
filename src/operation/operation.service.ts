@@ -3288,15 +3288,19 @@ async remove(
         select: { role: true },
       });
 
-      if (
-        !user ||
-        (user.role !== Role.ADMIN &&
-          user.role !== Role.SUPERADMIN)
-      ) {
+      const isCompletedOperation =
+        validateOperation.status === StatusOperation.COMPLETED;
+
+      const allowedRoles: Role[] = isCompletedOperation
+        ? [Role.ADMIN, Role.SUPERADMIN]
+        : [Role.ADMIN, Role.SUPERADMIN, Role.SUPERVISOR, Role.PROGRAMMER];
+
+      if (!user || !allowedRoles.includes(user.role)) {
         return {
           status: 403,
-          message:
-            'Solo ADMIN y SUPERADMIN pueden eliminar una operación completa.',
+          message: isCompletedOperation
+            ? 'Solo ADMIN y SUPERADMIN pueden eliminar una operación finalizada.'
+            : 'No tienes permisos para eliminar esta operación.',
         };
       }
 
