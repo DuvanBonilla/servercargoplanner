@@ -1100,6 +1100,7 @@ export class OperationService {
                         unitOfMeasure: { select: { name: true } },
                       },
                     },
+                    worker: { select: { id: true, name: true } },
                   },
                 },
               },
@@ -1133,6 +1134,7 @@ export class OperationService {
       string,
       {
         workerIds: Set<number>;
+        workerNames: Map<number, string>;
         subservices: Set<string>;
         unitNames: Set<string>;
         totalQuantity: number;
@@ -1148,6 +1150,7 @@ export class OperationService {
       if (!groupMap.has(groupId)) {
         groupMap.set(groupId, {
           workerIds: new Set(),
+          workerNames: new Map(),
           subservices: new Set(),
           unitNames: new Set(),
           totalQuantity: 0,
@@ -1159,6 +1162,7 @@ export class OperationService {
       }
       const g = groupMap.get(groupId)!;
       g.workerIds.add(row.id_worker);
+      if (row.worker?.name) g.workerNames.set(row.id_worker, row.worker.name);
       if (row.SubTask?.name) g.subservices.add(row.SubTask.name);
       if (row.tariff?.unitOfMeasure?.name) g.unitNames.add(row.tariff.unitOfMeasure.name);
       if (row.tariff?.pay_units) g.totalQuantity += Number(row.tariff.pay_units);
@@ -1184,6 +1188,7 @@ export class OperationService {
       return {
         groupId,
         workersCount: g.workerIds.size,
+        workers: Array.from(g.workerNames.entries()).map(([id, name]) => ({ id, name })),
         totalHoursWorked: Math.round(totalHoursWorked * 100) / 100,
         subservices: Array.from(g.subservices),
         unitMeasures: Array.from(g.unitNames),
@@ -1529,6 +1534,7 @@ export class OperationService {
                           },
                         },
                       },
+                      worker: { select: { id: true, name: true } },
                     },
                   },
                 },
@@ -1572,6 +1578,7 @@ export class OperationService {
       string,
       {
         workerIds: Set<number>;
+        workerNames: Map<number, string>;
         subservices: Set<string>;
         unitNames: Set<string>;
         totalQuantity: number;
@@ -1587,6 +1594,7 @@ export class OperationService {
       if (!groupMap.has(groupId)) {
         groupMap.set(groupId, {
           workerIds: new Set<number>(),
+          workerNames: new Map<number, string>(),
           subservices: new Set<string>(),
           unitNames: new Set<string>(),
           totalQuantity: 0,
@@ -1599,6 +1607,7 @@ export class OperationService {
 
       const group = groupMap.get(groupId)!;
       group.workerIds.add(row.id_worker);
+      if (row.worker?.name) group.workerNames.set(row.id_worker, row.worker.name);
 
       this.mergeGroupDateRange(group, row.dateStart, row.timeStart, row.dateEnd, row.timeEnd);
 
@@ -1634,6 +1643,7 @@ export class OperationService {
       return {
         groupId,
         workersCount: group.workerIds.size,
+        workers: Array.from(group.workerNames.entries()).map(([id, name]) => ({ id, name })),
         totalHoursWorked: Math.round(rangeHours * 100) / 100,
         subservices: Array.from(group.subservices),
         unitOfMeasure: Array.from(group.unitNames),
@@ -1660,6 +1670,7 @@ export class OperationService {
         idGrupo: group.groupId,
         subservicio: group.subservices,
         cantTrabajadores: group.workersCount,
+        workers: group.workers,
         horasTrabajadas: Math.round(billHours * 100) / 100,
         amount: amount,
         unidadDeMedida: group.unitOfMeasure,
