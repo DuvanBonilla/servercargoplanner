@@ -63,7 +63,9 @@ export const CurrentUser = createParamDecorator(
           request.isSupervisor !== undefined
             ? request.isSupervisor
             : request.user?.role === Role.SUPERVISOR ||
-              request.userPayload?.role === Role.SUPERVISOR;
+              request.user?.role === Role.RECEPTION ||
+              request.userPayload?.role === Role.SUPERVISOR ||
+              request.userPayload?.role === Role.RECEPTION;
         break;
       case 'isProgrammer':
         result =
@@ -90,7 +92,9 @@ export const CurrentUser = createParamDecorator(
           request.isGH !== undefined
             ? request.isGH
             : request.user?.role === Role.GH ||
-              request.userPayload?.role === Role.GH;
+              request.user?.role === Role.RECEPTION ||
+              request.userPayload?.role === Role.GH ||
+              request.userPayload?.role === Role.RECEPTION;
         break;  
       default:
         // Para otros campos, buscar en request.user primero, luego en userPayload

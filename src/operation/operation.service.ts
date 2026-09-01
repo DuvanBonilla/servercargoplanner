@@ -2264,15 +2264,23 @@ export class OperationService {
   }
 
   /**
-   * Restricción por HORAS_REGISTRO_OPERACIONES: solo aplica al SUPERVISOR y gobierna
-   * COMPLETAR y ELIMINAR (crear/editar se rigen por SEMANAS_COMPLETAR_OPERACIONES e
-   * iniciar no tiene restricción). Si está ACTIVE, solo se puede completar/eliminar una
-   * operación cuyo dateStart caiga en la semana ACTUAL (ISO, lunes-domingo) y, además,
-   * mientras no hayan pasado más de "value" horas desde su dateStart+timeStrat. Fuera
-   * de la semana actual, o pasadas esas horas dentro de la semana actual, queda
-   * bloqueado — SALVO que aplique una de las dos excepciones puntuales de
-   * getHoursLimitWeekendException (operación que arranca domingo o viernes de la
-   * semana anterior). Si está INACTIVE no se aplica ningún límite.
+   * Restricción para COMPLETAR/ELIMINAR: solo aplica al SUPERVISOR (crear/editar se
+   * rigen por SEMANAS_COMPLETAR_OPERACIONES; iniciar no tiene restricción). Tiene tres
+   * partes independientes:
+   *
+   * 1) Las dos excepciones puntuales de getHoursLimitWeekendException (operación que
+   *    arranca domingo o viernes de la semana ISO inmediatamente anterior) SIEMPRE se
+   *    evalúan primero, sin importar el estado (ACTIVE/INACTIVE) de
+   *    HORAS_REGISTRO_OPERACIONES ni de SEMANAS_COMPLETAR_OPERACIONES — no dependen de
+   *    ninguna de las dos configuraciones.
+   * 2) "Semana actual" (ISO, lunes-domingo): si ninguna excepción aplicó, un SUPERVISOR
+   *    SIEMPRE debe estar completando/eliminando una operación cuyo dateStart caiga en
+   *    la semana ACTUAL. Esto tampoco depende del estado de HORAS_REGISTRO_OPERACIONES
+   *    — se exige incluso si ese config está INACTIVE.
+   * 3) Límite de horas DENTRO de esa semana actual: si HORAS_REGISTRO_OPERACIONES está
+   *    ACTIVE, además no deben haber pasado más de "value" horas desde
+   *    dateStart+timeStrat. Si está INACTIVE, no hay límite de horas (pero la semana
+   *    actual del punto 2 se sigue exigiendo).
    */
   private async validateHoursLimitForCompleteOrDelete(
     isSupervisor: boolean,
@@ -2287,13 +2295,13 @@ export class OperationService {
     );
     const isHoursConfigActive =
       horasConfig && horasConfig.status === StatusActivation.ACTIVE;
-    if (!isHoursConfigActive) return null;
 
-    const hoursLimit = Number(horasConfig.value);
     const now = getColombianDateTime();
     const operationDate = toLocalDate(dateStart);
     const operationEndDate = dateEnd ? toLocalDate(dateEnd) : null;
 
+    // Las excepciones NO dependen de HORAS_REGISTRO_OPERACIONES ni de
+    // SEMANAS_COMPLETAR_OPERACIONES: siempre se evalúan.
     const exceptionResult = this.getHoursLimitWeekendException(
       operationDate,
       operationEndDate,
@@ -2305,7 +2313,8 @@ export class OperationService {
     const startOfNextWeek = new Date(startOfCurrentWeek);
     startOfNextWeek.setDate(startOfCurrentWeek.getDate() + 7);
 
-    // Solo se puede completar/eliminar dentro de la semana actual
+    // Semana actual: requisito fijo para SUPERVISOR, sin importar el estado de
+    // HORAS_REGISTRO_OPERACIONES.
     if (operationDate < startOfCurrentWeek || operationDate >= startOfNextWeek) {
       return {
         message: `Como SUPERVISOR solo puedes completar o eliminar operaciones de la semana actual.`,
@@ -2313,6 +2322,10 @@ export class OperationService {
       };
     }
 
+    // El límite de horas DENTRO de la semana actual sí depende de que el config esté ACTIVE.
+    if (!isHoursConfigActive) return null;
+
+    const hoursLimit = Number(horasConfig.value);
     const operationDateTime = this.combineDateAndTime(operationDate, timeStrat || undefined);
     const limitDateTime = new Date(
       operationDateTime.getTime() + hoursLimit * 60 * 60 * 1000,
@@ -2361,7 +2374,7 @@ export class OperationService {
       // SEMANAS_COMPLETAR_OPERACIONES limita cuántas semanas hacia atrás puede el SUPERVISOR
       // crear una operación (completar/eliminar se rigen por HORAS_REGISTRO_OPERACIONES).
       const weeksLimitError = await this.validateWeeksLimitForEdit(
-        user?.role === Role.SUPERVISOR,
+        user?.role === Role.SUPERVISOR || user?.role === Role.RECEPTION,
         createOperationDto.dateStart,
       );
       if (weeksLimitError) return weeksLimitError;
@@ -3304,7 +3317,7 @@ async remove(
 
       const allowedRoles: Role[] = isCompletedOperation
         ? [Role.ADMIN, Role.SUPERADMIN]
-        : [Role.ADMIN, Role.SUPERADMIN, Role.SUPERVISOR, Role.PROGRAMMER];
+        : [Role.ADMIN, Role.SUPERADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.RECEPTION];
 
       if (!user || !allowedRoles.includes(user.role)) {
         return {

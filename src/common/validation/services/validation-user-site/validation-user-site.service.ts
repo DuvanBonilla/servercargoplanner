@@ -78,7 +78,7 @@ export class ValidationUserSiteService {
       }
 
       // Para supervisores ó programadores, verificar que tienen asignado ese subsite
-      if (user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER') {
+      if (user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER' || user?.role === 'RECEPTION') {
         const userSubsite = await this.prisma.user.findFirst({
           where: {
             id: userId,

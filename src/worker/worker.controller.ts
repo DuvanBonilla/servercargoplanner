@@ -219,7 +219,7 @@ async findById(
 }
 
   @Patch(':id')
-  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH)
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.RECEPTION)
 async update(
   @Param('id', ParseIntPipe) id: number,
   @Body() updateWorkerDto: UpdateWorkerDto,
@@ -258,7 +258,7 @@ async update(
 }
  //remove worker
  @Delete(':id')
- @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH)
+ @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.RECEPTION)
 async remove(
   @Param('id', ParseIntPipe) id: number,
   @CurrentUser('siteId') siteId: number,

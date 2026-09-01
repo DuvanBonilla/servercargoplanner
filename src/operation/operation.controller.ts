@@ -39,7 +39,7 @@ import { UpdateVesselDto } from './dto/update-vessel.dto';
 @Controller('operation')
 @UseInterceptors(SiteInterceptor)
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN)
+@Roles(Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN, Role.RECEPTION)
 @ApiBearerAuth('access-token')
 export class OperationController {
   constructor(

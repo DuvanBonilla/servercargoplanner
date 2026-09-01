@@ -35,7 +35,7 @@ import { Role } from '@prisma/client';
 // agrega al request la sede/subsede/rol del usuario decodificados del token.
 @Controller('zone')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.GH, Role.PROGRAMMER)
+@Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.GH, Role.PROGRAMMER, Role.RECEPTION)
 @ApiBearerAuth('access-token')
 @UseInterceptors(SiteInterceptor)
 export class ZoneController {
@@ -73,7 +73,7 @@ export class ZoneController {
 
 
   @Get()
-  @Roles(Role.SUPERADMIN, Role.SUPERVISOR, Role.ADMIN, Role.GH, Role.PROGRAMMER)
+  @Roles(Role.SUPERADMIN, Role.SUPERVISOR, Role.ADMIN, Role.GH, Role.PROGRAMMER, Role.RECEPTION)
   async findAll(
     @CurrentUser('siteId') siteId: number,
     @CurrentUser('subsiteId') subsiteId: number,
@@ -88,6 +88,7 @@ export class ZoneController {
       userRole === Role.SUPERADMIN ||
       userRole === Role.GH ||
       userRole === Role.SUPERVISOR ||
+      userRole === Role.RECEPTION ||
       userRole === Role.ADMIN;
 
     if (canSeeOtherSites) {
