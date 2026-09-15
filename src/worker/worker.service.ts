@@ -727,6 +727,45 @@ for (const permission of activePermissions) {
       throw new Error('Error get all Worker');
     }
   }
+
+  /**
+   * Resumen de trabajadores para el dashboard: conteo por estado calculado
+   * con groupBy (sin traer todos los registros).
+   * @param id_site filtro por sede (opcional)
+   */
+  async getSummary(id_site?: number) {
+    try {
+      const where: any = {};
+      if (id_site) where.id_site = id_site;
+
+      const statusCounts = await this.prisma.worker.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+      });
+
+      const counts = {
+        AVALIABLE: 0,
+        ASSIGNED: 0,
+        UNAVALIABLE: 0,
+        DEACTIVATED: 0,
+        DISABLE: 0,
+        PERMISSION: 0,
+      };
+      statusCounts.forEach((row) => {
+        counts[row.status] = row._count._all;
+      });
+
+      const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+
+      return { counts, total };
+    } catch (error) {
+      throw new Error(
+        `Error getting worker summary: ${(error as Error).message}`,
+      );
+    }
+  }
+
   /**
    * obtener un trabajador por su ID
    * @param id id del trabajador a buscar

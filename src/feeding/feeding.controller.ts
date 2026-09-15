@@ -153,25 +153,28 @@ export class FeedingController {
     return response;
   }
 
-  @Get('pending-inprogress')
+  @Get('operation/:id/group/:groupCode/roster')
   @ApiOperation({
     summary:
-      'Obtener alimentaciones pendientes consolidadas de todas las operaciones INPROGRESS',
+      'Roster de alimentación por grupo: trabajadores, fechas disponibles, tipos sugeridos y ya registrados',
   })
-  async findPendingInProgress(
-    @CurrentUser('siteId') siteId: number,
-    @CurrentUser('subsiteId') subsiteId: number,
+  async getGroupFeedingRoster(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('groupCode') groupCode: string,
+    @Query('dateStart') dateStart?: string,
+    @Query('dateEnd') dateEnd?: string,
+    @Query('timeEnd') timeEnd?: string,
   ) {
-    const response =
-      await this.feedingService.getPendingMealsForInProgressOperations(
-        siteId,
-        subsiteId,
-      );
-
-    if (response && response['status'] === 404) {
+    const response = await this.feedingService.getGroupFeedingRoster(
+      id,
+      groupCode,
+      dateStart,
+      dateEnd,
+      timeEnd,
+    );
+    if (response['status'] === 404) {
       throw new NotFoundException(response['message']);
     }
-
     return response;
   }
 
@@ -220,37 +223,6 @@ export class FeedingController {
     return response;
   }
 
-  @Get('operation/:id/available-meals')
-  @ApiOperation({
-    summary:
-      'Obtener las comidas disponibles para una operación según la hora actual',
-  })
-  async getAvailableMealsForOperation(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser('siteId') siteId: number,
-  ) {
-    const response =
-      await this.feedingService.getAvailableMealsForOperation(id);
-    if (response['status'] === 404) {
-      throw new NotFoundException(response['message']);
-    }
-    return response;
-  }
-
-  @Get('operation/:id/missing-meals')
-  @ApiOperation({
-    summary:
-      'Obtener alimentaciones faltantes por trabajador en una operación para el día actual',
-  })
-  async getMissingMealsForOperation(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser('siteId') siteId: number,
-  ) {
-    const response = await this.feedingService.getMissingMealsForOperation(id);
-    return response;
-  }
-
-  
   @Post('bulk')
   @ApiOperation({ summary: 'Registrar múltiples alimentaciones en una sola petición (máx. 500 ítems)' })
   async createBulk(

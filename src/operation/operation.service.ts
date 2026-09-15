@@ -53,6 +53,12 @@ export class OperationService {
     return await this.finderService.findAll(id_site, id_subsite);
   }
   /**
+   * Resumen de operaciones para el dashboard (conteo por estado + recientes)
+   */
+  async getSummary(id_site?: number, id_subsite?: number) {
+    return await this.finderService.getSummary(id_site, id_subsite);
+  }
+  /**
    * Busca una operación por su ID
    * @param id - ID de la operación a buscar
    * @returns Operación encontrada o mensaje de error

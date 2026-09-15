@@ -140,6 +140,17 @@ async create(
     );
   }
 
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Resumen de trabajadores para el dashboard',
+    description:
+      'Conteo de trabajadores por estado (AVALIABLE/ASSIGNED/DISABLE/PERMISSION/...) calculado en base de datos, ' +
+      'sin traer el listado completo de trabajadores. Pensado para alimentar las tarjetas y gráficas del dashboard.',
+  })
+  async getSummary(@CurrentUser('siteId') siteId: number) {
+    return this.workerService.getSummary(siteId);
+  }
+
   //   @Get()
   // async findAll(
   //   @CurrentUser('siteId') siteId: number,

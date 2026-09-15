@@ -542,6 +542,7 @@ export class BillService {
   private async calculateAlternativeServiceTotals(
     matchingGroupSummary: any,
     group: GroupBillDto,
+    amountDb?: number,
   ) {
     const facturationUnit =
       matchingGroupSummary.facturation_unit ||
@@ -587,7 +588,11 @@ export class BillService {
         totalFacturation = factResult.groupResults[0].billing.totalAmount;
       }
     } else {
-      const amount = group.amount || 0;
+      // ✅ FALLBACK a amountDb: en el flujo de recalcular horas (PATCH /bill/:id),
+      // el modal solo edita HOD/HON y envía group.amount en 0/undefined porque no
+      // es un campo editable ahí. Sin este fallback, la cantidad de la unidad de
+      // facturación (p. ej. CONTENEDORES) se perdía y total_bill quedaba en 0.
+      const amount = group.amount || amountDb || 0;
       totalFacturation = amount * facturationTariff;
     }
 
@@ -604,110 +609,14 @@ export class BillService {
       // console.log('método calculateAlternativeServiceTotals - Nómina:', paysheetResult);
 
 
+      // ✅ NO sumar compensatorio otra vez aquí: processHoursGroups() ya lo
+      // calcula y lo incluye dentro de totalFinalPayroll (ver
+      // HoursCalculationService.calculateHoursGroupResult, "SIEMPRE incluir
+      // para servicios por HORAS"). Este bloque volvía a calcular y sumar el
+      // mismo compensatorio una segunda vez, inflando total_paysheet (y por
+      // ende el pago por trabajador) tanto al crear como al recalcular la
+      // factura.
       totalPaysheet = paysheetResult.totalFinalPayroll;
-
-      // =========================================================
-      // ✅ CALCULAR COMPENSATORIO BASADO EN FECHAS DEL GRUPO
-      // =========================================================
-
-      const workerCount =
-        matchingGroupSummary.workers?.length || 0;
-
-      const paysheetTariff =
-        matchingGroupSummary.paysheet_tariff ??
-        matchingGroupSummary.tariffDetails?.paysheet_tariff ??
-        0;
-
-      const groupDuration =
-        Number(group.group_hours) || 0;
-
-      // ✅ USAR FECHAS REALES DEL GRUPO
-      const startDate =
-        matchingGroupSummary?.dateRange?.start
-          ? toLocalDate(
-            matchingGroupSummary.dateRange.start,
-          )
-          : undefined;
-
-      const endDate =
-        matchingGroupSummary?.dateRange?.end
-          ? toLocalDate(
-            matchingGroupSummary.dateRange.end,
-          )
-          : undefined;
-
-      // ✅ VALIDAR SI EL GRUPO CAE EN DOMINGO
-      const hasSundayReal =
-        startDate && endDate
-          ? hasSundayInRange(startDate, endDate)
-          : false;
-
-      // console.log(
-      //   '🔍 [calculateAlternativeServiceTotals] Validación domingo:',
-      //   {
-      //     groupId: matchingGroupSummary.groupId,
-      //     startDate:
-      //       startDate?.toISOString().split('T')[0],
-      //     endDate:
-      //       endDate?.toISOString().split('T')[0],
-      //     hasSundayReal,
-      //   },
-      // );
-
-      // =========================================================
-      // ✅ CÁLCULO DEL COMPENSATORIO
-      // =========================================================
-      const sundayHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES_DOMINGO');
-      const weekHoursConfig = await this.configurationService.findOneByName('HORAS_SEMANALES');
-
-      const weekHours = hasSundayReal ? sundayHoursConfig : weekHoursConfig;
-
-      const dayHours = weekHours / 6;
-
-      const compensatoryDay = dayHours / 6;
-
-      const compensatoryPerHour =
-        compensatoryDay / dayHours;
-
-      const effectiveHours = Math.min(
-        groupDuration,
-        dayHours,
-      );
-
-      const compensatoryHours =
-        effectiveHours * compensatoryPerHour;
-
-      const compensatoryAmount =
-        compensatoryHours *
-        workerCount *
-        paysheetTariff;
-
-      // console.log(
-      //   '📊 [Compensatorio Servicio Alternativo]',
-      //   {
-      //     groupId: matchingGroupSummary.groupId,
-      //     groupDuration,
-      //     compensatoryHours,
-      //     compensatoryAmount,
-      //     hasSundayReal,
-      //   },
-      // );
-
-      // =========================================================
-      // ✅ SOLO SUMAR SI NO ES DOMINGO
-      // =========================================================
-
-      if (!hasSundayReal) {
-        totalPaysheet += compensatoryAmount;
-
-        // console.log(
-        //   '✅ Compensatorio SUMADO al total_paysheet',
-        // );
-      } else {
-        console.log(
-          '🚫 Compensatorio NO sumado por domingo',
-        );
-      }
     } else if (paysheetUnit === 'JORNAL') {
       const paysheetResult = this.payrollCalculationService.processJornalGroups(
         [matchingGroupSummary],
@@ -716,7 +625,7 @@ export class BillService {
       );
       totalPaysheet = paysheetResult.groupResults[0].payroll.totalAmount;
     } else {
-      const amount = group.amount || 0;
+      const amount = group.amount || amountDb || 0;
       totalPaysheet = amount * paysheetTariff;
       // console.log('Amount:', amount, 'Paysheet Tariff:', paysheetTariff);
     }
@@ -1103,6 +1012,25 @@ export class BillService {
           percentage: 0,
           includeInTotal: false,
           info: 'No se calcula compensatorio porque hay domingo en el rango',
+        };
+      }
+
+      // ✅ SIN HORAS ORDINARIAS NO HAY COMPENSATORIO: si el grupo solo
+      // registra horas extra (HED/HEN/HFED/HFEN) y las ordinarias
+      // (HOD/HFOD/HON/HFON) vienen en 0, no aplica — igual que en domingo.
+      const paysheetOrdinaryHours =
+        (Number(billDB.HOD) || 0) +
+        (Number(billDB.HFOD) || 0) +
+        (Number(billDB.HON) || 0) +
+        (Number(billDB.HFON) || 0);
+
+      if (paysheetOrdinaryHours === 0) {
+        return {
+          hours: 0,
+          amount: 0,
+          percentage: 0,
+          includeInTotal: false,
+          info: 'No se calcula compensatorio porque no hay horas ordinarias (HOD/HFOD/HON/HFON) en el grupo',
         };
       }
 
@@ -1677,9 +1605,18 @@ export class BillService {
       : null;
     const individualPayment = payObj?.pay != null ? Number(payObj.pay) : 1;
 
-    const totalWorker = (totalGroup / payUnits) * individualPayment
+    // ✅ payUnits puede quedar en 0 cuando todos los "pay" enviados son 0 (p. ej.
+    // grupos JORNAL sin horas de recargo, donde el peso por trabajador se calcula
+    // a partir de esas horas). Sin este guard, totalGroup/0 produce Infinity/NaN,
+    // que Prisma serializa silenciosamente como NULL en total_bill/total_paysheet.
+    if (!payUnits || !Number.isFinite(payUnits)) {
+      const workerCount = workers?.length || 1;
+      return (Number(totalGroup) || 0) / workerCount;
+    }
 
-    return totalWorker;
+    const totalWorker = (totalGroup / payUnits) * individualPayment;
+
+    return Number.isFinite(totalWorker) ? totalWorker : 0;
   }
   async findAll(id_site?: number, id_subsite?: number | null) {
     const whereClause: any = {};
@@ -2511,7 +2448,12 @@ export class BillService {
       }
 
       // === ACTUALIZAR AMOUNT SI SE PROPORCIONA ===
-      if (typeof group.amount !== 'undefined') {
+      // ✅ Usar chequeo "truthy" (no solo !== undefined): el modal de "Recalcular
+      // Horas" no tiene campo editable de cantidad para grupos de servicio
+      // alternativo y siempre envía amount: 0 en el payload. Persistir ese 0
+      // borraba la cantidad real (p. ej. contenedores) guardada en la Bill,
+      // dejando total_bill en 0 en la siguiente recalculación.
+      if (group.amount) {
         updateData.amount = group.amount;
       }
 
@@ -2656,6 +2598,7 @@ export class BillService {
       totalPaysheetGroup,
       totalFacturationGroup,
       id_operation,
+      amountDb,
     );
 
     // ✅ CALCULAR EL week_number BASADO EN LA FECHA DEL GRUPO
@@ -2782,10 +2725,33 @@ export class BillService {
     } else if (
       matchingGroupSummary.tariffDetails?.alternative_paid_service === 'YES'
     ) {
+      // ✅ RECONSTRUIR dateRange: matchingGroupSummary aquí viene directo de
+      // validateOperationID.workerGroups (sin pasar por summarizeWorkerGroups),
+      // por lo que no trae `dateRange`, solo `schedule`. Sin esto,
+      // calculateAlternativeServiceTotals → processHoursGroups recibe
+      // startDate/endDate undefined y calculateCompensatoryHours lanza
+      // "Se requieren startDate y endDate...".
+      if (!matchingGroupSummary.dateRange) {
+        matchingGroupSummary.dateRange = {
+          start: matchingGroupSummary.schedule?.dateStart,
+          end: matchingGroupSummary.schedule?.dateEnd,
+        };
+      }
+
+      // ✅ Igual que en las ramas JORNAL/HORAS de arriba: matchingGroupSummary
+      // no trae workerCount en este flujo (viene directo de
+      // validateOperationID.workerGroups, no de summarizeWorkerGroups). Sin
+      // esto, el compensatorio dentro de processHoursGroups caía a 1
+      // trabajador en vez de los reales, dejando total_paysheet muy por
+      // debajo de lo esperado.
+      matchingGroupSummary.workerCount =
+        matchingGroupSummary.workers?.length || 0;
+
       const { totalFacturation, totalPaysheet } =
         await this.calculateAlternativeServiceTotals(
           matchingGroupSummary,
           group,
+          amountDb,
         );
       totalPaysheetGroup = totalPaysheet;
       totalFacturationGroup = totalFacturation;
@@ -2809,6 +2775,7 @@ export class BillService {
     totalPaysheetGroup: number,
     totalFacturationGroup: number,
     operationId?: number,
+    amountDb?: number,
   ) {
     // ✅ CORRECCIÓN: Obtener los trabajadores del grupo desde la BD si pays está vacío o mal formado
     const operationWorkers = await this.prisma.operation_Worker.findMany({
@@ -2874,7 +2841,12 @@ export class BillService {
         { ...group, pays: validPays }, // ✅ Usar pays procesados
         validPays,
         Number(payValue),
-        { amount: group.amount || 0 }, // existingBill simulado
+        // ✅ Fallback a amountDb (bill.amount real en BD): el payload de
+        // "Recalcular Horas" no trae cantidad para grupos de servicio
+        // alternativo y siempre manda group.amount en 0, así que simular el
+        // existingBill con ese mismo 0 anulaba el fallback dentro de
+        // calculatePayRateForWorker y dejaba pay_rate en 0 para todos.
+        { amount: group.amount || amountDb || 0 },
       );
 
       // ✅ Si no existe el billDetail, crearlo
@@ -3003,6 +2975,7 @@ export class BillService {
         await this.calculateAlternativeServiceTotals(
           matchingGroupSummary,
           group,
+          amountDb,
         );
       totalPaysheetGroup = totalPaysheet;
       totalFacturationGroup = totalFacturation;
@@ -3144,7 +3117,8 @@ export class BillService {
           (sum, p) => sum + (Number(p.pay) || 0),
           0,
         );
-        const safeAmount = Number(group.amount) || existingBill.amount || 0;
+        const safeAmount =
+          Number(group.amount) || Number(existingBill?.amount) || 0;
         const safeTotalUnidades = Number(totalUnitPays) || 1;
         const safePayValue =
           payValue !== null && payValue !== undefined ? Number(payValue) : 1;
@@ -3158,7 +3132,8 @@ export class BillService {
       }
     } else if (isQuantityGroup) {
       const totalUnidades = groupPay.reduce((sum, p) => sum + (Number(p.pay) || 0), 0);
-      const safeAmount = Number(group.amount) || existingBill.amount || 0;
+      const safeAmount =
+        Number(group.amount) || Number(existingBill?.amount) || 0;
       const safeTotalUnidades = Number(totalUnidades) || 1;
       const safePayValue =
         payValue !== null && payValue !== undefined ? Number(payValue) : 1;

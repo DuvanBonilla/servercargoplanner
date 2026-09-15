@@ -64,6 +64,60 @@ export class OperationFinderService {
   }
 
   /**
+   * Obtiene el resumen de operaciones para el dashboard: conteo por estado
+   * (calculado con groupBy, sin traer todos los registros) más las últimas
+   * operaciones recientes.
+   * @returns Conteo de operaciones por estado y las últimas 5 operaciones
+   */
+  async getSummary(id_site?: number, id_subsite?: number) {
+    try {
+      const where: any = {};
+      if (typeof id_site === 'number') where.id_site = id_site;
+      if (typeof id_subsite === 'number') where.id_subsite = id_subsite;
+
+      const [statusCounts, recentOperations] = await Promise.all([
+        this.prisma.operation.groupBy({
+          by: ['status'],
+          where,
+          _count: { _all: true },
+        }),
+        this.prisma.operation.findMany({
+          where,
+          include: this.defaultInclude,
+          orderBy: { dateStart: 'desc' },
+          take: 5,
+        }),
+      ]);
+
+      const counts: Record<StatusOperation, number> = {
+        PENDING: 0,
+        INPROGRESS: 0,
+        TO_APPROVED: 0,
+        APPROVED: 0,
+        REJECTED: 0,
+        COMPLETED: 0,
+        CANCELED: 0,
+        DEACTIVATED: 0,
+      };
+      statusCounts.forEach((row) => {
+        counts[row.status] = row._count._all;
+      });
+
+      return {
+        counts,
+        recent: recentOperations.map((op) =>
+          this.transformer.transformOperationResponse(op),
+        ),
+      };
+    } catch (error) {
+      console.error('Error getting operation summary:', error);
+      throw new Error(
+        `Error getting operation summary: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
    * Busca una operación por su ID
    * @param id - ID de la operación a buscar
    * @returns Operación encontrada o mensaje de error

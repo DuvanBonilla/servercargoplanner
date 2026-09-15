@@ -701,6 +701,22 @@ export class OperationController {
     return 'Sistema funcionando correctamente.';
   }
 
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Resumen de operaciones para el dashboard',
+    description:
+      'Conteo de operaciones por estado (PENDING/INPROGRESS/COMPLETED/CANCELED/...) calculado en base de datos ' +
+      '(sin traer todos los registros) más las 5 operaciones más recientes. Pensado para alimentar las tarjetas ' +
+      'y gráficas del dashboard sin paginar todo el dataset en el frontend.',
+  })
+  @ApiResponse({ status: 200, description: 'Resumen de operaciones' })
+  async getSummary(
+    @CurrentUser('siteId') siteId: number,
+    @CurrentUser('subsiteId') subsiteId: number,
+  ) {
+    return this.operationService.getSummary(siteId, subsiteId);
+  }
+
   @Get()
   @ApiQuery({
     name: 'format',
