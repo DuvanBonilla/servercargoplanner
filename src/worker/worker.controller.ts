@@ -140,6 +140,17 @@ async create(
     );
   }
 
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Resumen de trabajadores para el dashboard',
+    description:
+      'Conteo de trabajadores por estado (AVALIABLE/ASSIGNED/DISABLE/PERMISSION/...) calculado en base de datos, ' +
+      'sin traer el listado completo de trabajadores. Pensado para alimentar las tarjetas y gráficas del dashboard.',
+  })
+  async getSummary(@CurrentUser('siteId') siteId: number) {
+    return this.workerService.getSummary(siteId);
+  }
+
   //   @Get()
   // async findAll(
   //   @CurrentUser('siteId') siteId: number,
@@ -219,7 +230,7 @@ async findById(
 }
 
   @Patch(':id')
-  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH)
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.RECEPTION)
 async update(
   @Param('id', ParseIntPipe) id: number,
   @Body() updateWorkerDto: UpdateWorkerDto,
@@ -258,7 +269,7 @@ async update(
 }
  //remove worker
  @Delete(':id')
- @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH)
+ @Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.RECEPTION)
 async remove(
   @Param('id', ParseIntPipe) id: number,
   @CurrentUser('siteId') siteId: number,

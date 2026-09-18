@@ -33,11 +33,6 @@ export class BulkFeedingItemDto {
     message: 'dateFeeding debe tener formato YYYY-MM-DD HH:MM',
   })
   dateFeeding?: string;
-
-  @ApiProperty({ example: false, required: false })
-  @IsBoolean()
-  @IsOptional()
-  forceMissingMeal?: boolean;
 }
 
 export class CreateBulkFeedingDto {

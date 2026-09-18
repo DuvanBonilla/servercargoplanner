@@ -26,7 +26,7 @@ import { Role } from '@prisma/client';
 
 @Controller('area')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPERADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN)
+@Roles(Role.SUPERADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.RECEPTION)
 @ApiBearerAuth('access-token')
 @UseInterceptors(SiteInterceptor)
 export class AreaController {
@@ -62,7 +62,7 @@ if (typeof createAreaDto.id_subsite === 'undefined' || createAreaDto.id_subsite 
   }
 
  @Get()
-  @Roles(Role.SUPERADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.GH)
+  @Roles(Role.SUPERADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.GH, Role.RECEPTION)
   @ApiQuery({ 
     name: 'id_subsite', 
     required: false, 
@@ -80,7 +80,7 @@ if (typeof createAreaDto.id_subsite === 'undefined' || createAreaDto.id_subsite 
     let effectiveSiteId: number | undefined = siteId;
     
     // Para SUPERADMIN y GH: permitir seleccionar cualquier subsede
-    if (userRole === Role.SUPERADMIN || userRole === Role.GH || userRole === Role.SUPERVISOR || userRole === Role.PROGRAMMER || userRole === Role.ADMIN) {
+    if (userRole === Role.SUPERADMIN || userRole === Role.GH || userRole === Role.SUPERVISOR || userRole === Role.PROGRAMMER || userRole === Role.ADMIN || userRole === Role.RECEPTION) {
       if (querySubsiteId !== undefined && querySubsiteId !== null) {
         // Si especifican una subsede diferente, usarla
         effectiveSubsiteId = querySubsiteId;
@@ -90,7 +90,7 @@ if (typeof createAreaDto.id_subsite === 'undefined' || createAreaDto.id_subsite 
         // SUPERADMIN sin query específica ve todas las áreas
         effectiveSiteId = undefined;
         effectiveSubsiteId = undefined;
-      } else if (userRole === Role.SUPERVISOR || userRole === Role.PROGRAMMER) {
+      } else if (userRole === Role.SUPERVISOR || userRole === Role.PROGRAMMER || userRole === Role.RECEPTION) {
         // SUPERVISOR ó programador (programmer) sin query específica mantiene su sede actual pero puede ver todas sus subsedes
         effectiveSiteId = undefined;
         effectiveSubsiteId = undefined;

@@ -361,7 +361,14 @@ export class HoursCalculationService {
     // ✅ VALIDAR TARIFAS ANTES DE CALCULAR COMPENSATORIO
     const facturationTariff = combinedGroupData.facturation_tariff || combinedGroupData.tariffDetails?.facturation_tariff || 0;
     const paysheetTariff = combinedGroupData.paysheet_tariff || combinedGroupData.tariffDetails?.paysheet_tariff || 0;
-    const workerCount = combinedGroupData.workerCount || 1;
+    // ✅ Igual que calculateHoursByDistribution (workerCountUsed): si no viene
+    // workerCount explícito (p. ej. en el flujo de recalcular, donde el grupo
+    // de servicio alternativo no lo setea), caer a workers.length en vez de 1
+    // — de lo contrario el compensatorio se calculaba para 1 solo trabajador
+    // aunque el grupo tuviera 4, dejando total_paysheet muy por debajo de lo
+    // esperado.
+    const workerCount =
+      combinedGroupData.workerCount || combinedGroupData.workers?.length || 1;
 
     // ✅ VALIDAR QUE LOS TOTALES NO SEAN NaN
     let totalFinalFacturation = (await factHoursDistributionTotal).totalAmount || 0;
@@ -382,6 +389,19 @@ export class HoursCalculationService {
       ? this.shouldCalculateCompensatory(startDate, endDate)
       : true;
 
+    // ✅ SIN HORAS ORDINARIAS NO HAY COMPENSATORIO: el compensatorio retribuye
+    // el descanso dominical/festivo sobre la jornada ORDINARIA trabajada
+    // (HOD/HFOD/HON/HFON). Si el grupo solo reporta horas extra
+    // (HED/HEN/HFED/HFEN) y las ordinarias vienen en 0, no aplica — igual que
+    // ya no se calcula cuando el rango cae en domingo.
+    const paysheetOrdinaryHours =
+      (Number(combinedGroupData.paysheetHoursDistribution?.HOD) || 0) +
+      (Number(combinedGroupData.paysheetHoursDistribution?.HFOD) || 0) +
+      (Number(combinedGroupData.paysheetHoursDistribution?.HON) || 0) +
+      (Number(combinedGroupData.paysheetHoursDistribution?.HFON) || 0);
+    const shouldCalculateCompPayroll =
+      shouldCalculateComp && paysheetOrdinaryHours > 0;
+
     // ✅ OBTENER compensatory CON FALLBACK
     const baseTariffCompensatory = combinedGroupData.compensatory ||
       combinedGroupData.tariffDetails?.compensatory ||
@@ -389,7 +409,7 @@ export class HoursCalculationService {
 
     // ✅ CALCULAR COMPENSATORIO SIEMPRE (se mostrará en la respuesta)
     const compensatoryBill = shouldCalculateComp ? compBill : 0;
-    const compensatoryPayroll = shouldCalculateComp ? compPayroll : 0;
+    const compensatoryPayroll = shouldCalculateCompPayroll ? compPayroll : 0;
 
     const totalCompBill = compensatoryBill * workerCount * facturationTariff;
     const totalCompPayroll = compensatoryPayroll * workerCount * paysheetTariff;
@@ -413,10 +433,11 @@ export class HoursCalculationService {
     //   compensatory: combinedGroupData.compensatory,
     // });
 
-    // Para nómina: SIEMPRE incluir para servicios por HORAS
-    if (shouldCalculateComp && !isNaN(totalCompPayroll)) {
+    // Para nómina: incluir siempre que haya horas ORDINARIAS (HOD/HFOD/HON/HFON)
+    // reportadas — si el grupo solo trabajó horas extra, no aplica.
+    if (shouldCalculateCompPayroll && !isNaN(totalCompPayroll)) {
       totalFinalPayroll += totalCompPayroll;
-      // console.log('✅ Compensatorio INCLUIDO en total nómina (SIEMPRE para servicios HORAS)');
+      // console.log('✅ Compensatorio INCLUIDO en total nómina (hay horas ordinarias)');
     }
 
     // ✅ VALIDACIÓN FINAL ANTES DE RETORNAR
@@ -451,8 +472,8 @@ export class HoursCalculationService {
       details: {
         factHoursDistribution: factHoursDistributionTotal,
         paysheetHoursDistribution: paysheetHoursDistributionTotal,
-        compensatoryBill: { hours: compBill || 0, amount: totalCompBill || 0 },
-        compensatoryPayroll: { hours: compPayroll || 0, amount: totalCompPayroll || 0 },
+        compensatoryBill: { hours: compensatoryBill || 0, amount: totalCompBill || 0 },
+        compensatoryPayroll: { hours: compensatoryPayroll || 0, amount: totalCompPayroll || 0 },
       },
       workers: combinedGroupData.workers || [],
     };

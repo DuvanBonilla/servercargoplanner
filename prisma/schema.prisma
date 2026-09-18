@@ -705,6 +705,7 @@ enum Role {
   GH
   SUPERVISOR
   PROGRAMMER
+  RECEPTION
 }
 
 enum Status {

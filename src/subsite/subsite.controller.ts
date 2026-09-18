@@ -21,7 +21,7 @@ import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 @Controller('subsite')
 @UseInterceptors(SiteInterceptor)
 @ApiBearerAuth('access-token')
-@Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.SUPERVISOR, Role.PROGRAMMER)
+@Roles(Role.SUPERADMIN, Role.ADMIN, Role.GH, Role.SUPERVISOR, Role.PROGRAMMER, Role.RECEPTION)
 export class SubsiteController {
   constructor(private readonly subsiteService: SubsiteService) {}
 

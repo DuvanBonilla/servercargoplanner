@@ -25,7 +25,7 @@ export class ClientEmailController {
   }
 
   @Get('client/:idClient')
-  @Roles(Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN, Role.RECEPTION)
   findByClient(@Param('idClient', ParseIntPipe) idClient: number) {
     return this.clientEmailService.findByClient(idClient);
   }
@@ -36,7 +36,7 @@ export class ClientEmailController {
   }
 
     @Get()
-    @Roles(Role.SUPERVISOR,Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN)
+    @Roles(Role.SUPERVISOR,Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN, Role.RECEPTION)
     async findAll() {
       const response = await this.clientEmailService.findAll();
       return response;

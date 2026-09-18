@@ -1,5 +1,5 @@
 /** Colombia es siempre UTC-5, sin horario de verano (DST). */
-// const COLOMBIA_OFFSET_MS = 5 * 60 * 60 * 1000;
+const COLOMBIA_OFFSET_MS = 5 * 60 * 60 * 1000;
 
 export const getColombianDateTime = (): Date => { 
   // Aritmética UTC pura: evita el anti-patrón new Date(toLocaleString(...))
@@ -21,12 +21,22 @@ export const getColombianTimeString = () => {
 
 /**
  * Crea el inicio del día en zona horaria de Colombia.
- * Recibe un Date cuyo valor UTC ya representa la hora colombiana
- * (producido por getColombianDateTime) y extrae la fecha con getUTC*.
+ * `date` es un instante UTC real. Se resta el offset fijo de Bogotá (-5h)
+ * antes de leer año/mes/día para obtener el día calendario correcto en
+ * Bogotá, y luego se vuelve a sumar el offset para que el resultado sea el
+ * instante UTC que corresponde a la medianoche de Bogotá (evita el
+ * anti-patrón `toLocaleString`, que en algunas builds de ICU aplica el
+ * offset histórico LMT de Bogotá de -4:56:16 en lugar de -5:00:00).
  */
 export const getColombianStartOfDay = (date: Date): Date => {
+  const bogotaShifted = new Date(date.getTime() - COLOMBIA_OFFSET_MS);
   return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0),
+    Date.UTC(
+      bogotaShifted.getUTCFullYear(),
+      bogotaShifted.getUTCMonth(),
+      bogotaShifted.getUTCDate(),
+      0, 0, 0, 0,
+    ) + COLOMBIA_OFFSET_MS,
   );
 };
 

@@ -32,8 +32,4 @@ export class CreateFeedingDto {
   @Type(() => Number)
   @IsOptional()
   id_user?: number;
-
-  @ApiProperty({ example: false, required: false, description: 'Permite registrar alimentación faltante fuera de horario' })
-  @IsOptional()
-  forceMissingMeal?: boolean;
 }

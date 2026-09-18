@@ -47,7 +47,7 @@ export class ClientProgrammingService {
       let resolvedOperation: any = null;
       if (requestedStatus === 'ASSIGNED') {
         // 1. Solo ADMIN, SUPERADMIN, SUPERVISOR Y PROGRAMMER pueden asignar
-        if (role !== 'ADMIN' && role !== 'SUPERADMIN' && role !== 'SUPERVISOR'&& role !== 'PROGRAMMER') {
+        if (role !== 'ADMIN' && role !== 'SUPERADMIN' && role !== 'SUPERVISOR'&& role !== 'PROGRAMMER' && role !== 'RECEPTION') {
           throw new ForbiddenException(
             'Solo usuarios con rol ADMIN, SUPERADMIN, SUPERVISOR, PROGRAMMER pueden crear una programación como ASSIGNED',
           );
@@ -335,7 +335,7 @@ export class ClientProgrammingService {
         (currentStatus === 'UNASSIGNED' || currentStatus === 'INCOMPLETE')
       ) {
         // 1. Solo ADMIN, SUPERADMIN o SUPERVISOR pueden asignar o reasignar
-        if (role !== 'ADMIN' && role !== 'SUPERADMIN' && role !== 'SUPERVISOR' && role !== 'PROGRAMMER') {
+        if (role !== 'ADMIN' && role !== 'SUPERADMIN' && role !== 'SUPERVISOR' && role !== 'PROGRAMMER' && role !== 'RECEPTION') {
           throw new ForbiddenException(
             'Solo usuarios con rol ADMIN, SUPERADMIN o SUPERVISOR pueden asignar o reasignar una programación de cliente',
           );

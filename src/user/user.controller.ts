@@ -103,7 +103,7 @@ async create(
 }
 
   @Get()
-  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.PROGRAMMER)
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.RECEPTION)
   findAll(
     @CurrentUser('siteId') siteId: number,
   ) {
@@ -113,7 +113,7 @@ async create(
   }
 
   @Get(':dni')
-  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.PROGRAMMER)
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.RECEPTION)
   async findOne(
     @Param('dni') dni: string,
     @CurrentUser('siteId') siteId: number,

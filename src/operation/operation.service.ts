@@ -15,7 +15,7 @@ import { OperationFilterDto } from './dto/fliter-operation.dto';
 import { WorkerService } from 'src/worker/worker.service';
 import { RemoveWorkerFromOperationService } from '../operation-worker/service/remove-worker-from-operation/remove-worker-from-operation.service';
 import { ModuleRef } from '@nestjs/core';
-import { getWeekNumber, getStartOfWeek, toLocalDate } from 'src/common/utils/dateType';
+import { getWeekNumber, getStartOfWeek, toLocalDate, isHoliday } from 'src/common/utils/dateType';
 import { OperationNotFoundException } from './exceptions/operation-not-found.exception';
 import { TokenGenerationFailedException } from './exceptions/token-generation-failed.exception';
 import { formatColombianDate, getColombianDateTime } from 'src/common/utils/dateColombia';
@@ -51,6 +51,12 @@ export class OperationService {
    */
   async findAll(id_site?: number, id_subsite?: number) {
     return await this.finderService.findAll(id_site, id_subsite);
+  }
+  /**
+   * Resumen de operaciones para el dashboard (conteo por estado + recientes)
+   */
+  async getSummary(id_site?: number, id_subsite?: number) {
+    return await this.finderService.getSummary(id_site, id_subsite);
   }
   /**
    * Busca una operación por su ID
@@ -1100,6 +1106,7 @@ export class OperationService {
                         unitOfMeasure: { select: { name: true } },
                       },
                     },
+                    worker: { select: { id: true, name: true } },
                   },
                 },
               },
@@ -1133,6 +1140,7 @@ export class OperationService {
       string,
       {
         workerIds: Set<number>;
+        workerNames: Map<number, string>;
         subservices: Set<string>;
         unitNames: Set<string>;
         totalQuantity: number;
@@ -1148,6 +1156,7 @@ export class OperationService {
       if (!groupMap.has(groupId)) {
         groupMap.set(groupId, {
           workerIds: new Set(),
+          workerNames: new Map(),
           subservices: new Set(),
           unitNames: new Set(),
           totalQuantity: 0,
@@ -1159,6 +1168,7 @@ export class OperationService {
       }
       const g = groupMap.get(groupId)!;
       g.workerIds.add(row.id_worker);
+      if (row.worker?.name) g.workerNames.set(row.id_worker, row.worker.name);
       if (row.SubTask?.name) g.subservices.add(row.SubTask.name);
       if (row.tariff?.unitOfMeasure?.name) g.unitNames.add(row.tariff.unitOfMeasure.name);
       if (row.tariff?.pay_units) g.totalQuantity += Number(row.tariff.pay_units);
@@ -1184,6 +1194,7 @@ export class OperationService {
       return {
         groupId,
         workersCount: g.workerIds.size,
+        workers: Array.from(g.workerNames.entries()).map(([id, name]) => ({ id, name })),
         totalHoursWorked: Math.round(totalHoursWorked * 100) / 100,
         subservices: Array.from(g.subservices),
         unitMeasures: Array.from(g.unitNames),
@@ -1529,6 +1540,7 @@ export class OperationService {
                           },
                         },
                       },
+                      worker: { select: { id: true, name: true } },
                     },
                   },
                 },
@@ -1572,6 +1584,7 @@ export class OperationService {
       string,
       {
         workerIds: Set<number>;
+        workerNames: Map<number, string>;
         subservices: Set<string>;
         unitNames: Set<string>;
         totalQuantity: number;
@@ -1587,6 +1600,7 @@ export class OperationService {
       if (!groupMap.has(groupId)) {
         groupMap.set(groupId, {
           workerIds: new Set<number>(),
+          workerNames: new Map<number, string>(),
           subservices: new Set<string>(),
           unitNames: new Set<string>(),
           totalQuantity: 0,
@@ -1599,6 +1613,7 @@ export class OperationService {
 
       const group = groupMap.get(groupId)!;
       group.workerIds.add(row.id_worker);
+      if (row.worker?.name) group.workerNames.set(row.id_worker, row.worker.name);
 
       this.mergeGroupDateRange(group, row.dateStart, row.timeStart, row.dateEnd, row.timeEnd);
 
@@ -1634,6 +1649,7 @@ export class OperationService {
       return {
         groupId,
         workersCount: group.workerIds.size,
+        workers: Array.from(group.workerNames.entries()).map(([id, name]) => ({ id, name })),
         totalHoursWorked: Math.round(rangeHours * 100) / 100,
         subservices: Array.from(group.subservices),
         unitOfMeasure: Array.from(group.unitNames),
@@ -1660,6 +1676,7 @@ export class OperationService {
         idGrupo: group.groupId,
         subservicio: group.subservices,
         cantTrabajadores: group.workersCount,
+        workers: group.workers,
         horasTrabajadas: Math.round(billHours * 100) / 100,
         amount: amount,
         unidadDeMedida: group.unitOfMeasure,
@@ -2180,18 +2197,102 @@ export class OperationService {
   }
 
   /**
-   * Restricción por HORAS_REGISTRO_OPERACIONES: solo aplica al SUPERVISOR y gobierna
-   * COMPLETAR y ELIMINAR (crear/editar se rigen por SEMANAS_COMPLETAR_OPERACIONES e
-   * iniciar no tiene restricción). Si está ACTIVE, solo se puede completar/eliminar una
-   * operación cuyo dateStart caiga en la semana ACTUAL y, además, mientras no hayan
-   * pasado más de "value" horas desde su dateStart+timeStrat. Fuera de la semana actual,
-   * o pasadas esas horas dentro de la semana actual, queda bloqueado. Si está INACTIVE
-   * no se aplica ningún límite.
+   * Excepciones puntuales a HORAS_REGISTRO_OPERACIONES para operaciones que arrancan
+   * muy al final de una semana ISO (lunes-domingo: domingo es el último día, lunes es
+   * el primer día de la semana siguiente) y por eso legítimamente no se pueden cerrar
+   * sino ya entrada la semana siguiente. Son dos casos MUY específicos, no una regla
+   * general — si no calzan exactamente, no aplican y se sigue la regla normal:
+   *
+   * 1) dateStart es DOMINGO (último día) de la semana inmediatamente anterior a "now",
+   *    Y dateEnd es ese mismo lunes siguiente (dateStart + 1 día, primer día de la
+   *    semana actual): se puede completar/eliminar hasta el final de ese lunes.
+   * 2) dateStart es VIERNES de la semana inmediatamente anterior a "now", Y dateEnd es
+   *    el MISMO día que dateStart (operación de un solo día): se puede completar/
+   *    eliminar hasta el lunes de la semana actual — o el siguiente día hábil si ese
+   *    lunes (u los siguientes) es festivo.
+   *
+   * Devuelve el resultado de la excepción aplicable, o `undefined` si ninguna de las
+   * dos aplica (en cuyo caso el llamador debe seguir con la regla normal).
+   */
+  private getHoursLimitWeekendException(
+    operationDate: Date,
+    dateEnd: Date | null,
+    now: Date,
+  ): { message: string; status: number } | null | undefined {
+    const startOfCurrentWeek = getStartOfWeek(now); // lunes de la semana ISO actual
+    const startOfPreviousWeek = new Date(startOfCurrentWeek);
+    startOfPreviousWeek.setDate(startOfCurrentWeek.getDate() - 7);
+
+    const isInPreviousWeek =
+      operationDate >= startOfPreviousWeek && operationDate < startOfCurrentWeek;
+    if (!isInPreviousWeek) return undefined;
+
+    const dayOfWeek = operationDate.getDay(); // 0=domingo ... 6=sábado
+
+    // Caso 1: domingo (último día) -> se completa el lunes siguiente (dateEnd = dateStart + 1)
+    if (dayOfWeek === 0 && dateEnd) {
+      const expectedDateEnd = new Date(operationDate);
+      expectedDateEnd.setDate(expectedDateEnd.getDate() + 1);
+      if (dateEnd.getTime() === expectedDateEnd.getTime()) {
+        const deadline = new Date(dateEnd);
+        deadline.setHours(23, 59, 59, 999);
+        if (now > deadline) {
+          return {
+            message: `Como SUPERVISOR ya pasó el plazo (${formatColombianDate(deadline)}) para completar o eliminar esta operación.`,
+            status: 400,
+          };
+        }
+        return null;
+      }
+    }
+
+    // Caso 2: viernes, operación de un solo día -> plazo hasta el lunes (o el
+    // siguiente día hábil si hay festivos) de la semana actual
+    if (dayOfWeek === 5 && dateEnd && dateEnd.getTime() === operationDate.getTime()) {
+      // startOfCurrentWeek ya ES el lunes de la semana actual (semana ISO)
+      const deadlineDay = new Date(startOfCurrentWeek);
+      while (isHoliday(deadlineDay)) {
+        deadlineDay.setDate(deadlineDay.getDate() + 1);
+      }
+      const deadline = new Date(deadlineDay);
+      deadline.setHours(23, 59, 59, 999);
+
+      if (now > deadline) {
+        return {
+          message: `Como SUPERVISOR ya pasó el plazo (${formatColombianDate(deadline)}) para completar o eliminar esta operación.`,
+          status: 400,
+        };
+      }
+      return null;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Restricción para COMPLETAR/ELIMINAR: solo aplica al SUPERVISOR (crear/editar se
+   * rigen por SEMANAS_COMPLETAR_OPERACIONES; iniciar no tiene restricción). Tiene tres
+   * partes independientes:
+   *
+   * 1) Las dos excepciones puntuales de getHoursLimitWeekendException (operación que
+   *    arranca domingo o viernes de la semana ISO inmediatamente anterior) SIEMPRE se
+   *    evalúan primero, sin importar el estado (ACTIVE/INACTIVE) de
+   *    HORAS_REGISTRO_OPERACIONES ni de SEMANAS_COMPLETAR_OPERACIONES — no dependen de
+   *    ninguna de las dos configuraciones.
+   * 2) "Semana actual" (ISO, lunes-domingo): si ninguna excepción aplicó, un SUPERVISOR
+   *    SIEMPRE debe estar completando/eliminando una operación cuyo dateStart caiga en
+   *    la semana ACTUAL. Esto tampoco depende del estado de HORAS_REGISTRO_OPERACIONES
+   *    — se exige incluso si ese config está INACTIVE.
+   * 3) Límite de horas DENTRO de esa semana actual: si HORAS_REGISTRO_OPERACIONES está
+   *    ACTIVE, además no deben haber pasado más de "value" horas desde
+   *    dateStart+timeStrat. Si está INACTIVE, no hay límite de horas (pero la semana
+   *    actual del punto 2 se sigue exigiendo).
    */
   private async validateHoursLimitForCompleteOrDelete(
     isSupervisor: boolean,
     dateStart?: string | Date | null,
     timeStrat?: string | null,
+    dateEnd?: string | Date | null,
   ): Promise<{ message: string; status: number } | null> {
     if (!isSupervisor || !dateStart) return null;
 
@@ -2200,17 +2301,26 @@ export class OperationService {
     );
     const isHoursConfigActive =
       horasConfig && horasConfig.status === StatusActivation.ACTIVE;
-    if (!isHoursConfigActive) return null;
 
-    const hoursLimit = Number(horasConfig.value);
     const now = getColombianDateTime();
+    const operationDate = toLocalDate(dateStart);
+    const operationEndDate = dateEnd ? toLocalDate(dateEnd) : null;
+
+    // Las excepciones NO dependen de HORAS_REGISTRO_OPERACIONES ni de
+    // SEMANAS_COMPLETAR_OPERACIONES: siempre se evalúan.
+    const exceptionResult = this.getHoursLimitWeekendException(
+      operationDate,
+      operationEndDate,
+      now,
+    );
+    if (exceptionResult !== undefined) return exceptionResult;
+
     const startOfCurrentWeek = getStartOfWeek(now);
     const startOfNextWeek = new Date(startOfCurrentWeek);
     startOfNextWeek.setDate(startOfCurrentWeek.getDate() + 7);
 
-    const operationDate = toLocalDate(dateStart);
-
-    // Solo se puede completar/eliminar dentro de la semana actual
+    // Semana actual: requisito fijo para SUPERVISOR, sin importar el estado de
+    // HORAS_REGISTRO_OPERACIONES.
     if (operationDate < startOfCurrentWeek || operationDate >= startOfNextWeek) {
       return {
         message: `Como SUPERVISOR solo puedes completar o eliminar operaciones de la semana actual.`,
@@ -2218,6 +2328,10 @@ export class OperationService {
       };
     }
 
+    // El límite de horas DENTRO de la semana actual sí depende de que el config esté ACTIVE.
+    if (!isHoursConfigActive) return null;
+
+    const hoursLimit = Number(horasConfig.value);
     const operationDateTime = this.combineDateAndTime(operationDate, timeStrat || undefined);
     const limitDateTime = new Date(
       operationDateTime.getTime() + hoursLimit * 60 * 60 * 1000,
@@ -2266,7 +2380,7 @@ export class OperationService {
       // SEMANAS_COMPLETAR_OPERACIONES limita cuántas semanas hacia atrás puede el SUPERVISOR
       // crear una operación (completar/eliminar se rigen por HORAS_REGISTRO_OPERACIONES).
       const weeksLimitError = await this.validateWeeksLimitForEdit(
-        user?.role === Role.SUPERVISOR,
+        user?.role === Role.SUPERVISOR || user?.role === Role.RECEPTION,
         createOperationDto.dateStart,
       );
       if (weeksLimitError) return weeksLimitError;
@@ -2496,6 +2610,35 @@ export class OperationService {
     return newOperation;
   }
   /**
+   * Actualiza únicamente la embarcación (motorShip) de una operación, sin pasar
+   * por el flujo completo de `update` (que maneja trabajadores, grupos, cambios
+   * de estado, etc.). Pensado para edición rápida desde la pantalla de la Bill,
+   * incluso cuando la operación ya está COMPLETED.
+   */
+  async updateVessel(id: number, motorShip: string) {
+    const existingOperation = await this.prisma.operation.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!existingOperation) {
+      throw new OperationNotFoundException(id);
+    }
+
+    const updatedOperation = await this.prisma.operation.update({
+      where: { id },
+      data: { motorShip },
+      select: { id: true, motorShip: true },
+    });
+
+    return {
+      id: updatedOperation.id,
+      motorShip: updatedOperation.motorShip,
+      message: 'Embarcación actualizada exitosamente',
+    };
+  }
+
+  /**
    * Actualiza una operación existente
    * @param id - ID de la operación a actualizar
    * @param updateOperationDto - Datos de actualización
@@ -2576,7 +2719,7 @@ export class OperationService {
       // ✅ VERIFICAR SI LA OPERACIÓN ESTÁ COMPLETADA ANTES DE PROCESAR TRABAJADORES
       const currentOperation = await this.prisma.operation.findUnique({
         where: { id },
-        select: { status: true, dateStart: true, timeStrat: true },
+        select: { status: true, dateStart: true, timeStrat: true, dateEnd: true },
       });
 
 
@@ -2586,19 +2729,28 @@ export class OperationService {
       // viene en este guardado si el usuario la está cambiando, o si no la actual en BD.
       const effectiveDateStart = dateStart ?? currentOperation?.dateStart ?? undefined;
       const effectiveTimeStrat = timeStrat ?? currentOperation?.timeStrat ?? undefined;
+      const effectiveDateEnd = dateEnd ?? currentOperation?.dateEnd ?? undefined;
 
       // Iniciar (status -> INPROGRESS) no tiene restricción alguna para SUPERVISOR.
-      // Completar (status -> COMPLETED) se rige por HORAS_REGISTRO_OPERACIONES (semana
-      // actual + horas desde dateStart+timeStrat). Cualquier otro guardado es una simple
-      // edición y se rige por SEMANAS_COMPLETAR_OPERACIONES.
+      // Completar (status -> COMPLETED) se rige por HORAS_REGISTRO_OPERACIONES (horas
+      // desde dateStart+timeStrat). SEMANAS_COMPLETAR_OPERACIONES solo debe aplicar
+      // cuando el guardado realmente reprograma la operación (trae dateStart en el
+      // payload) — el flujo de "Completar" grupo por grupo (submitGroupHandler /
+      // groupCompletionForm) guarda dateEnd/timeEnd/facturación por grupo sin tocar el
+      // dateStart de nivel operación ni el status, así que NO debe quedar atrapado por
+      // esta restricción de reprogramación.
       if (directFields.status === StatusOperation.COMPLETED) {
         const hoursLimitError = await this.validateHoursLimitForCompleteOrDelete(
           !!isSupervisor,
           effectiveDateStart,
           effectiveTimeStrat,
+          effectiveDateEnd,
         );
         if (hoursLimitError) return hoursLimitError;
-      } else if (directFields.status !== StatusOperation.INPROGRESS) {
+      } else if (
+        directFields.status !== StatusOperation.INPROGRESS &&
+        dateStart !== undefined
+      ) {
         const weeksLimitError = await this.validateWeeksLimitForEdit(
           !!isSupervisor,
           effectiveDateStart,
@@ -2750,6 +2902,22 @@ export class OperationService {
           data: operationUpdateData,
         });
       }
+
+      // 🔔 DESPERTAR SISTEMA: si esta edición reprograma dateStart/timeStrat de una
+      // operación (p. ej. editar fechas desde la Bill), el cron de PENDING→INPROGRESS
+      // podría estar en modo sueño profundo y no revisar de nuevo hasta 30 minutos
+      // después. Lo despertamos aquí para que la próxima corrida (máx. 15 min) la
+      // procese en vivo en lugar de quedar atascada hasta el próximo ciclo de sueño.
+      if (dateStart || timeStrat) {
+        try {
+          const { UpdateOperationService } = await import('../cron-job/services/update-operation.service');
+          const updateOperationService = this.moduleRef.get(UpdateOperationService, { strict: false });
+          updateOperationService.wakeUpFromDeepSleep(`Operación reprogramada (ID: ${id})`);
+        } catch (error) {
+          console.warn('[OperationService] ⚠️ No se pudo despertar el sistema automático:', (error as Error).message);
+        }
+      }
+
       // ✅ RECALCULAR op_duration siempre que haya cambios en fechas u horas
       const hasDateTimeChanges = dateStart || dateEnd || timeStrat || timeEnd;
 
@@ -3104,6 +3272,7 @@ async remove(
       !!isSupervisor,
       validateOperation.dateStart,
       validateOperation.timeStrat,
+      validateOperation.dateEnd,
     );
     if (hoursLimitError) return hoursLimitError;
 
@@ -3149,15 +3318,19 @@ async remove(
         select: { role: true },
       });
 
-      if (
-        !user ||
-        (user.role !== Role.ADMIN &&
-          user.role !== Role.SUPERADMIN)
-      ) {
+      const isCompletedOperation =
+        validateOperation.status === StatusOperation.COMPLETED;
+
+      const allowedRoles: Role[] = isCompletedOperation
+        ? [Role.ADMIN, Role.SUPERADMIN]
+        : [Role.ADMIN, Role.SUPERADMIN, Role.SUPERVISOR, Role.PROGRAMMER, Role.RECEPTION];
+
+      if (!user || !allowedRoles.includes(user.role)) {
         return {
           status: 403,
-          message:
-            'Solo ADMIN y SUPERADMIN pueden eliminar una operación completa.',
+          message: isCompletedOperation
+            ? 'Solo ADMIN y SUPERADMIN pueden eliminar una operación finalizada.'
+            : 'No tienes permisos para eliminar esta operación.',
         };
       }
 
@@ -3541,6 +3714,53 @@ if (feedingCount > 0 && !confirmDelete) {
     if (isCompleted) {
       // console.log('[OperationService] 🔄 Procesando cambios en operación COMPLETADA');
     }
+
+    // ✅ Capturar, ANTES de ejecutar los disconnects, la programación/tarifa
+    // vigente de cada grupo real referenciado por un connect. Si el disconnect
+    // elimina al último Operation_Worker de ese grupo (p. ej. reemplazar al
+    // único trabajador de un grupo en la misma petición), el connect ya no
+    // tendría de dónde heredar dateStart/timeStart/dateEnd/timeEnd/id_task/
+    // id_subtask/id_tariff — quedando el grupo "vacío" de tarifa aunque su
+    // id_group sobreviva.
+    const groupSnapshots = new Map<string, {
+      dateStart: Date | null;
+      dateEnd: Date | null;
+      timeStart: string | null;
+      timeEnd: string | null;
+      id_task: number | null;
+      id_subtask: number | null;
+      id_tariff: number | null;
+      observation: string | null;
+    }>();
+
+    if (workersOps.connect && Array.isArray(workersOps.connect)) {
+      for (const connectOp of workersOps.connect) {
+        const groupId = connectOp?.groupId;
+        const isTemp = typeof groupId === 'string' && groupId.startsWith('temp_');
+
+        if (!groupId || isTemp || connectOp.isNewGroup === true || groupSnapshots.has(groupId)) {
+          continue;
+        }
+
+        const existingGroupWorker = await this.prisma.operation_Worker.findFirst({
+          where: { id_operation: operationId, id_group: groupId },
+        });
+
+        if (existingGroupWorker) {
+          groupSnapshots.set(groupId, {
+            dateStart: existingGroupWorker.dateStart,
+            dateEnd: existingGroupWorker.dateEnd,
+            timeStart: existingGroupWorker.timeStart,
+            timeEnd: existingGroupWorker.timeEnd,
+            id_task: existingGroupWorker.id_task,
+            id_subtask: existingGroupWorker.id_subtask,
+            id_tariff: existingGroupWorker.id_tariff,
+            observation: existingGroupWorker.observation,
+          });
+        }
+      }
+    }
+
     // 1. DESCONECTAR/ELIMINAR TRABAJADORES (mantener igual)
     if (workersOps.disconnect && Array.isArray(workersOps.disconnect) && workersOps.disconnect.length > 0) {
       // console.log('[OperationService] Eliminando trabajadores:', workersOps.disconnect);
@@ -3800,33 +4020,12 @@ if (feedingCount > 0 && !confirmDelete) {
             // ✅ CASO: AGREGAR A GRUPO EXISTENTE REAL
             // console.log('[OperationService] 🔗 Agregando a grupo existente real:', connectOp.groupId);
 
-            // ✅ OBTENER VALORES DEL GRUPO EXISTENTE PARA HEREDARLOS
-            const existingGroupWorker = await this.prisma.operation_Worker.findFirst({
-              where: {
-                id_operation: operationId,
-                id_group: connectOp.groupId,
-              },
-              include: {
-                tariff: true,
-              },
-            });
-
-
-
-            // const assignData = {
-            //   id_operation: operationId,
-            //   workersWithSchedule: [{
-            //     workerIds: connectOp.workerIds.map(id => Number(id)),
-            //     id_group: connectOp.groupId, // ✅ USAR GRUPO EXISTENTE
-            //     dateStart: connectOp.dateStart,
-            //     dateEnd: connectOp.dateEnd || null,
-            //     timeStart: connectOp.timeStart,
-            //     timeEnd: connectOp.timeEnd || null,
-            //     id_task: connectOp.id_task,
-            //     id_subtask: connectOp.id_subtask,
-            //     id_tariff: connectOp.id_tariff,
-            //   }]
-            // };
+            // ✅ HEREDAR VALORES DEL GRUPO EXISTENTE desde el snapshot tomado ANTES
+            // de procesar los disconnects (ver arriba). Usar una consulta en vivo
+            // aquí sería incorrecto si el disconnect de esta misma petición ya
+            // eliminó al último Operation_Worker del grupo: ya no habría ningún
+            // registro del cual heredar id_task/id_subtask/id_tariff.
+            const existingGroupWorker = groupSnapshots.get(connectOp.groupId);
 
             const assignData = {
               id_operation: operationId,

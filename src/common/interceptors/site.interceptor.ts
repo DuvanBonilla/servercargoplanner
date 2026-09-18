@@ -43,9 +43,9 @@ export class SiteInterceptor implements NestInterceptor {
           // Flags de rol
           isSuperAdmin: userRole === 'SUPERADMIN',
           isAdmin: userRole === 'ADMIN',
-          isSupervisor: userRole === 'SUPERVISOR',
+          isSupervisor: userRole === 'SUPERVISOR' || userRole === 'RECEPTION',
           isProgrammer: userRole === 'PROGRAMMER',
-          isGH: userRole === 'GH',
+          isGH: userRole === 'GH' || userRole === 'RECEPTION',
           
           // Métodos helper para generar filtros (sin aplicar automáticamente)
           getSiteFilter: () => userRole === 'SUPERADMIN' ? {} : { id_site: userSite },
@@ -56,7 +56,7 @@ export class SiteInterceptor implements NestInterceptor {
               // ADMIN puede ver todas las subsites de su site asignada
               return { id_site: userSite };
             }
-            if ((userRole === 'SUPERVISOR' || userRole === 'PROGRAMMER') && userSubSite) {
+            if ((userRole === 'SUPERVISOR' || userRole === 'PROGRAMMER' || userRole === 'RECEPTION') && userSubSite) {
               return { id_site: userSite, id_subsite: userSubSite };
             }
             return { id_site: userSite };
@@ -68,7 +68,7 @@ export class SiteInterceptor implements NestInterceptor {
           canAccessSubSite: (siteId: number, subsiteId: number) => {
             if (userRole === 'SUPERADMIN') return true;
             if (userRole === 'ADMIN' && userSite === siteId) return true; // ADMIN puede acceder a cualquier subsite de su site
-            if ((userRole === 'SUPERVISOR' || userRole === 'PROGRAMMER') && userSite === siteId && userSubSite === subsiteId) return true;
+            if ((userRole === 'SUPERVISOR' || userRole === 'PROGRAMMER' || userRole === 'RECEPTION') && userSite === siteId && userSubSite === subsiteId) return true;
             return false;
           }
         };

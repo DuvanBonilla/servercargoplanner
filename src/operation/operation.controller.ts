@@ -25,6 +25,7 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { WorkerDistributionQueryDto } from './dto/worker-distribution-query.dto';
 import { getColombianDateTime } from 'src/common/utils/dateColombia';
+import { getColombiaHolidayDates } from 'src/common/utils/dateType';
 import { WorkerHoursReportQueryDto } from './dto/worker-hours-report-query.dto';
 import { OperationExportService } from './services/operation-export.service';
 import { ExportOperationsDto, ExportReportType } from './dto/export-operations.dto';
@@ -33,11 +34,12 @@ import { ConfirmOperationDto } from './dto/confirm-operation.dto';
 import { SendConfirmationEmailDto } from './dto/send-confirmation-email.dto';
 import { TokenPreviewDto } from './dto/token-preview.dto';
 import { SubmitRadicadoDto } from './dto/submit-radicado.dto';
+import { UpdateVesselDto } from './dto/update-vessel.dto';
 // import { OperationsCronService } from 'src/cron-job/cron-job.service';
 @Controller('operation')
 @UseInterceptors(SiteInterceptor)
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN)
+@Roles(Role.SUPERVISOR, Role.PROGRAMMER, Role.ADMIN, Role.SUPERADMIN, Role.RECEPTION)
 @ApiBearerAuth('access-token')
 export class OperationController {
   constructor(
@@ -588,6 +590,30 @@ export class OperationController {
   }
 
 
+  @Get('holidays')
+  @ApiOperation({
+    summary: 'Festivos colombianos de uno o más años',
+    description:
+      'Devuelve las fechas festivas colombianas (formato YYYY-MM-DD) del/los año(s) pedido(s). ' +
+      'Usado por móvil/web para evaluar client-side las excepciones de HORAS_REGISTRO_OPERACIONES ' +
+      'que dependen de festivos (ver validateHoursLimitForCompleteOrDelete), sin duplicar la ' +
+      'librería de festivos que ya usa el backend.',
+  })
+  @ApiQuery({ name: 'years', required: false, description: 'Años separados por coma, p.ej. "2026,2027". Por defecto el año actual y el siguiente.' })
+  @ApiResponse({ status: 200, description: 'Lista de fechas festivas' })
+  async getHolidays(@Query('years') years?: string) {
+    const currentYear = new Date().getFullYear();
+    const requestedYears = years
+      ? years.split(',').map((y) => parseInt(y.trim(), 10)).filter((y) => !isNaN(y))
+      : [currentYear, currentYear + 1];
+
+    const dates = Array.from(
+      new Set(requestedYears.flatMap((year) => getColombiaHolidayDates(year))),
+    ).sort();
+
+    return { dates };
+  }
+
   @Get('pending-status')
   @ApiOperation({
     summary: 'Estado de operaciones pendientes',
@@ -673,6 +699,22 @@ export class OperationController {
       }
     }
     return 'Sistema funcionando correctamente.';
+  }
+
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Resumen de operaciones para el dashboard',
+    description:
+      'Conteo de operaciones por estado (PENDING/INPROGRESS/COMPLETED/CANCELED/...) calculado en base de datos ' +
+      '(sin traer todos los registros) más las 5 operaciones más recientes. Pensado para alimentar las tarjetas ' +
+      'y gráficas del dashboard sin paginar todo el dataset en el frontend.',
+  })
+  @ApiResponse({ status: 200, description: 'Resumen de operaciones' })
+  async getSummary(
+    @CurrentUser('siteId') siteId: number,
+    @CurrentUser('subsiteId') subsiteId: number,
+  ) {
+    return this.operationService.getSummary(siteId, subsiteId);
   }
 
   @Get()
@@ -1149,6 +1191,34 @@ export class OperationController {
       throw new NotFoundException(response['message']);
     }
     return response;
+  }
+
+  @Patch(':id/vessel')
+  @ApiOperation({
+    summary: 'Actualizar la embarcación (motorShip) de una operación',
+    description: `
+Actualiza únicamente el campo 'motorShip' (Embarcación) de la operación, sin
+pasar por el flujo completo de actualización (que maneja trabajadores, grupos
+y cambios de estado). Pensado para editarse rápidamente desde la pantalla de
+la Bill, incluso cuando la operación ya está COMPLETED.
+
+**Ejemplo de uso:**
+\`\`\`json
+PATCH /operation/17702/vessel
+{
+  "motorShip": "MSC ANNA"
+}
+\`\`\`
+    `,
+  })
+  @ApiParam({ name: 'id', description: 'ID de la operación', type: 'number' })
+  @ApiResponse({ status: 200, description: 'Embarcación actualizada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Operación no encontrada' })
+  async updateVessel(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateVesselDto: UpdateVesselDto,
+  ) {
+    return this.operationService.updateVessel(id, updateVesselDto.motorShip);
   }
 
   @Patch(':id')

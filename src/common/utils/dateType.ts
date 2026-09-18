@@ -46,6 +46,16 @@ export function getColombiaDaysOff(year: number): any[] {
 }
 
 /**
+ * Obtiene los festivos colombianos de un año como strings "YYYY-MM-DD", para
+ * exponerlos a los clientes (móvil/web) que necesitan saber si un día es
+ * festivo sin duplicar la librería de festivos ni el cálculo del backend.
+ * @param year El año para el que se requieren los festivos
+ */
+export function getColombiaHolidayDates(year: number): string[] {
+  return getColombiaDaysOff(year).map((holiday) => holiday.date.slice(0, 10));
+}
+
+/**
  * Obtiene el número de semana del año para una fecha específica
  * @param date Fecha para la cual se quiere obtener el número de semana
  * @returns Número de semana (1-53)
