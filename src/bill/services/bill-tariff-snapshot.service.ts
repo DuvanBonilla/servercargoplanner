@@ -25,11 +25,13 @@ export class BillTariffSnapshotService {
   async create(
     id_bill: number,
     tariffDetails: any,
-    opts?: { isBackfilled?: boolean },
+    opts?: { isBackfilled?: boolean; billHours?: any },
   ) {
     if (!tariffDetails) return null;
 
     const hours = tariffDetails.hours ?? {};
+    const billHours = opts?.billHours ?? {};
+    const toNumOrNull = (v: any) => (v == null ? null : Number(v));
 
     const data = {
       id_bill,
@@ -71,6 +73,22 @@ export class BillTariffSnapshotService {
       FAC_FON: Number(hours.FAC_FON) || 0,
       FAC_FED: Number(hours.FAC_FED) || 0,
       FAC_FEN: Number(hours.FAC_FEN) || 0,
+      worked_HOD: toNumOrNull(billHours.HOD),
+      worked_HON: toNumOrNull(billHours.HON),
+      worked_HED: toNumOrNull(billHours.HED),
+      worked_HEN: toNumOrNull(billHours.HEN),
+      worked_HFOD: toNumOrNull(billHours.HFOD),
+      worked_HFON: toNumOrNull(billHours.HFON),
+      worked_HFED: toNumOrNull(billHours.HFED),
+      worked_HFEN: toNumOrNull(billHours.HFEN),
+      worked_FAC_HOD: toNumOrNull(billHours.FAC_HOD),
+      worked_FAC_HON: toNumOrNull(billHours.FAC_HON),
+      worked_FAC_HED: toNumOrNull(billHours.FAC_HED),
+      worked_FAC_HEN: toNumOrNull(billHours.FAC_HEN),
+      worked_FAC_HFOD: toNumOrNull(billHours.FAC_HFOD),
+      worked_FAC_HFON: toNumOrNull(billHours.FAC_HFON),
+      worked_FAC_HFED: toNumOrNull(billHours.FAC_HFED),
+      worked_FAC_HFEN: toNumOrNull(billHours.FAC_HFEN),
       is_backfilled: opts?.isBackfilled ?? false,
     };
 

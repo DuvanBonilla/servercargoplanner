@@ -20,6 +20,7 @@ import { Operation } from 'src/operation/entities/operation.entity';
 import { ModuleRef } from '@nestjs/core';
 import { OperationService } from 'src/operation/operation.service';
 import { BillTariffSnapshotService } from './services/bill-tariff-snapshot.service';
+import { BillDetailSnapshotService } from './services/bill-detail-snapshot.service';
 
 @Injectable()
 export class BillService {
@@ -34,6 +35,7 @@ export class BillService {
     @Inject(forwardRef(() => OperationService))
     private readonly operationService: OperationService,
     private billTariffSnapshotService: BillTariffSnapshotService,
+    private billDetailSnapshotService: BillDetailSnapshotService,
   ) { }
 
   /**
@@ -277,6 +279,7 @@ export class BillService {
       await this.billTariffSnapshotService.create(
         billSaved.id,
         this.getRawTariffDetails(validateOperationID, result.groupId),
+        { billHours: billSaved },
       );
 
       await this.processBillDetails(
@@ -358,6 +361,7 @@ export class BillService {
       await this.billTariffSnapshotService.create(
         billSaved.id,
         this.getRawTariffDetails(validateOperationID, matchingGroupSummary.groupId),
+        { billHours: billSaved },
       );
 
       await this.processHoursBillDetails(
@@ -434,6 +438,7 @@ export class BillService {
       await this.billTariffSnapshotService.create(
         billSaved.id,
         this.getRawTariffDetails(validateOperationID, matchingGroupSummary.groupId),
+        { billHours: billSaved },
       );
 
       await this.processAlternativeServiceBillDetails(
@@ -552,6 +557,7 @@ export class BillService {
       await this.billTariffSnapshotService.create(
         billSaved.id,
         this.getRawTariffDetails(validateOperationID, matchingGroupSummary.groupId),
+        { billHours: billSaved },
       );
 
       await this.processQuantityBillDetails(
@@ -1282,6 +1288,12 @@ export class BillService {
       operationWorkers.map((ow) => [ow.id_worker, ow]),
     );
 
+    const workerRecords = await this.prisma.worker.findMany({
+      where: { id: { in: uniqueWorkers.map((w) => w.id) } },
+      select: { id: true, name: true, dni: true },
+    });
+    const workerRecordMap = new Map(workerRecords.map((w) => [w.id, w]));
+
     for (const worker of uniqueWorkers) {
       const operationWorker = operationWorkerMap.get(worker.id);
 
@@ -1307,14 +1319,17 @@ export class BillService {
 
       const payWorker = groupDto.pays.find((p) => p.id_worker === worker.id);
 
-      await this.createBillDetail({
-        id_bill: billId,
-        id_operation_worker: operationWorker.id,
-        pay_rate: payWorker?.pay || 1,
-        pay_unit: payWorker?.pay || 1,
-        total_bill: totalFacturactionWorker,
-        total_paysheet: totalPaysheetWorker,
-      });
+      await this.createBillDetail(
+        {
+          id_bill: billId,
+          id_operation_worker: operationWorker.id,
+          pay_rate: payWorker?.pay || 1,
+          pay_unit: payWorker?.pay || 1,
+          total_bill: totalFacturactionWorker,
+          total_paysheet: totalPaysheetWorker,
+        },
+        workerRecordMap.get(worker.id),
+      );
 
       billDetailsCreated++;
     }
@@ -1360,6 +1375,12 @@ export class BillService {
       operationWorkers.map((ow) => [ow.id_worker, ow]),
     );
 
+    const workerRecords = await this.prisma.worker.findMany({
+      where: { id: { in: uniqueWorkers.map((w) => w.id) } },
+      select: { id: true, name: true, dni: true },
+    });
+    const workerRecordMap = new Map(workerRecords.map((w) => [w.id, w]));
+
     const groupDto = this.getGroupDto([group], result.groupId);
 
     // console.log("=========== PROCESS HOURS BILL DETAILS ===========");
@@ -1396,14 +1417,17 @@ export class BillService {
 
       const payWorker = groupDto.pays.find((p) => p.id_worker === worker.id);
 
-      await this.createBillDetail({
-        id_bill: billId,
-        id_operation_worker: operationWorker.id,
-        pay_rate: payWorker?.pay || 1,
-        pay_unit: payWorker?.pay || 1,
-        total_bill: totalFacturactionWorker,
-        total_paysheet: totalPaysheetWorker,
-      });
+      await this.createBillDetail(
+        {
+          id_bill: billId,
+          id_operation_worker: operationWorker.id,
+          pay_rate: payWorker?.pay || 1,
+          pay_unit: payWorker?.pay || 1,
+          total_bill: totalFacturactionWorker,
+          total_paysheet: totalPaysheetWorker,
+        },
+        workerRecordMap.get(worker.id),
+      );
     }
   }
 
@@ -1432,6 +1456,12 @@ export class BillService {
     const facturationUnit =
       matchingGroupSummary.facturation_unit ||
       matchingGroupSummary.unit_of_measure;
+
+    const workerRecords = await this.prisma.worker.findMany({
+      where: { id: { in: uniqueWorkers.map((w) => w.id) } },
+      select: { id: true, name: true, dni: true },
+    });
+    const workerRecordMap = new Map(workerRecords.map((w) => [w.id, w]));
 
     for (const worker of uniqueWorkers) {
       const operationWorker = await this.findOperationWorker(
@@ -1465,14 +1495,17 @@ export class BillService {
         payRate = payWorker?.pay || 1;
       }
 
-      await this.createBillDetail({
-        id_bill: billId,
-        id_operation_worker: operationWorker.id,
-        pay_rate: payRate,
-        pay_unit: payWorker?.pay || 1,
-        total_bill: totalFacturactionWorker,
-        total_paysheet: totalPaysheetWorker,
-      });
+      await this.createBillDetail(
+        {
+          id_bill: billId,
+          id_operation_worker: operationWorker.id,
+          pay_rate: payRate,
+          pay_unit: payWorker?.pay || 1,
+          total_bill: totalFacturactionWorker,
+          total_paysheet: totalPaysheetWorker,
+        },
+        workerRecordMap.get(worker.id),
+      );
     }
   }
 
@@ -1497,6 +1530,12 @@ export class BillService {
         `Total original: ${workers.length}, Únicos: ${uniqueWorkers.length}`
       );
     }
+
+    const workerRecords = await this.prisma.worker.findMany({
+      where: { id: { in: uniqueWorkers.map((w) => w.id) } },
+      select: { id: true, name: true, dni: true },
+    });
+    const workerRecordMap = new Map(workerRecords.map((w) => [w.id, w]));
 
     for (const worker of uniqueWorkers) {
       const operationWorker = await this.findOperationWorker(
@@ -1533,14 +1572,17 @@ export class BillService {
         uniqueWorkers,
       );
 
-      await this.createBillDetail({
-        id_bill: billId,
-        id_operation_worker: operationWorker.id,
-        pay_rate: payRate,
-        pay_unit: payWorker.pay || 1,
-        total_bill: totalWorkerFacturation,
-        total_paysheet: totalWorkerPaysheet,
-      });
+      await this.createBillDetail(
+        {
+          id_bill: billId,
+          id_operation_worker: operationWorker.id,
+          pay_rate: payRate,
+          pay_unit: payWorker.pay || 1,
+          total_bill: totalWorkerFacturation,
+          total_paysheet: totalWorkerPaysheet,
+        },
+        workerRecordMap.get(worker.id),
+      );
     }
   }
 
@@ -1615,8 +1657,30 @@ export class BillService {
     return operationWorker;
   }
 
-  private async createBillDetail(data: any) {
-    return await this.prisma.billDetail.create({ data });
+  private async createBillDetail(
+    data: any,
+    workerInfo?: { name?: string | null; dni?: string | null },
+  ) {
+    const billDetail = await this.prisma.billDetail.create({ data });
+
+    // ✅ Congelar, junto con el BillDetail recién creado (Bill nueva), el pago
+    // y el nombre/documento del trabajador en ese momento — createBillDetail
+    // solo se usa desde los 4 flujos de creación de Bill, nunca desde edición
+    // o recálculo, así que esta foto queda fija para siempre.
+    await this.billDetailSnapshotService.create({
+      id_bill_detail: billDetail.id,
+      id_bill: billDetail.id_bill,
+      id_operation_worker: billDetail.id_operation_worker,
+      workerName: workerInfo?.name ?? null,
+      workerDni: workerInfo?.dni ?? null,
+      pay_unit: billDetail.pay_unit != null ? Number(billDetail.pay_unit) : null,
+      pay_rate: billDetail.pay_rate != null ? Number(billDetail.pay_rate) : null,
+      total_bill: billDetail.total_bill != null ? Number(billDetail.total_bill) : null,
+      total_paysheet:
+        billDetail.total_paysheet != null ? Number(billDetail.total_paysheet) : null,
+    });
+
+    return billDetail;
   }
 
   // Función auxiliar para calcular el total_paysheet de cada trabajador
@@ -2002,6 +2066,7 @@ export class BillService {
         },
         billDetails: {
           include: {
+            snapshot: true,
             operationWorker: {
               select: {
                 id: true,
@@ -2082,6 +2147,30 @@ export class BillService {
       });
     }
 
+    // ✅ Para MOSTRAR el detalle por trabajador, sustituir el pago "en vivo"
+    // (BillDetail.total_paysheet/total_bill/pay_unit/pay_rate y el nombre del
+    // trabajador) por la foto tomada al crear la Bill (BillDetailSnapshot),
+    // para que un recálculo/edición posterior o un cambio de nombre del
+    // trabajador no reescriban lo que se le pagó originalmente.
+    billDB.billDetails?.forEach((detail: any) => {
+      const snapshot = detail.snapshot;
+      if (!snapshot) return;
+
+      detail.pay_unit = snapshot.pay_unit;
+      detail.pay_rate = snapshot.pay_rate;
+      detail.total_bill = snapshot.total_bill;
+      detail.total_paysheet = snapshot.total_paysheet;
+
+      if (detail.operationWorker?.worker) {
+        if (snapshot.workerName != null) {
+          detail.operationWorker.worker.name = snapshot.workerName;
+        }
+        if (snapshot.workerDni != null) {
+          detail.operationWorker.worker.dni = snapshot.workerDni;
+        }
+      }
+    });
+
     // ✅ OBTENER FECHAS DEL GRUPO desde operation_worker
     // const groupDates = await this.getGroupDatesFromOperationWorkers(
     //   billDB.id_operation, 
@@ -2105,25 +2194,28 @@ export class BillService {
       timeStart_group: operationWorker?.timeStart ?? null,
       dateEnd_group: operationWorker?.dateEnd ?? null,
       timeEnd_group: operationWorker?.timeEnd ?? null,
+      // Preferir las horas trabajadas congeladas en BillTariffSnapshot (worked_H*)
+      // al momento de crear la Bill; si no hay snapshot (Bill antigua), usar las
+      // horas en vivo de Bill.HOD/FAC_HOD/etc. como respaldo.
       billHoursDistribution: {
-        HOD: billDB.HOD,
-        HON: billDB.HON,
-        HED: billDB.HED,
-        HEN: billDB.HEN,
-        HFOD: billDB.HFOD,
-        HFON: billDB.HFON,
-        HFED: billDB.HFED,
-        HFEN: billDB.HFEN,
+        HOD: tariffSnapshot?.worked_HOD ?? billDB.HOD,
+        HON: tariffSnapshot?.worked_HON ?? billDB.HON,
+        HED: tariffSnapshot?.worked_HED ?? billDB.HED,
+        HEN: tariffSnapshot?.worked_HEN ?? billDB.HEN,
+        HFOD: tariffSnapshot?.worked_HFOD ?? billDB.HFOD,
+        HFON: tariffSnapshot?.worked_HFON ?? billDB.HFON,
+        HFED: tariffSnapshot?.worked_HFED ?? billDB.HFED,
+        HFEN: tariffSnapshot?.worked_HFEN ?? billDB.HFEN,
       },
       paysheetHoursDistribution: {
-        HOD: billDB.FAC_HOD,
-        HON: billDB.FAC_HON,
-        HED: billDB.FAC_HED,
-        HEN: billDB.FAC_HEN,
-        HFOD: billDB.FAC_HFOD,
-        HFON: billDB.FAC_HFON,
-        HFED: billDB.FAC_HFED,
-        HFEN: billDB.FAC_HFEN,
+        HOD: tariffSnapshot?.worked_FAC_HOD ?? billDB.FAC_HOD,
+        HON: tariffSnapshot?.worked_FAC_HON ?? billDB.FAC_HON,
+        HED: tariffSnapshot?.worked_FAC_HED ?? billDB.FAC_HED,
+        HEN: tariffSnapshot?.worked_FAC_HEN ?? billDB.FAC_HEN,
+        HFOD: tariffSnapshot?.worked_FAC_HFOD ?? billDB.FAC_HFOD,
+        HFON: tariffSnapshot?.worked_FAC_HFON ?? billDB.FAC_HFON,
+        HFED: tariffSnapshot?.worked_FAC_HFED ?? billDB.FAC_HFED,
+        HFEN: tariffSnapshot?.worked_FAC_HFEN ?? billDB.FAC_HFEN,
       },
       pays: billDB.billDetails.map((detail) => ({
         id_worker: detail.operationWorker.worker.id,
