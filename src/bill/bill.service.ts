@@ -4972,6 +4972,7 @@ export class BillService {
                     code: true,
                     paysheet_tariff: true,
                     facturation_tariff: true,
+                    alternative_paid_service: true,
 
                     // 🔥 SOLO LOS CAMPOS QUE USAS
                     OD: true,
@@ -5129,7 +5130,9 @@ export class BillService {
       // let  numberOfHours = safeNumber(bill.number_of_hours);
 
       let cantidad = 0;
-      if (unitName.includes('HORA')) {
+      if (tariff?.alternative_paid_service === 'YES') {
+        cantidad = safeNumber(bill.amount);
+      } else if (unitName.includes('HORA')) {
         cantidad = safeNumber(bill.number_of_hours) * quantityWorkers;
       } else if (unitName.includes('JORNAL')) {
         cantidad = totalPago;
