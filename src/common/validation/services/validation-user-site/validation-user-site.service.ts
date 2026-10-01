@@ -77,16 +77,12 @@ export class ValidationUserSiteService {
         return true;
       }
 
-      // Para supervisores ó programadores, verificar que tienen asignado ese subsite
+      // Para supervisores ó programadores, verificar que la subsede esté entre las asignadas
       if (user?.role === 'SUPERVISOR' || user?.role === 'PROGRAMMER' || user?.role === 'RECEPTION') {
-        const userSubsite = await this.prisma.user.findFirst({
-          where: {
-            id: userId,
-            id_site: siteId,
-            id_subsite: subsiteId,
-          },
+        const membership = await this.prisma.userSubSite.findUnique({
+          where: { id_user_id_subsite: { id_user: userId, id_subsite: subsiteId } },
         });
-        return !!userSubsite;
+        return !!membership;
       }
 
       // Para otros roles, solo verificar que tienen asignado el site correcto
@@ -106,5 +102,35 @@ export class ValidationUserSiteService {
     return this.prisma.site.findUnique({
       where: { id: siteId },
     });
+  }
+
+  /**
+   * Todas las subsedes asignadas a un usuario
+   */
+  async getAssignedSubsiteIds(userId: number): Promise<number[]> {
+    const rows = await this.prisma.userSubSite.findMany({
+      where: { id_user: userId },
+      select: { id_subsite: true },
+    });
+    return rows.map((r) => r.id_subsite);
+  }
+
+  /**
+   * Todas las áreas asignadas a un usuario. Lista vacía = sin restricción.
+   */
+  async getAssignedAreaIds(userId: number): Promise<number[]> {
+    const rows = await this.prisma.userJobArea.findMany({
+      where: { id_user: userId },
+      select: { id_area: true },
+    });
+    return rows.map((r) => r.id_area);
+  }
+
+  /**
+   * Un usuario sin áreas asignadas no tiene restricción de área.
+   */
+  async isAreaAllowedForUser(userId: number, areaId: number): Promise<boolean> {
+    const assigned = await this.getAssignedAreaIds(userId);
+    return assigned.length === 0 || assigned.includes(areaId);
   }
 }

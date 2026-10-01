@@ -80,6 +80,13 @@ export const CurrentUser = createParamDecorator(
           request.user?.subsiteId ||
           request.user?.id_subsite;
         break;
+      case 'subsiteIds':
+        result =
+          request.userPayload?.id_subsites || request.user?.id_subsites || [];
+        break;
+      case 'areaIds':
+        result = request.userPayload?.id_areas || request.user?.id_areas || [];
+        break;
       case 'isAdmin':
         result =
           request.isAdmin !== undefined

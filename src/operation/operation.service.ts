@@ -22,6 +22,7 @@ import { formatColombianDate, getColombianDateTime } from 'src/common/utils/date
 import { OperationTokenService } from './services/operation-token.service';
 import { OperationEmailService } from './services/operation-email.service';
 import { ConfigurationService } from 'src/configuration/configuration.service';
+import { ValidationUserSiteService } from 'src/common/validation/services/validation-user-site/validation-user-site.service';
 // ... otras importaciones
 /**
  * Servicio para gestionar operaciones
@@ -43,6 +44,7 @@ export class OperationService {
     private operationTokenService: OperationTokenService,
     private operationEmailService: OperationEmailService,
     private configurationService: ConfigurationService,
+    private validationUserSite: ValidationUserSiteService,
     // private billService: BillService,
   ) { }
   /**
@@ -2375,6 +2377,20 @@ export class OperationService {
         select: { role: true },
       });
       // console.log('[OperationService] ==> Usuario encontrado:', user);
+
+      if (
+        user?.role !== Role.SUPERADMIN &&
+        createOperationDto.id_area &&
+        !(await this.validationUserSite.isAreaAllowedForUser(
+          createOperationDto.id_user!,
+          createOperationDto.id_area,
+        ))
+      ) {
+        return {
+          message: 'Not authorized. This area is not assigned to your user',
+          status: 403,
+        };
+      }
 
       // Validar semanas para SUPERVISOR (PROGRAMMER, ADMIN y SUPERADMIN no tienen esta restricción):
       // SEMANAS_COMPLETAR_OPERACIONES limita cuántas semanas hacia atrás puede el SUPERVISOR

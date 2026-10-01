@@ -97,7 +97,7 @@ async create(
     }
 
       console.log(`[WorkerController] ${requestId} - Calling workerService.create...`);
-      const result = await this.workerService.create(createWorkerDto, siteId, role);
+      const result = await this.workerService.create(createWorkerDto, siteId, role, userId);
       console.log(`[WorkerController] ${requestId} - ✅ Service call completed successfully`);
       
       // Marcar como completado (no en proceso)
@@ -238,6 +238,7 @@ async update(
   @CurrentUser('subsiteId') subsiteId: number,
   @CurrentUser('isSupervisor') isSupervisor: boolean,
   @CurrentUser('role') role: string,
+  @CurrentUser('userId') userId: number,
 ) {
   // ✅ CAMBIAR A findById en lugar de findOne
   const validateId = await this.workerService.findById(id, siteId);
@@ -263,6 +264,7 @@ async update(
     updateWorkerDto,
     siteId,
     role,
+    userId,
   );
 
   return response;

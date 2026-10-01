@@ -27,6 +27,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       occupation: payload.occupation,
       phone: payload.phone,
       id_subsite: payload.id_subsite,
+      id_subsites: payload.id_subsites,
+      id_areas: payload.id_areas,
     };
   }
 }

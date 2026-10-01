@@ -438,14 +438,29 @@ if (operationsToUpdate.length > 0) {
         data: { status: 'INPROGRESS' },
       });
 
+      // Cada grupo tiene su propio horario en Operation_Worker: solo se
+      // completan los campos vacíos con el horario de la operación, sin
+      // sobrescribir los grupos que inician a una hora distinta.
       await tx.operation_Worker.updateMany({
         where: {
           id_operation: operation.id,
           dateEnd: null,
           timeEnd: null,
+          dateStart: null,
         },
         data: {
           dateStart: operation.dateStart,
+        },
+      });
+
+      await tx.operation_Worker.updateMany({
+        where: {
+          id_operation: operation.id,
+          dateEnd: null,
+          timeEnd: null,
+          OR: [{ timeStart: null }, { timeStart: '' }],
+        },
+        data: {
           timeStart: operation.timeStrat,
         },
       });

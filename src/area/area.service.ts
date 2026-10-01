@@ -52,6 +52,7 @@ export class AreaService {
   async findAll(
   id_site?: number,
   id_subsite?: number,
+  allowedAreaIds?: number[],
 ) {
   try {
     const whereClause: any = {};
@@ -66,6 +67,11 @@ export class AreaService {
       whereClause.id_subsite = id_subsite;
     }
     // Si id_subsite es null o undefined, NO agregar filtro de subsede
+
+    // Restringe a las áreas asignadas al usuario (lista vacía = sin restricción)
+    if (allowedAreaIds && allowedAreaIds.length > 0) {
+      whereClause.id = { in: allowedAreaIds };
+    }
 
     const response = await this.prisma.jobArea.findMany({
       where: whereClause,

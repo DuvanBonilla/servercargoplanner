@@ -23,7 +23,7 @@ export class LoginService {
       if (!user) {
         return 'Invalid credentials';
       }
-      const token = this.authService.generateToken(user);
+      const token = await this.authService.generateToken(user);
       return token;
     } catch (error) {
       throw new Error(error);

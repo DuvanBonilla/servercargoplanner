@@ -48,7 +48,12 @@ export class AuthService {
    * @param user
    * @returns
    */
-  generateToken(user: any) {
+  async generateToken(user: any) {
+    const [id_subsites, id_areas] = await Promise.all([
+      this.validationUser.getAssignedSubsiteIds(user.id),
+      this.validationUser.getAssignedAreaIds(user.id),
+    ]);
+
     const payload = {
       id: user.id,
       username: user.username,
@@ -61,6 +66,8 @@ export class AuthService {
       id_site: user.id_site,
       site: user.Site?.name || null,
       id_subsite: user.id_subsite || null,
+      id_subsites,
+      id_areas,
     };
 
     return {
@@ -277,6 +284,11 @@ export class AuthService {
         }
       }
 
+      const [id_subsites, id_areas] = await Promise.all([
+        this.validationUser.getAssignedSubsiteIds(user.id),
+        this.validationUser.getAssignedAreaIds(user.id),
+      ]);
+
       // Crear payload con la información actualizada
       const payload = {
         id: user.id,
@@ -292,6 +304,8 @@ export class AuthService {
           ? await this.getSiteName(newSiteId)
           : user.id_site ? await this.getSiteName(user.id_site) : null,
         id_subsite: this.determineSubsiteId(user, newSubsiteId, explicitParams),
+        id_subsites,
+        id_areas,
       };
 
       return {

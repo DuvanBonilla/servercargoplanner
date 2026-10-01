@@ -1,4 +1,4 @@
-import {  IsEnum, IsNumber, IsOptional, IsString} from 'class-validator';
+import { IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString } from 'class-validator';
 import { Role } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
@@ -46,4 +46,22 @@ export class CreateUserDto {
   @Transform(({ value }) => Number(value))
   @IsOptional()
   id_subsite?: number;
+
+  @ApiProperty({ example: [1, 2], required: false })
+  @IsArray()
+  @IsInt({ each: true })
+  @Transform(({ value }) =>
+    Array.isArray(value) ? value.map((v) => Number(v)) : value,
+  )
+  @IsOptional()
+  id_subsites?: number[];
+
+  @ApiProperty({ example: [1, 2], required: false })
+  @IsArray()
+  @IsInt({ each: true })
+  @Transform(({ value }) =>
+    Array.isArray(value) ? value.map((v) => Number(v)) : value,
+  )
+  @IsOptional()
+  id_areas?: number[];
 }

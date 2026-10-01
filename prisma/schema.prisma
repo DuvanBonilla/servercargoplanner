@@ -39,9 +39,31 @@ model User {
   Configuration     Configuration[]
   Bill              Bill[]
   zones             Zone[]
+  assignedSubSites  UserSubSite[]
+  assignedAreas     UserJobArea[]
 
   @@index([id_site])
   @@index([id_subsite])
+}
+
+model UserSubSite {
+  id_user    Int
+  id_subsite Int
+  user       User    @relation(fields: [id_user], references: [id], onDelete: Cascade)
+  subSite    SubSite @relation(fields: [id_subsite], references: [id], onDelete: Cascade)
+
+  @@id([id_user, id_subsite])
+  @@index([id_subsite])
+}
+
+model UserJobArea {
+  id_user Int
+  id_area Int
+  user    User    @relation(fields: [id_user], references: [id], onDelete: Cascade)
+  area    JobArea @relation(fields: [id_area], references: [id], onDelete: Cascade)
+
+  @@id([id_user, id_area])
+  @@index([id_area])
 }
 
 model JobArea {
@@ -56,6 +78,7 @@ model JobArea {
   id_site    Int              @default(1)
   id_subsite Int?
   subSite    SubSite?         @relation(fields: [id_subsite], references: [id])
+  assignedUsers UserJobArea[]
 
   @@index([id_user])
   @@index([id_site])
@@ -411,6 +434,7 @@ model SubSite {
   CostCenter        CostCenter[]
   SubTask           SubTask[]
   Zone              Zone[]
+  assignedUsers     UserSubSite[]
 
   @@index([id_site])
 }

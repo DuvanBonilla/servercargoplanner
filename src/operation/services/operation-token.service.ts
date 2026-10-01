@@ -19,7 +19,7 @@ export class OperationTokenService {
       process.env.OPERATION_CONFIRMATION_PAGE_URL ||
       process.env.FRONTEND_URL ||
       process.env.CLIENT_URL ||
-      'http://192.168.15.68:5173/cargoplannerweb/confirm-operation';
+      ' https://cargoban.com.co/cargoplannerweb/confirm-operation';
 
     return this.buildLink(confirmationPageUrl, token);
   }
@@ -31,7 +31,7 @@ export class OperationTokenService {
         const base =
           process.env.FRONTEND_URL ||
           process.env.CLIENT_URL ||
-          'http://192.168.15.68:5173';
+          ' https://cargoban.com.co';
         return `${base.replace(/\/$/, '')}/cargoplannerweb/liquidacion`;
       })();
 

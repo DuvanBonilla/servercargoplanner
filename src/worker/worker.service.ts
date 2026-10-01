@@ -3,6 +3,7 @@ import { CreateWorkerDto } from './dto/create-worker.dto';
 import { UpdateWorkerDto } from './dto/update-worker.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ValidationService } from 'src/common/validation/validation.service';
+import { ValidationUserSiteService } from 'src/common/validation/services/validation-user-site/validation-user-site.service';
 import { getColombianDateTime } from 'src/common/utils/dateColombia';
 import { isPermissionActive } from 'src/common/utils/permission.utils';
 
@@ -16,6 +17,7 @@ export class WorkerService {
   constructor(
     private prisma: PrismaService,
     private validationService: ValidationService,
+    private validationUserSite: ValidationUserSiteService,
   ) {}
 
   /**
@@ -397,7 +399,7 @@ for (const permission of activePermissions) {
    * @param userRole rol del usuario (SUPERADMIN, ADMIN, etc.)
    * @returns respuesta de la creacion del trabajador
    */
-  async create(createWorkerDto: CreateWorkerDto, id_site?: number, userRole: string = 'ADMIN') {
+  async create(createWorkerDto: CreateWorkerDto, id_site?: number, userRole: string = 'ADMIN', requestingUserId?: number) {
     const requestId = Math.random().toString(36).substring(7);
     // console.log(`[WorkerService] 🆔 Iniciando creación de trabajador - Request ID: ${requestId}`);
     // console.log(`[WorkerService] 🔐 Rol del usuario: ${userRole}, Site: ${id_site}`);
@@ -414,6 +416,18 @@ for (const permission of activePermissions) {
       }
       const { dni, id_area, id_user, phone, code, payroll_code } =
         createWorkerDto;
+
+      if (
+        requestingUserId &&
+        userRole !== 'SUPERADMIN' &&
+        id_area &&
+        !(await this.validationUserSite.isAreaAllowedForUser(requestingUserId, id_area))
+      ) {
+        return {
+          message: 'Not authorized. This area is not assigned to your user',
+          status: 403,
+        };
+      }
         // Check if code exists but is assigned to a deactivated worker
     const existingWorker = await this.prisma.worker.findFirst({
       where: { 
@@ -904,7 +918,7 @@ async findById(id: number, id_site?: number) {
    * @param userRole rol del usuario (SUPERADMIN, ADMIN, etc.)
    * @returns respuesta de la actualizacion del trabajador
    */
-  async update(id: number, updateWorkerDto: UpdateWorkerDto, id_site?: number, userRole: string = 'ADMIN') {
+  async update(id: number, updateWorkerDto: UpdateWorkerDto, id_site?: number, userRole: string = 'ADMIN', requestingUserId?: number) {
     try {
       // console.log(`[WorkerService] 🔐 Actualizando worker ${id} - Rol: ${userRole}, Site: ${id_site}`);
 
@@ -942,6 +956,16 @@ async findById(id: number, id_site?: number) {
           return {
             message: 'Not authorized. Area does not belong to your site',
             status: 409,
+          };
+        }
+        if (
+          requestingUserId &&
+          userRole !== 'SUPERADMIN' &&
+          !(await this.validationUserSite.isAreaAllowedForUser(requestingUserId, updateWorkerDto.id_area!))
+        ) {
+          return {
+            message: 'Not authorized. This area is not assigned to your user',
+            status: 403,
           };
         }
       }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -92,31 +92,108 @@ export class UserService {
 
     // Crear usuario
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    
-    // ✅ PREPARAR DATOS - ELIMINAR id_subsite SI ES NULL/UNDEFINED
-    const userData = { ...createUserDto, password: hashedPassword };
+
+    const { id_subsites, id_areas, ...fields } = createUserDto;
+    const userData = { ...fields, password: hashedPassword };
     if (userData.id_subsite === null || userData.id_subsite === undefined) {
       delete userData.id_subsite;
-      // console.log('[UserService] id_subsite eliminado del userData (era null/undefined)');
     }
 
-    // console.log('[UserService] userData final para crear:', {
-    //   ...userData,
-    //   password: '[HIDDEN]' // No mostrar password en logs
-    // });
+    const subsiteIds = this.unique(
+      id_subsites ?? (fields.id_subsite ? [fields.id_subsite] : []),
+    );
+    const areaIds = this.unique(id_areas ?? []);
+    await this.validateAssignments(subsiteIds, areaIds, fields.id_site);
+
+    if (subsiteIds.length > 0 && !subsiteIds.includes(userData.id_subsite as number)) {
+      userData.id_subsite = subsiteIds[0];
+    }
 
     const response = await this.prisma.user.create({
-      data: userData,
+      data: {
+        ...userData,
+        assignedSubSites: {
+          create: subsiteIds.map((id_subsite) => ({ id_subsite })),
+        },
+        assignedAreas: { create: areaIds.map((id_area) => ({ id_area })) },
+      },
+      include: this.assignmentInclude,
     });
 
-    // console.log('[UserService] Usuario creado exitosamente con ID:', response.id);
-    return response;
+    return this.toResponse(response);
 
   } catch (error) {
+    if (error instanceof HttpException) throw error;
     console.error('[UserService] Error creando usuario:', error);
     throw new Error(`Error validating IDs: ${error}`);
   }
 }
+
+  private readonly assignmentInclude = {
+    assignedSubSites: { select: { id_subsite: true } },
+    assignedAreas: { select: { id_area: true } },
+  } as const;
+
+  private unique(ids: number[]) {
+    return [...new Set(ids)];
+  }
+
+  private toResponse<
+    T extends {
+      assignedSubSites: { id_subsite: number }[];
+      assignedAreas: { id_area: number }[];
+    },
+  >(user: T) {
+    const { assignedSubSites, assignedAreas, ...rest } = user;
+    return {
+      ...rest,
+      id_subsites: assignedSubSites.map((s) => s.id_subsite),
+      id_areas: assignedAreas.map((a) => a.id_area),
+    };
+  }
+
+  /**
+   * Las subsedes deben existir y pertenecer a la sede; cada área debe
+   * existir y pertenecer a una de las subsedes seleccionadas.
+   */
+  private async validateAssignments(
+    subsiteIds: number[],
+    areaIds: number[],
+    id_site?: number | null,
+  ) {
+    if (subsiteIds.length > 0) {
+      const subsites = await this.prisma.subSite.findMany({
+        where: { id: { in: subsiteIds } },
+        select: { id: true, id_site: true },
+      });
+      if (subsites.length !== subsiteIds.length) {
+        throw new BadRequestException('Alguna subsede asignada no existe');
+      }
+      if (id_site != null && subsites.some((s) => s.id_site !== id_site)) {
+        throw new BadRequestException(
+          'Alguna subsede asignada no pertenece a la sede del usuario',
+        );
+      }
+    }
+    if (areaIds.length > 0) {
+      const areas = await this.prisma.jobArea.findMany({
+        where: { id: { in: areaIds } },
+        select: { id: true, id_subsite: true },
+      });
+      if (areas.length !== areaIds.length) {
+        throw new BadRequestException('Alguna área asignada no existe');
+      }
+      if (
+        areas.some(
+          (a) => a.id_subsite === null || !subsiteIds.includes(a.id_subsite),
+        )
+      ) {
+        throw new BadRequestException(
+          'Todas las áreas asignadas deben pertenecer a las subsedes seleccionadas',
+        );
+      }
+    }
+  }
   /**
    * obtene todos los usuarios
    * @returns respuesta de la busqueda de todos los usuarios
@@ -125,8 +202,9 @@ export class UserService {
     try {
       const response = await this.prisma.user.findMany({
         where: { id_site },
+        include: this.assignmentInclude,
       });
-      return response;
+      return response.map((user) => this.toResponse(user));
     } catch (error) {
       throw new Error(error);
     }
@@ -191,20 +269,81 @@ export class UserService {
         }
       }
 
-      const dataUpdate = { ...updateUserDto };
+      const { id_subsites, id_areas, ...dataUpdate } = updateUserDto;
       if (dataUpdate.password) {
         dataUpdate.password = await bcrypt.hash(dataUpdate.password, 10);
       } else {
         delete dataUpdate.password;
       }
-      const response = await this.prisma.user.update({
-        where: {
-          dni,
-        },
-        data: dataUpdate,
+
+      const existing = await this.prisma.user.findUniqueOrThrow({
+        where: { dni },
+        include: this.assignmentInclude,
       });
-      return response;
+      const currentSubsiteIds = existing.assignedSubSites.map((s) => s.id_subsite);
+      const idSite = dataUpdate.id_site ?? existing.id_site;
+
+      const newSubsiteIds = id_subsites ? this.unique(id_subsites) : null;
+      const newAreaIds = id_areas ? this.unique(id_areas) : null;
+      const effectiveSubsiteIds = newSubsiteIds ?? currentSubsiteIds;
+
+      if (newSubsiteIds) {
+        await this.validateAssignments(newSubsiteIds, [], idSite);
+      }
+      if (newAreaIds) {
+        await this.validateAssignments(effectiveSubsiteIds, newAreaIds);
+      }
+
+      if (newSubsiteIds) {
+        const requested = dataUpdate.id_subsite ?? existing.id_subsite;
+        (dataUpdate as { id_subsite?: number | null }).id_subsite =
+          requested != null && newSubsiteIds.includes(requested)
+            ? requested
+            : (newSubsiteIds[0] ?? null);
+      }
+
+      const response = await this.prisma.$transaction(async (tx) => {
+        if (newSubsiteIds) {
+          await tx.userSubSite.deleteMany({
+            where: { id_user: existing.id, id_subsite: { notIn: newSubsiteIds } },
+          });
+          await tx.userSubSite.createMany({
+            data: newSubsiteIds.map((id_subsite) => ({ id_user: existing.id, id_subsite })),
+            skipDuplicates: true,
+          });
+        } else if (dataUpdate.id_subsite) {
+          await tx.userSubSite.createMany({
+            data: [{ id_user: existing.id, id_subsite: dataUpdate.id_subsite }],
+            skipDuplicates: true,
+          });
+        }
+
+        if (newAreaIds) {
+          await tx.userJobArea.deleteMany({
+            where: { id_user: existing.id, id_area: { notIn: newAreaIds } },
+          });
+          await tx.userJobArea.createMany({
+            data: newAreaIds.map((id_area) => ({ id_user: existing.id, id_area })),
+            skipDuplicates: true,
+          });
+        } else if (newSubsiteIds) {
+          await tx.userJobArea.deleteMany({
+            where: {
+              id_user: existing.id,
+              area: { id_subsite: { notIn: newSubsiteIds } },
+            },
+          });
+        }
+
+        return tx.user.update({
+          where: { dni },
+          data: dataUpdate,
+          include: this.assignmentInclude,
+        });
+      });
+      return this.toResponse(response);
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new Error(error);
     }
   }

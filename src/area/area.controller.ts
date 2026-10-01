@@ -23,6 +23,7 @@ import { SiteInterceptor } from 'src/common/interceptors/site.interceptor';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
+import { ValidationUserSiteService } from 'src/common/validation/services/validation-user-site/validation-user-site.service';
 
 @Controller('area')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -30,7 +31,10 @@ import { Role } from '@prisma/client';
 @ApiBearerAuth('access-token')
 @UseInterceptors(SiteInterceptor)
 export class AreaController {
-  constructor(private readonly areaService: AreaService) {}
+  constructor(
+    private readonly areaService: AreaService,
+    private readonly validationUserSite: ValidationUserSiteService,
+  ) {}
 
   @Post()
   async create(
@@ -73,6 +77,7 @@ if (typeof createAreaDto.id_subsite === 'undefined' || createAreaDto.id_subsite 
     @CurrentUser('siteId') siteId: number,
     @CurrentUser('subsiteId') subsiteId: number,
     @CurrentUser('role') userRole: Role,
+    @CurrentUser('userId') userId: number,
     @Query('id_subsite') querySubsiteId?: number,
   ) {
     // Determinar qué subsede usar basado en el rol y parámetros
@@ -99,7 +104,13 @@ if (typeof createAreaDto.id_subsite === 'undefined' || createAreaDto.id_subsite 
     }
     // Para otros roles, mantener restricciones originales (su sede/subsede)
     
-    const response = await this.areaService.findAll(effectiveSiteId, effectiveSubsiteId);
+    // Los roles con áreas asignadas solo ven las suyas (lista vacía = sin restricción)
+    const allowedAreaIds =
+      userRole === Role.SUPERVISOR || userRole === Role.PROGRAMMER || userRole === Role.RECEPTION
+        ? await this.validationUserSite.getAssignedAreaIds(userId)
+        : undefined;
+
+    const response = await this.areaService.findAll(effectiveSiteId, effectiveSubsiteId, allowedAreaIds);
     return response;
   }
 
