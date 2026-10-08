@@ -8,10 +8,7 @@ import { PaginationFeedingService } from 'src/common/services/pagination/feeding
 import { CreateBulkFeedingDto } from './dto/create-bulk-feeding.dto';
 import { CreateFeedingAddedToServiceDto } from './dto/create-feeding-added-to-service.dto';
 import { FeedingStatus } from '@prisma/client';
-import {
-  FEEDING_TYPE_NAMES,
-  MEAL_SCHEDULE,
-} from './constants/meal-schedule.constant';
+import { FEEDING_TYPE_NAMES } from './constants/meal-schedule.constant';
 
 @Injectable()
 export class FeedingService {
@@ -186,13 +183,11 @@ export class FeedingService {
 
   /**
    * Roster de alimentación de un grupo: trabajadores del grupo, fechas
-   * disponibles a registrar (entre dateStart y dateEnd), tipos sugeridos por
-   * defecto en cada fecha (según las horas en que el grupo estuvo activo ese
-   * día) y quiénes ya tienen cada tipo registrado en cada fecha (para
-   * excluirlos de la selección). Reemplaza a los antiguos endpoints
-   * available-meals / missing-meals / pending-inprogress: ya no se calcula
-   * nada en base a la hora actual, solo en base al rango de trabajo real del
-   * grupo.
+   * disponibles a registrar (entre dateStart y dateEnd) y quiénes ya tienen
+   * cada tipo registrado en cada fecha (para marcarlos como ya recibidos).
+   * Los 4 tipos de comida siempre están disponibles: el backend ya no
+   * sugiere ni filtra tipos por franja horaria. Reemplaza a los antiguos
+   * endpoints available-meals / missing-meals / pending-inprogress.
    *
    * @param dateEndStr / timeEndStr: permiten pasar una fecha/hora de fin
    * *candidata*, aún no guardada (caso del flujo "Completar grupo", donde el
@@ -225,7 +220,7 @@ export class FeedingService {
     });
 
     if (groupWorkers.length === 0) {
-      return { workers: [], dates: [], suggestedTypesByDate: {}, registeredByDate: {} };
+      return { workers: [], dates: [], registeredByDate: {} };
     }
 
     const combineDateTime = (date: Date | string, time?: string | null): Date => {
@@ -268,7 +263,7 @@ export class FeedingService {
       }
     }
     if (!groupStartDateTime) {
-      return { workers: [], dates: [], suggestedTypesByDate: {}, registeredByDate: {} };
+      return { workers: [], dates: [], registeredByDate: {} };
     }
 
     // Fecha/hora de fin candidata (aún no guardada) tiene prioridad sobre la
@@ -289,27 +284,6 @@ export class FeedingService {
     while (cursor <= rangeEnd) {
       dates.push(this.toDateStr(cursor));
       cursor.setUTCDate(cursor.getUTCDate() + 1);
-    }
-
-    const mealTypes = Object.keys(MEAL_SCHEDULE) as FeedingStatus[];
-    const suggestedTypesByDate: Record<string, FeedingStatus[]> = {};
-    for (const date of dates) {
-      const dayStartAbs = new Date(`${date}T00:00:00.000Z`).getTime();
-      const dayEndAbs = new Date(`${date}T23:59:59.999Z`).getTime();
-      const activeStartAbs = Math.max(groupStartDateTime.getTime(), dayStartAbs);
-      const activeEndAbs = Math.min(effectiveEndDateTime.getTime(), dayEndAbs);
-
-      if (activeStartAbs >= activeEndAbs) {
-        suggestedTypesByDate[date] = [];
-        continue;
-      }
-      const activeStartMin = Math.floor((activeStartAbs - dayStartAbs) / 60000);
-      const activeEndMin = Math.ceil((activeEndAbs - dayStartAbs) / 60000);
-
-      suggestedTypesByDate[date] = mealTypes.filter((type) => {
-        const w = MEAL_SCHEDULE[type];
-        return activeStartMin < w.end && activeEndMin > w.start;
-      });
     }
 
     const workerIds = groupWorkers.map((w) => w.id_worker);
@@ -341,7 +315,6 @@ export class FeedingService {
         dni: w.worker.dni,
       })),
       dates,
-      suggestedTypesByDate,
       registeredByDate,
     };
   }

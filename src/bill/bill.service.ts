@@ -4311,6 +4311,10 @@ export class BillService {
           }
         });
 
+        // Buscar por código de grupo (columna "Grupo")
+        const groupCondition = await this.buildGroupCodeCondition(search);
+        if (groupCondition) searchConditions.push(groupCondition);
+
         // Combinar condiciones de búsqueda con OR
         if (Object.keys(whereClause).length > 0) {
           // Si ya hay otros filtros, agregar la búsqueda como condición adicional
@@ -4714,6 +4718,10 @@ export class BillService {
         }
       );
 
+      // Buscar por código de grupo (columna "Grupo")
+      const groupCondition = await this.buildGroupCodeCondition(searchTerm);
+      if (groupCondition) searchConditions.push(groupCondition);
+
       baseWhere.OR = searchConditions;
     }
 
@@ -4862,7 +4870,7 @@ export class BillService {
 
 
 
-    const where = this.buildWhere(filters);
+    const where = await this.buildWhere(filters);
     // console.log('📌 WHERE FINAL:', JSON.stringify(where, null, 2));
     const bills = await this.prisma.bill.findMany({
       where,
@@ -5381,6 +5389,37 @@ export class BillService {
 
   // Código legible del grupo (ej. 1437901) a partir del id_group (uuid), buscando en operation.operationGroups
   // Se devuelve como number para que la columna "Grupo" se descargue en Excel con formato Número
+  /**
+   * Condición de búsqueda por código de grupo (columna "Grupo", ej. 2773901).
+   * El código vive en OperationGroup, así que se resuelve primero a pares
+   * (operación, grupo) para traer solo la factura de ese grupo y no las de
+   * los demás grupos de la misma operación. Solo códigos numéricos exactos.
+   */
+  private async buildGroupCodeCondition(search: string): Promise<any | null> {
+    const code = String(search).trim();
+    if (!/^\d+$/.test(code)) return null;
+
+    const groups = await this.prisma.operationGroup.findMany({
+      where: { code },
+      select: { id_operation: true, id_group: true },
+    });
+    if (groups.length === 0) return null;
+
+    return {
+      OR: groups.map((g) => ({
+        id_operation: g.id_operation,
+        OR: [
+          { id_group: g.id_group },
+          {
+            billDetails: {
+              some: { operationWorker: { id_group: g.id_group } },
+            },
+          },
+        ],
+      })),
+    };
+  }
+
   private resolveGroupCode(operation: any, id_group?: string | null): number | '' {
     if (!id_group) return '';
     const match = (operation?.operationGroups || []).find((g: any) => g.id_group === id_group);
@@ -5719,7 +5758,7 @@ export class BillService {
     });
   }
 
-  private buildWhere(filters: any) {
+  private async buildWhere(filters: any) {
     const {
       search,
       jobAreaIds = [],
@@ -5894,6 +5933,10 @@ export class BillService {
           },
         },
       });
+
+      // búsqueda por código de grupo (columna "Grupo")
+      const groupCondition = await this.buildGroupCodeCondition(searchValue);
+      if (groupCondition) searchConditions.push(groupCondition);
 
       whereClause.OR = searchConditions;
     }
