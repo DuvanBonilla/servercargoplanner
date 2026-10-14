@@ -134,6 +134,35 @@ export class AssignWorkerToOperationService {
           // Garantizar que el grupo tenga su código legible (ej. 1437901); no-op si ya existe
           await this.operationGroupService.ensureCode(id_operation, groupId);
 
+          let groupTariffId = group.id_tariff || null;
+          let groupSubtaskId = group.id_subtask || null;
+
+          // Si el grupo existente ya generó una Bill con tarifa congelada
+          // (BillTariffSnapshot), el trabajador agregado hereda ESA tarifa de
+          // referencia y no la que venga en el payload, para que el recálculo de la
+          // factura siga usando la tarifa original del servicio.
+          if (isExistingGroup) {
+            const frozenTariff = await this.prisma.billTariffSnapshot.findFirst({
+              where: { bill: { id_operation, id_group: groupId } },
+              select: { id_tariff: true, id_subtask: true },
+            });
+
+            if (frozenTariff?.id_tariff) {
+              const tariffStillExists = await this.prisma.tariff.findUnique({
+                where: { id: frozenTariff.id_tariff },
+                select: { id: true, id_subtask: true },
+              });
+
+              if (tariffStillExists) {
+                groupTariffId = tariffStillExists.id;
+                groupSubtaskId =
+                  frozenTariff.id_subtask ??
+                  groupSubtaskId ??
+                  tariffStillExists.id_subtask;
+              }
+            }
+          }
+
           const groupSchedule = {
             dateStart: group.dateStart ? parseDate(group.dateStart) : null,
             dateEnd: group.dateEnd ? parseDate(group.dateEnd) : null,
@@ -141,8 +170,8 @@ export class AssignWorkerToOperationService {
             timeEnd: group.timeEnd || null,
             ...(groupId && { id_group: groupId }), // Solo incluir si hay groupId
             id_task: group.id_task || null,
-            id_tariff: group.id_tariff || null,
-            id_subtask: group.id_subtask || null,
+            id_tariff: groupTariffId,
+            id_subtask: groupSubtaskId,
             observation: group.observation || null,
           };
 

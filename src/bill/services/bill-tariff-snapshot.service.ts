@@ -104,6 +104,95 @@ export class BillTariffSnapshotService {
   }
 
   /**
+   * Mantiene las horas trabajadas (worked_*) del snapshot iguales a las horas
+   * actuales de la Bill. La tarifa del snapshot NO se toca: es lo único que queda
+   * amarrado al momento de creación; las horas siguen a la factura cuando se recalcula.
+   */
+  async syncWorkedHoursFromBill(id_bill: number) {
+    const bill = await this.prisma.bill.findUnique({ where: { id: id_bill } });
+    if (!bill) return null;
+
+    const num = (v: any) => (v == null ? null : Number(v));
+    return this.prisma.billTariffSnapshot.updateMany({
+      where: { id_bill },
+      data: {
+        worked_HOD: num(bill.HOD),
+        worked_HON: num(bill.HON),
+        worked_HED: num(bill.HED),
+        worked_HEN: num(bill.HEN),
+        worked_HFOD: num(bill.HFOD),
+        worked_HFON: num(bill.HFON),
+        worked_HFED: num(bill.HFED),
+        worked_HFEN: num(bill.HFEN),
+        worked_FAC_HOD: num(bill.FAC_HOD),
+        worked_FAC_HON: num(bill.FAC_HON),
+        worked_FAC_HED: num(bill.FAC_HED),
+        worked_FAC_HEN: num(bill.FAC_HEN),
+        worked_FAC_HFOD: num(bill.FAC_HFOD),
+        worked_FAC_HFON: num(bill.FAC_HFON),
+        worked_FAC_HFED: num(bill.FAC_HFED),
+        worked_FAC_HFEN: num(bill.FAC_HFEN),
+      },
+    });
+  }
+
+  /**
+   * Devuelve el tariffDetails que debe usarse al recalcular una Bill:
+   * - Sin snapshot: la tarifa en vivo (como antes).
+   * - Con snapshot y el grupo sigue apuntando a la MISMA tarifa (mismo id_tariff):
+   *   los valores congelados, ignorando ediciones posteriores de la Tariff.
+   * - Con snapshot pero el grupo ahora apunta a OTRA tarifa (cambió el servicio):
+   *   la tarifa en vivo, y el snapshot se actualiza con ella.
+   */
+  async resolveTariffDetailsForRecalculation(
+    id_bill: number,
+    liveTariffDetails: any,
+  ) {
+    const snapshot = await this.findByBillId(id_bill);
+    if (!snapshot) return liveTariffDetails;
+
+    const liveTariffId = liveTariffDetails?.id;
+    const serviceChanged =
+      liveTariffId != null &&
+      snapshot.id_tariff != null &&
+      liveTariffId !== snapshot.id_tariff;
+
+    if (!serviceChanged) {
+      return this.toTariffDetailsShape(snapshot);
+    }
+
+    try {
+      // Conserva las horas trabajadas (worked_*) ya congeladas: solo cambia la tarifa.
+      const billHours = {
+        HOD: snapshot.worked_HOD,
+        HON: snapshot.worked_HON,
+        HED: snapshot.worked_HED,
+        HEN: snapshot.worked_HEN,
+        HFOD: snapshot.worked_HFOD,
+        HFON: snapshot.worked_HFON,
+        HFED: snapshot.worked_HFED,
+        HFEN: snapshot.worked_HFEN,
+        FAC_HOD: snapshot.worked_FAC_HOD,
+        FAC_HON: snapshot.worked_FAC_HON,
+        FAC_HED: snapshot.worked_FAC_HED,
+        FAC_HEN: snapshot.worked_FAC_HEN,
+        FAC_HFOD: snapshot.worked_FAC_HFOD,
+        FAC_HFON: snapshot.worked_FAC_HFON,
+        FAC_HFED: snapshot.worked_FAC_HFED,
+        FAC_HFEN: snapshot.worked_FAC_HFEN,
+      };
+      await this.create(id_bill, liveTariffDetails, { billHours });
+    } catch (error) {
+      console.error(
+        `[BillTariffSnapshot] No se pudo actualizar el snapshot de la Bill ${id_bill} tras cambio de servicio:`,
+        error,
+      );
+    }
+
+    return liveTariffDetails;
+  }
+
+  /**
    * Reconstruye un objeto con la misma forma que `tariffDetails` (la que arma
    * TariffTransformerService.transformTariffResponse) a partir de una fila de
    * BillTariffSnapshot, para poder inyectarlo en matchingGroupSummary.tariffDetails

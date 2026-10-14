@@ -2147,19 +2147,15 @@ export class BillService {
       });
     }
 
-    // ✅ Para MOSTRAR el detalle por trabajador, sustituir el pago "en vivo"
-    // (BillDetail.total_paysheet/total_bill/pay_unit/pay_rate y el nombre del
-    // trabajador) por la foto tomada al crear la Bill (BillDetailSnapshot),
-    // para que un recálculo/edición posterior o un cambio de nombre del
-    // trabajador no reescriban lo que se le pagó originalmente.
+    // ✅ Solo la TARIFA queda amarrada a la de cuando se creó la Bill. El pago de cada
+    // trabajador (pay_unit, pay_rate, total_bill, total_paysheet) y las horas se
+    // muestran con sus valores VIVOS: la factura debe reflejar trabajadores
+    // agregados/quitados, horas, tipo de tarifa, etc. El snapshot de detalle viaja
+    // anidado en `detail.snapshot` y solo congela nombre/DNI del trabajador para
+    // que un cambio de nombre no reescriba la Bill ya generada.
     billDB.billDetails?.forEach((detail: any) => {
       const snapshot = detail.snapshot;
       if (!snapshot) return;
-
-      detail.pay_unit = snapshot.pay_unit;
-      detail.pay_rate = snapshot.pay_rate;
-      detail.total_bill = snapshot.total_bill;
-      detail.total_paysheet = snapshot.total_paysheet;
 
       if (detail.operationWorker?.worker) {
         if (snapshot.workerName != null) {
@@ -2194,28 +2190,28 @@ export class BillService {
       timeStart_group: operationWorker?.timeStart ?? null,
       dateEnd_group: operationWorker?.dateEnd ?? null,
       timeEnd_group: operationWorker?.timeEnd ?? null,
-      // Preferir las horas trabajadas congeladas en BillTariffSnapshot (worked_H*)
-      // al momento de crear la Bill; si no hay snapshot (Bill antigua), usar las
-      // horas en vivo de Bill.HOD/FAC_HOD/etc. como respaldo.
+      // Horas VIVAS de la Bill (igual que antes de los snapshots): se recalculan con
+      // cada edición; las horas trabajadas en BillTariffSnapshot (worked_*) se
+      // mantienen sincronizadas en cada recálculo solo para consulta/PowerBI.
       billHoursDistribution: {
-        HOD: tariffSnapshot?.worked_HOD ?? billDB.HOD,
-        HON: tariffSnapshot?.worked_HON ?? billDB.HON,
-        HED: tariffSnapshot?.worked_HED ?? billDB.HED,
-        HEN: tariffSnapshot?.worked_HEN ?? billDB.HEN,
-        HFOD: tariffSnapshot?.worked_HFOD ?? billDB.HFOD,
-        HFON: tariffSnapshot?.worked_HFON ?? billDB.HFON,
-        HFED: tariffSnapshot?.worked_HFED ?? billDB.HFED,
-        HFEN: tariffSnapshot?.worked_HFEN ?? billDB.HFEN,
+        HOD: billDB.HOD,
+        HON: billDB.HON,
+        HED: billDB.HED,
+        HEN: billDB.HEN,
+        HFOD: billDB.HFOD,
+        HFON: billDB.HFON,
+        HFED: billDB.HFED,
+        HFEN: billDB.HFEN,
       },
       paysheetHoursDistribution: {
-        HOD: tariffSnapshot?.worked_FAC_HOD ?? billDB.FAC_HOD,
-        HON: tariffSnapshot?.worked_FAC_HON ?? billDB.FAC_HON,
-        HED: tariffSnapshot?.worked_FAC_HED ?? billDB.FAC_HED,
-        HEN: tariffSnapshot?.worked_FAC_HEN ?? billDB.FAC_HEN,
-        HFOD: tariffSnapshot?.worked_FAC_HFOD ?? billDB.FAC_HFOD,
-        HFON: tariffSnapshot?.worked_FAC_HFON ?? billDB.FAC_HFON,
-        HFED: tariffSnapshot?.worked_FAC_HFED ?? billDB.FAC_HFED,
-        HFEN: tariffSnapshot?.worked_FAC_HFEN ?? billDB.FAC_HFEN,
+        HOD: billDB.FAC_HOD,
+        HON: billDB.FAC_HON,
+        HED: billDB.FAC_HED,
+        HEN: billDB.FAC_HEN,
+        HFOD: billDB.FAC_HFOD,
+        HFON: billDB.FAC_HFON,
+        HFED: billDB.FAC_HFED,
+        HFEN: billDB.FAC_HFEN,
       },
       pays: billDB.billDetails.map((detail) => ({
         id_worker: detail.operationWorker.worker.id,
@@ -2671,9 +2667,24 @@ export class BillService {
         }
       }
 
-      // Aplicar el número de horas final
+      // Aplicar el número de horas final.
+      // "Cantidad" (number_of_hours) de una Bill queda, al crearla, igual a las horas
+      // del grupo (group_hours, calculado desde las fechas de Operation_Worker por
+      // recalculateGroupHoursFromWorkerDates) y así lo consumen los reportes
+      // (Cantidad = number_of_hours × trabajadores). Al recalcular con una
+      // distribución de horas NO debe pasar a ser la suma de esa distribución
+      // (p. ej. 7 + 4.5 = 11.5 en vez de 13 horas del grupo). Solo si la Bill no
+      // tiene group_hours se mantiene el comportamiento anterior (suma de la
+      // distribución). Se lee de la BD porque existingBill puede estar desactualizado
+      // si en esta misma edición se recalcularon las horas del grupo.
       if (finalNumberOfHours !== undefined) {
-        updateData.number_of_hours = finalNumberOfHours;
+        const currentBill = await this.prisma.bill.findUnique({
+          where: { id },
+          select: { group_hours: true },
+        });
+        const currentGroupHours = Number(currentBill?.group_hours) || 0;
+        updateData.number_of_hours =
+          currentGroupHours > 0 ? currentGroupHours : finalNumberOfHours;
       }
 
       // console.log('Final number of hours:', finalNumberOfHours);
@@ -2717,13 +2728,14 @@ export class BillService {
       );
     }
 
-    // ✅ Usar la tarifa congelada al momento de crear la Bill (si existe) en vez de la
-    // tarifa en vivo, para que recalcular una factura vieja no traiga valores actuales.
-    const tariffSnapshot = await this.billTariffSnapshotService.findByBillId(id);
-    if (tariffSnapshot) {
-      matchingGroupSummary.tariffDetails =
-        this.billTariffSnapshotService.toTariffDetailsShape(tariffSnapshot);
-    }
+    // ✅ Usar la tarifa congelada al momento de crear la Bill (si existe y el servicio del
+    // grupo no cambió) en vez de la tarifa en vivo, para que recalcular una factura vieja
+    // (p. ej. al agregar/quitar un trabajador) no traiga valores actuales.
+    matchingGroupSummary.tariffDetails =
+      await this.billTariffSnapshotService.resolveTariffDetailsForRecalculation(
+        id,
+        matchingGroupSummary.tariffDetails,
+      );
 
     // ✅ OBTENER LA DURACIÓN ACTUALIZADA DEL GRUPO DESDE LA BD
     const currentBill = await this.prisma.bill.findUnique({
@@ -2825,6 +2837,8 @@ export class BillService {
         id_user: userId,
       },
     });
+
+    await this.syncSnapshotsAfterRecalculation(id);
   }
 
   private async calculateGroupTotalsForUpdate(
@@ -3049,6 +3063,24 @@ export class BillService {
     }
   }
 
+  /**
+   * Los snapshots acompañan a la factura: después de cada recálculo se sincronizan
+   * el detalle por trabajador (BillDetailSnapshot) y las horas trabajadas
+   * (BillTariffSnapshot.worked_*) con el estado actual. La tarifa congelada no se toca.
+   * Nunca debe romper el recálculo: un error aquí solo se registra.
+   */
+  private async syncSnapshotsAfterRecalculation(billId: number) {
+    try {
+      await this.billDetailSnapshotService.syncForBill(billId);
+      await this.billTariffSnapshotService.syncWorkedHoursFromBill(billId);
+    } catch (error) {
+      console.error(
+        `[BillService] No se pudieron sincronizar los snapshots de la Bill ${billId}:`,
+        error,
+      );
+    }
+  }
+
 
   private async updateBillDetailsOnly(
     id: number,
@@ -3068,13 +3100,13 @@ export class BillService {
       );
       if (!matchingGroupSummary) continue;
 
-      // ✅ Usar la tarifa congelada al momento de crear la Bill (si existe) en vez de la
-      // tarifa en vivo, para que recalcular una factura vieja no traiga valores actuales.
-      const tariffSnapshot = await this.billTariffSnapshotService.findByBillId(id);
-      if (tariffSnapshot) {
-        matchingGroupSummary.tariffDetails =
-          this.billTariffSnapshotService.toTariffDetailsShape(tariffSnapshot);
-      }
+      // ✅ Usar la tarifa congelada al momento de crear la Bill (si existe y el servicio del
+      // grupo no cambió) en vez de la tarifa en vivo.
+      matchingGroupSummary.tariffDetails =
+        await this.billTariffSnapshotService.resolveTariffDetailsForRecalculation(
+          id,
+          matchingGroupSummary.tariffDetails,
+        );
 
       const operationWorkers = await this.prisma.operation_Worker.findMany({
         where: {
@@ -3127,6 +3159,8 @@ export class BillService {
         existingBill,
       );
     }
+
+    await this.syncSnapshotsAfterRecalculation(id);
   }
 
   private async getExistingOrCalculateGroupTotals(

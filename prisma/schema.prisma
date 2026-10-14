@@ -602,7 +602,7 @@ model Bill {
 model BillTariffSnapshot {
   id      Int  @id @default(autoincrement())
   id_bill Int  @unique
-  bill    Bill @relation(fields: [id_bill], references: [id])
+  bill    Bill @relation(fields: [id_bill], references: [id], onDelete: Cascade)
 
   id_tariff Int? // referencia informativa a la tarifa origen, no es FK: la tarifa puede editarse o eliminarse luego
   code      String?
@@ -626,7 +626,7 @@ model BillTariffSnapshot {
   alternative_paid_service YES_NO
   group_tariff             YES_NO
   settle_payment           YES_NO
-  status                   StatusActivation? // "Confirmar" en la UI
+  status                   StatusActivation? // activación de la tarifa (el "Confirmar" de la UI es isSpecial)
   agreed_hours             Decimal?          @db.Decimal(15, 3)
 
   OD      Decimal @db.Decimal(15, 3)
@@ -677,7 +677,7 @@ model BillTariffSnapshot {
 model BillDetailSnapshot {
   id                  Int        @id @default(autoincrement())
   id_bill_detail      Int        @unique
-  billDetail          BillDetail @relation(fields: [id_bill_detail], references: [id])
+  billDetail          BillDetail @relation(fields: [id_bill_detail], references: [id], onDelete: Cascade)
   id_bill             Int
   id_operation_worker Int
 
