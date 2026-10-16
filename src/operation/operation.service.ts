@@ -145,6 +145,69 @@ export class OperationService {
    * Se considera especial si tiene al menos una tarifa con isSpecial = YES.
    */
 
+  /**
+   * Indica si un arreglo `workers.update` cambia realmente el servicio (id_tariff) de
+   * algún trabajador respecto a lo que ya tiene guardado en la operación.
+   * Un id_tariff igual al actual, o un trabajador que no está en la operación, NO
+   * cuenta como cambio de servicio.
+   */
+  private async updateChangesGroupService(
+    operationId: number,
+    workersUpdate: any,
+  ): Promise<boolean> {
+    if (!Array.isArray(workersUpdate)) return false;
+
+    const candidates = workersUpdate.filter(
+      (w: any) =>
+        w?.id_tariff !== undefined &&
+        w?.id_tariff !== null &&
+        w?.id_worker &&
+        !isNaN(Number(w.id_worker)),
+    );
+    if (candidates.length === 0) return false;
+
+    const current = await this.prisma.operation_Worker.findMany({
+      where: {
+        id_operation: operationId,
+        id_worker: { in: candidates.map((c: any) => Number(c.id_worker)) },
+      },
+      select: { id_worker: true, id_group: true, id_tariff: true },
+    });
+
+    return candidates.some((c: any) => {
+      const row = current.find(
+        (r) =>
+          r.id_worker === Number(c.id_worker) &&
+          (!c.id_group || r.id_group === c.id_group),
+      );
+      return !!row && row.id_tariff !== Number(c.id_tariff);
+    });
+  }
+
+  /**
+   * La operación es 100% especial cuando TODOS sus trabajadores tienen una tarifa con
+   * isSpecial = YES (misma regla con la que facturación decide TO_APPROVED o COMPLETED).
+   * Usa la tarifa vigente de cada trabajador.
+   */
+  private async isOperationFullySpecialByTariffs(
+    operationId: number,
+  ): Promise<boolean> {
+    const total = await this.prisma.operation_Worker.count({
+      where: { id_operation: operationId, id_worker: { not: -1 } },
+    });
+    if (total === 0) return false;
+
+    const special = await this.prisma.operation_Worker.count({
+      where: {
+        id_operation: operationId,
+        id_worker: { not: -1 },
+        tariff: { isSpecial: YES_NO.YES },
+      },
+    });
+
+    return special === total;
+  }
+
   // Determina si la operación tiene alguna tarifa especial (Tariff.isSpecial = YES).
   async isOperationSpecial(
     operationId: number,
@@ -165,12 +228,67 @@ export class OperationService {
       throw new OperationNotFoundException(operationId);
     }
 
+    // Los grupos que YA tienen factura conservan en BillTariffSnapshot el isSpecial
+    // ("Confirmar") de la tarifa tal como estaba al crear la Bill. Si luego la tarifa
+    // cambia de SÍ a NO, la operación pendiente de aprobación debe seguir el flujo
+    // especial (link de confirmación, reenvío, aprobación) con lo que tenía al
+    // facturarse, no con la tarifa actual.
+    const billedSnapshots = await this.prisma.billTariffSnapshot.findMany({
+      where: { bill: { id_operation: operationId } },
+      select: {
+        id_tariff: true,
+        isSpecial: true,
+        bill: { select: { id_group: true } },
+      },
+    });
+
+    // Un snapshot solo manda mientras el grupo siga con el MISMO servicio con el que se
+    // facturó. Si el servicio del grupo ya cambió (otro id_tariff), esa factura quedó
+    // obsoleta y el grupo se evalúa con su tarifa vigente.
+    const billedGroupIds: string[] = [];
+    let frozenSpecial = false;
+
+    if (billedSnapshots.length > 0) {
+      const groupWorkers = await this.prisma.operation_Worker.findMany({
+        where: { id_operation: operationId },
+        select: { id_group: true, id_tariff: true },
+      });
+
+      for (const snapshot of billedSnapshots) {
+        const groupId = snapshot.bill.id_group;
+        if (!groupId) continue;
+
+        const currentTariffIds = groupWorkers
+          .filter((w) => w.id_group === groupId && w.id_tariff !== null)
+          .map((w) => w.id_tariff as number);
+
+        const serviceChanged =
+          snapshot.id_tariff !== null &&
+          currentTariffIds.length > 0 &&
+          !currentTariffIds.includes(snapshot.id_tariff);
+
+        if (serviceChanged) continue;
+
+        billedGroupIds.push(groupId);
+        if (snapshot.isSpecial === YES_NO.YES) frozenSpecial = true;
+      }
+    }
+
+    if (frozenSpecial) {
+      return true;
+    }
+
+    // Grupos sin factura vigente: se evalúan con la tarifa actual, como antes.
+
     const specialTariffCount = await this.prisma.operation_Worker.count({
       where: {
         id_operation: operationId,
         tariff: {
           isSpecial: YES_NO.YES,
         },
+        ...(billedGroupIds.length > 0 && {
+          OR: [{ id_group: null }, { id_group: { notIn: billedGroupIds } }],
+        }),
       },
     });
 
@@ -2772,11 +2890,14 @@ export class OperationService {
       // grupo 1 se borraría al enviar el grupo 2, dejando el conteo de
       // "grupos ya facturados" (areAllGroupsCompleted) siempre incompleto y la
       // operación en un bucle infinito pidiendo Completar sin avanzar nunca.
-      const updateIncludesServiceChange = Array.isArray(workers?.update)
-        ? workers.update.some(
-            (w: any) => w?.id_tariff !== undefined && w?.id_tariff !== null,
-          )
-        : false;
+      // Se considera cambio de servicio SOLO si el id_tariff enviado es distinto al que
+      // el trabajador tiene guardado: reenviar el mismo id_tariff (p. ej. al completar
+      // cada grupo) no cuenta, y evita que completar el grupo 2 borre la factura ya
+      // generada del grupo 1 (bucle de "Completar" en una operación rechazada).
+      const updateIncludesServiceChange =
+        currentOperation?.status === 'REJECTED'
+          ? await this.updateChangesGroupService(id, workers?.update)
+          : false;
 
       if (currentOperation?.status === 'REJECTED' && updateIncludesServiceChange) {
         const staleBills = await this.prisma.bill.findMany({
@@ -2833,6 +2954,24 @@ export class OperationService {
         } else {
           // Operación no completada, proceso normal
           await this.processWorkersOperationsV2(id, workers);
+        }
+      }
+
+      // ✅ Operación RECHAZADA a la que se le cambió el servicio (las facturas previas ya
+      // se eliminaron arriba): si con los nuevos servicios ya NO es especial (no todos
+      // sus servicios tienen isSpecial = YES), deja de estar rechazada y pasa a
+      // INPROGRESS para completarse como una operación normal. Si sigue siendo
+      // especial, se queda en REJECTED y continúa por el flujo de reenvío a aprobación.
+      if (updateIncludesServiceChange) {
+        const stillFullySpecial = await this.isOperationFullySpecialByTariffs(id);
+        if (!stillFullySpecial) {
+          await this.prisma.operation.update({
+            where: { id },
+            data: { status: StatusOperation.INPROGRESS },
+          });
+          console.log(
+            `[OperationService] 🔁 Operación ${id}: servicio cambiado a no especial, REJECTED -> INPROGRESS`,
+          );
         }
       }
 
