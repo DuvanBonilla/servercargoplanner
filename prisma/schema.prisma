@@ -41,6 +41,10 @@ model User {
   zones             Zone[]
   assignedSubSites  UserSubSite[]
   assignedAreas     UserJobArea[]
+  Eps               Eps[]
+  Arl               Arl[]
+  Company           Company[]
+  WorkerContract    WorkerContract[]
 
   @@index([id_site])
   @@index([id_subsite])
@@ -130,6 +134,7 @@ model Worker {
   id_site          Int                @default(1)
   id_subsite       Int?
   subSite          SubSite?           @relation(fields: [id_subsite], references: [id])
+  contracts        WorkerContract[]
 
   @@index([id_area])
   @@index([id_user])
@@ -340,6 +345,74 @@ model WorkerFeeding {
   @@index([id_user])
   @@index([code_group])
   @@index([dateFeeding])
+}
+
+model Eps {
+  id        Int              @id @default(autoincrement())
+  name      String           @unique
+  nit       String           @unique
+  status    StatusActivation @default(ACTIVE)
+  id_user   Int
+  user      User             @relation(fields: [id_user], references: [id])
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([id_user])
+}
+
+model Arl {
+  id        Int              @id @default(autoincrement())
+  name      String           @unique
+  nit       String           @unique
+  status    StatusActivation @default(ACTIVE)
+  companies Company[]
+  id_user   Int
+  user      User             @relation(fields: [id_user], references: [id])
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([id_user])
+}
+
+model Company {
+  id        Int              @id @default(autoincrement())
+  name      String           @unique
+  nit       String           @unique
+  status    StatusActivation @default(ACTIVE)
+  id_arl    Int?
+  arl       Arl?             @relation(fields: [id_arl], references: [id], onDelete: Restrict)
+  contracts WorkerContract[]
+  id_user   Int
+  user      User             @relation(fields: [id_user], references: [id])
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([id_user])
+  @@index([id_arl])
+}
+
+/// Contrato de un trabajador con una empresa. Los contratos terminados no se
+/// borran: forman el histórico laboral. isLegacy = registro creado al reactivar
+/// un trabajador DEACTIVATED sin historial (solo conserva su fecha de retiro).
+model WorkerContract {
+  id         Int         @id @default(autoincrement())
+  id_worker  Int
+  worker     Worker      @relation(fields: [id_worker], references: [id])
+  id_company Int?
+  company    Company?    @relation(fields: [id_company], references: [id], onDelete: Restrict)
+  startDate  DateTime?   @db.Date
+  endDate    DateTime?   @db.Date
+  workerType WorkerType?
+  isLegacy   Boolean     @default(false)
+  id_user    Int
+  user       User        @relation(fields: [id_user], references: [id])
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([id_worker])
+  @@index([id_company])
+  @@index([id_user])
+  @@index([endDate])
 }
 
 model Inability {
@@ -648,6 +721,11 @@ enum TypeValueConfiguration {
 enum YES_NO {
   YES
   NO
+}
+
+enum WorkerType {
+  OPERATIVE
+  ADMINISTRATIVE
 }
 
 enum TypeDisability {

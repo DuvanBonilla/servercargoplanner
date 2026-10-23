@@ -42,6 +42,10 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AppController } from './app.controller';
 import { ClientEmailModule } from './client-email/client-email.module';
 import { ZoneModule } from './zone/zone.module';
+import { EpsModule } from './eps/eps.module';
+import { ArlModule } from './arl/arl.module';
+import { CompanyModule } from './company/company.module';
+import { WorkerContractModule } from './worker-contract/worker-contract.module';
 
 @Module({
   imports: [
@@ -81,6 +85,10 @@ import { ZoneModule } from './zone/zone.module';
     PermissionModule,
     ClientEmailModule,
     ZoneModule,
+    EpsModule,
+    ArlModule,
+    CompanyModule,
+    WorkerContractModule,
   ],
   providers: [
     DocsAuthMiddleware,

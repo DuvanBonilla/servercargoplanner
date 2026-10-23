@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ValidationService } from 'src/common/validation/validation.service';
 import { ValidationUserSiteService } from 'src/common/validation/services/validation-user-site/validation-user-site.service';
 import { getColombianDateTime } from 'src/common/utils/dateColombia';
+import { WorkerContractService } from 'src/worker-contract/worker-contract.service';
 import { isPermissionActive } from 'src/common/utils/permission.utils';
 
 /**
@@ -18,6 +19,7 @@ export class WorkerService {
     private prisma: PrismaService,
     private validationService: ValidationService,
     private validationUserSite: ValidationUserSiteService,
+    private workerContractService: WorkerContractService,
   ) {}
 
   /**
@@ -925,7 +927,7 @@ async findById(id: number, id_site?: number) {
       // ✅ OBTENER EL TRABAJADOR POR ID (sempre búsqueda simple)
       const currentWorker = await this.prisma.worker.findUnique({
         where: { id },
-        select: { status: true, code: true, payroll_code: true, id_site: true }
+        select: { status: true, code: true, payroll_code: true, id_site: true, dateRetierment: true, id_user: true }
       });
 
       if (!currentWorker) {
@@ -1032,6 +1034,24 @@ async findById(id: number, id_site?: number) {
         }
 
         // // console.log(`[WorkerService] ✅ Códigos disponibles, permitiendo activación del worker ${id}`);
+      }
+
+      // Contratos: al desactivar, la fecha de retiro pasa a ser la terminación
+      // del contrato; al reactivar sin historial, se conserva el retiro anterior
+      if (updateWorkerDto.status === 'DEACTIVATED' && updateWorkerDto.dateRetierment) {
+        const retirementError = await this.workerContractService.applyRetirementDate(
+          this.prisma,
+          id,
+          new Date(updateWorkerDto.dateRetierment),
+        );
+        if (retirementError) return retirementError;
+      }
+      if (currentWorker.status === 'DEACTIVATED' && updateWorkerDto.status === 'AVALIABLE') {
+        await this.workerContractService.archiveRetirementIfNoHistory(
+          this.prisma,
+          { id, dateRetierment: currentWorker.dateRetierment },
+          requestingUserId ?? currentWorker.id_user,
+        );
       }
 
         // ✅ Preparar datos de actualización
