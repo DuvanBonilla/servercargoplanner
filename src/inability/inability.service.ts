@@ -6,12 +6,35 @@ import { ValidationService } from 'src/common/validation/validation.service';
 import { FilterInabilityDto } from './dto/filter-inability';
 import { isPermissionActive } from 'src/common/utils/permission.utils';
 import { isInabilityActive } from 'src/common/utils/inability.utils';
+import { CertificateStorageService } from './service/certificate-storage.service';
+
+/** Datos médicos y del recobro: solo salen por /inability/tracking, restringido por rol */
+const SENSITIVE_FIELDS = {
+  extractedData: true,
+  diagnosisPrincipal: true,
+  diagnosesRelated: true,
+  ibc: true,
+  documentPath: true,
+  documentName: true,
+  documentCheck: true,
+  certificateNumber: true,
+  authorizationNumber: true,
+  entityFilingNumber: true,
+  nail: true,
+  ipsName: true,
+  ipsCode: true,
+  professionalName: true,
+  observation: true,
+  approvedAmount: true,
+} as const;
+const TRACKING_ROLES = ['SUPERADMIN', 'ADMIN', 'GH'];
 
 @Injectable()
 export class InabilityService {
   constructor(
     private prisma: PrismaService,
     private validate: ValidationService,
+    private storage: CertificateStorageService,
   ) {}
 
   /**
@@ -47,7 +70,7 @@ export class InabilityService {
    * Si no hay ninguna vigente, limpia esas fechas (null) y cae a PERMISSION
    * o AVALIABLE según corresponda.
    */
-  private async syncWorkerDisableState(workerId: number) {
+  async syncWorkerDisableState(workerId: number) {
     const allInabilities = await this.prisma.inability.findMany({
       where: { id_worker: workerId },
     });
@@ -190,6 +213,7 @@ export class InabilityService {
         return { status: 404, message: 'Site not found or not assigned to user' };
       }
       const response = await this.prisma.inability.findMany({
+        omit: SENSITIVE_FIELDS,
         where: {
           worker: {
             id_site,
@@ -218,6 +242,7 @@ export class InabilityService {
   async findOne(id: number, id_site?: number, userRole: string = 'ADMIN') {
     try {
       const response = await this.prisma.inability.findUnique({
+        omit: SENSITIVE_FIELDS,
         where: { id },
         include: {
           worker: {
@@ -252,6 +277,7 @@ export class InabilityService {
     try {
       // Ambos usan el siteId del request
       const response = await this.prisma.inability.findMany({
+        omit: SENSITIVE_FIELDS,
         where: {
           worker: {
             dni: dni,
@@ -325,6 +351,7 @@ export class InabilityService {
         }
       }
       const response = await this.prisma.inability.findMany({
+        omit: SENSITIVE_FIELDS,
         where,
         include: {
           worker: {
@@ -355,6 +382,11 @@ export class InabilityService {
         return validation;
       }
       
+      // Las registradas con certificado tienen pagos calculados: se editan por /details, que los recalcula
+      if (validation['origin']) {
+        return { status: 409, message: `Inability ${id} has a certificate registered: edit it with PATCH /inability/${id}/details` };
+      }
+
       const workerId = validation['id_worker'];
       const response = await this.prisma.inability.update({
         where: { id },
@@ -384,10 +416,28 @@ export class InabilityService {
         return validation;
       }
       
+      if (validation['origin'] && !TRACKING_ROLES.includes(userRole)) {
+        return { status: 409, message: `Inability ${id} has a certificate registered: only SUPERADMIN, ADMIN and GH can delete it` };
+      }
+      const blockers = await this.prisma.inability.findUnique({
+        where: { id },
+        select: {
+          documentPath: true,
+          _count: { select: { extensions: true, followUps: { where: { type: { not: 'DATA_CHANGE' } } } } },
+        },
+      });
+      if (blockers?._count.extensions) {
+        return { status: 409, message: `Inability ${id} has extensions registered after it: delete them first` };
+      }
+      if (blockers?._count.followUps) {
+        return { status: 409, message: `Inability ${id} has recovery follow-ups and cannot be deleted` };
+      }
+
       const workerId = validation['id_worker'];
       const response = await this.prisma.inability.delete({
         where: { id },
       });
+      if (blockers?.documentPath) await this.storage.remove(blockers.documentPath);
 
       // Sincroniza status + dateDisableStart/dateDisableEnd del worker: si
       // queda otra incapacidad vigente se toman sus fechas, si no, se

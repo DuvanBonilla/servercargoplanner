@@ -1,6 +1,9 @@
 /** Colombia es siempre UTC-5, sin horario de verano (DST). */
 const COLOMBIA_OFFSET_MS = 5 * 60 * 60 * 1000;
 
+/** Milisegundos de un día */
+export const DAY_MS = 24 * 60 * 60 * 1000;
+
 export const getColombianDateTime = (): Date => { 
   // Aritmética UTC pura: evita el anti-patrón new Date(toLocaleString(...))
   // que en algunas configuraciones aplica el offset histórico LMT de Bogotá
@@ -45,7 +48,7 @@ export const getColombianStartOfDay = (date: Date): Date => {
  */
 export const getColombianEndOfDay = (date: Date): Date => {
   const startOfDay = getColombianStartOfDay(date);
-  return new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+  return new Date(startOfDay.getTime() + DAY_MS);
 };
 
 /**
@@ -120,3 +123,57 @@ export const formatColombianISODate = (
 
   return `${year}-${month}-${day}`;
 };
+
+/**
+ * Convierte una fecha calendario a medianoche UTC, que es como Prisma
+ * guarda y devuelve las columnas de solo fecha (@db.Date).
+ * @param date 'YYYY-MM-DD', Date de una columna @db.Date o timestamp
+ */
+export const toColombianDateOnly = (date: Date | string | number): Date =>
+  new Date(`${formatColombianISODate(date)}T00:00:00.000Z`);
+
+/**
+ * Día calendario de HOY en Colombia, como fecha de solo día (medianoche UTC).
+ * Usa el offset fijo de Bogotá: después de las 7 p. m. de Colombia el día UTC
+ * ya es el siguiente y no se puede leer directamente con getters UTC.
+ */
+export const getColombianToday = (): Date => {
+  const bogotaShifted = new Date(getColombianDateTime().getTime() - COLOMBIA_OFFSET_MS);
+  return new Date(
+    Date.UTC(
+      bogotaShifted.getUTCFullYear(),
+      bogotaShifted.getUTCMonth(),
+      bogotaShifted.getUTCDate(),
+    ),
+  );
+};
+
+/**
+ * Instante (UTC) en que empieza en Colombia el día calendario indicado.
+ * A diferencia de getColombianStartOfDay (que recibe un instante), recibe una
+ * fecha calendario: 'YYYY-MM-DD' o una fecha de solo día (@db.Date).
+ */
+export const getColombianStartOfCalendarDay = (date: Date | string): Date =>
+  new Date(toColombianDateOnly(date).getTime() + COLOMBIA_OFFSET_MS);
+
+/**
+ * Suma (o resta, si es negativo) días calendario a una fecha de solo día.
+ */
+export const addColombianDays = (date: Date, days: number): Date =>
+  new Date(toColombianDateOnly(date).getTime() + days * DAY_MS);
+
+/**
+ * Suma meses calendario a una fecha de solo día. Si el día no existe en el
+ * mes destino se desborda al siguiente (31-ene + 3 meses = 1-may), de modo
+ * que "inicio + N meses - 1 día" da el último día de un periodo de N meses.
+ */
+export const addColombianMonths = (date: Date, months: number): Date => {
+  const d = toColombianDateOnly(date);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, d.getUTCDate()));
+};
+
+/**
+ * Días calendario entre dos fechas de solo día (negativo si `to` es anterior).
+ */
+export const getDaysBetween = (from: Date, to: Date): number =>
+  Math.round((toColombianDateOnly(to).getTime() - toColombianDateOnly(from).getTime()) / DAY_MS);

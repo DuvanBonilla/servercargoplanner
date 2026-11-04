@@ -15,6 +15,9 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main.js",
+    "extractor": "cd extractor && .venv\\Scripts\\python -m uvicorn app.main:app --host 127.0.0.1 --port 8001",
+    "start:local": "concurrently -n nest,lector -c blue,green \"npm:start\" \"npm:extractor\"",
+    "start:dev:local": "concurrently -n nest,lector -c blue,green \"npm:start:dev\" \"npm:extractor\"",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -22,7 +25,6 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "doc": "ts-node generate.ts"
-  
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.0",
@@ -67,6 +69,7 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
     "@types/uuid": "^10.0.0",
+    "concurrently": "^9.2.1",
     "copyfiles": "^2.4.1",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
@@ -88,7 +91,10 @@
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },
-  "engines": { "node": "22.x", "npm": "10.x" },
+  "engines": {
+    "node": "22.x",
+    "npm": "10.x"
+  },
   "jest": {
     "moduleFileExtensions": [
       "js",

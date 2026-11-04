@@ -1,11 +1,58 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, StatusActivation } from '@prisma/client';
+import { ContractType, Prisma, StatusActivation, WorkerType } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
+import {
+  addColombianDays,
+  formatColombianISODate,
+  getColombianToday,
+  getDaysBetween,
+  toColombianDateOnly,
+} from 'src/common/utils/dateColombia';
+import {
+  CONTRACT_RULES,
+  calculateEndDate,
+  maxEndDate,
+  minEndDate,
+  RELOCATION_TYPES,
+  STIPULATED_END_TYPES,
+  stipulatedEndDate,
+} from './contract-rules';
 import { CreateWorkerContractDto } from './dto/create-worker-contract.dto';
 import { UpdateWorkerContractDto } from './dto/update-worker-contract.dto';
+import { RenewWorkerContractDto } from './dto/renew-worker-contract.dto';
 
 type Db = Prisma.TransactionClient;
 type ServiceError = { status: number; message: string };
+
+/** Datos de un contrato antes de validarlo */
+export interface ContractInput {
+  id_company: number;
+  startDate: string;
+  endDate?: string | null;
+  workerType: WorkerType;
+  contractType: ContractType;
+  /** Duración del aprendizaje en meses (6 a 12) cuando no se envía endDate */
+  months?: number;
+  /** Trabajador reubicado: contrato vigente sin fecha de terminación */
+  isRelocated?: boolean;
+}
+
+/** Contrato ya validado, listo para guardarse */
+export interface PreparedContract {
+  id_company: number;
+  startDate: Date;
+  endDate: Date | null;
+  workerType: WorkerType;
+  contractType: ContractType;
+  isRelocated: boolean;
+}
+
+/** Estado del trabajador que condiciona qué contratos se le pueden registrar */
+interface WorkerState {
+  id?: number;
+  status: string;
+  dateRetierment: Date | null;
+}
 
 const CONTRACT_INCLUDE = {
   company: {
@@ -18,15 +65,9 @@ const CONTRACT_INCLUDE = {
   },
 } satisfies Prisma.WorkerContractInclude;
 
-const COLOMBIA_OFFSET_MS = 5 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** 'YYYY-MM-DD' -> Date a medianoche UTC (columnas @db.Date) */
-const toDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
-const dateKey = (date: Date) => date.toISOString().slice(0, 10);
-/** Fecha de hoy en Colombia, a medianoche UTC */
-const todayColombia = () =>
-  toDate(new Date(Date.now() - COLOMBIA_OFFSET_MS).toISOString().slice(0, 10));
+const fmt = (date: Date | null) => (date ? formatColombianISODate(date) : 'indefinite');
+const isError = (value: any): value is ServiceError =>
+  value && typeof value.status === 'number' && typeof value.message === 'string';
 
 @Injectable()
 export class WorkerContractService {
@@ -37,7 +78,7 @@ export class WorkerContractService {
    * hacen ANTES del INSERT (un INSERT fallido consumiría un id) y dos
    * registros simultáneos no deben pasar ambos la validación.
    */
-  private lockTable(tx: Db) {
+  lockTable(tx: Db) {
     return tx.$executeRaw`LOCK TABLE "WorkerContract" IN SHARE ROW EXCLUSIVE MODE`;
   }
 
@@ -56,53 +97,226 @@ export class WorkerContractService {
     return null;
   }
 
-  /** Otro contrato del trabajador que se cruza con [start, end] */
-  private findOverlap(tx: Db, id_worker: number, start: Date | null, end: Date, excludeId?: number) {
+  /**
+   * Otro contrato del trabajador que se cruza con [start, end]. Un contrato
+   * indefinido sin terminación (end null) se toma como abierto hacia adelante.
+   */
+  private findOverlap(tx: Db, id_worker: number, start: Date | null, end: Date | null, excludeId?: number) {
     return tx.workerContract.findFirst({
       where: {
         id_worker,
         ...(excludeId ? { NOT: { id: excludeId } } : {}),
-        endDate: { gte: start ?? new Date(0) },
-        OR: [{ startDate: null }, { startDate: { lte: end } }],
+        AND: [
+          { OR: [{ endDate: { gte: start ?? new Date(0) } }, { endDate: null, isLegacy: false }] },
+          end ? { OR: [{ startDate: null }, { startDate: { lte: end } }] } : {},
+        ],
       },
     });
   }
 
   private overlapError(overlap: { id: number; startDate: Date | null; endDate: Date | null }): ServiceError {
-    const from = overlap.startDate ? dateKey(overlap.startDate) : 'unknown';
-    const to = overlap.endDate ? dateKey(overlap.endDate) : 'unknown';
+    const from = overlap.startDate ? formatColombianISODate(overlap.startDate) : 'unknown';
     return {
       status: 409,
-      message: `Worker already has contract ${overlap.id} from ${from} to ${to}. Close it (set its endDate) before registering a contract in that period`,
+      message: `Worker already has contract ${overlap.id} from ${from} to ${fmt(overlap.endDate)}. Close it (set its endDate) before registering a contract in that period`,
     };
   }
 
   /**
-   * dateRetierment del trabajador = fecha de terminación de su último contrato
+   * A un trabajador DEACTIVATED solo se le registran contratos históricos:
+   * ya terminados (antes de hoy) y no posteriores a su fecha de retiro.
+   * Registrar un contrato nunca reactiva al trabajador.
+   */
+  private validateDeactivatedHistory(worker: WorkerState, end: Date | null): ServiceError | null {
+    if (worker.status !== 'DEACTIVATED') return null;
+    if (!end || end >= getColombianToday()) {
+      return {
+        status: 409,
+        message: 'Worker is DEACTIVATED: only finished contracts (endDate before today) can be registered. Reactivate the worker to register a current contract',
+      };
+    }
+    if (worker.dateRetierment && end > toColombianDateOnly(worker.dateRetierment)) {
+      return {
+        status: 409,
+        message: `Worker is DEACTIVATED: contract endDate cannot be after the retirement date (${formatColombianISODate(worker.dateRetierment)})`,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Fecha de terminación calculada y límites de una modalidad. La terminación
+   * es N días antes del vencimiento estipulado para que el contrato no se
+   * renueve automáticamente. En obra labor el vencimiento lo indica el usuario
+   * (`stipulatedEndDate`).
+   */
+  getEndDateSuggestion(contractType: ContractType, startDate: string, months?: number, stipulatedEnd?: string) {
+    if (months !== undefined && contractType !== 'APPRENTICESHIP') {
+      return { status: 400, message: 'months only applies to APPRENTICESHIP contracts' };
+    }
+    if (months !== undefined && (months < 6 || months > 12)) {
+      return { status: 400, message: 'months must be between 6 and 12 for APPRENTICESHIP contracts' };
+    }
+    if (stipulatedEnd !== undefined && !STIPULATED_END_TYPES.includes(contractType)) {
+      return { status: 400, message: 'stipulatedEndDate only applies to OBRA_LABOR contracts' };
+    }
+    const start = toColombianDateOnly(startDate);
+    const stipulatedInput = stipulatedEnd ? toColombianDateOnly(stipulatedEnd) : undefined;
+    if (stipulatedInput && stipulatedInput < start) {
+      return { status: 400, message: 'stipulatedEndDate must be after startDate' };
+    }
+    const stipulated = stipulatedEndDate(contractType, start, { months, stipulatedEnd: stipulatedInput });
+    const suggested = calculateEndDate(contractType, start, { months, stipulatedEnd: stipulatedInput });
+    const min = minEndDate(contractType, start);
+    const max = maxEndDate(contractType, start);
+    if (suggested && max && suggested > max) {
+      return {
+        status: 400,
+        message: `endDate exceeds the maximum duration of a ${contractType} contract (${formatColombianISODate(max)})`,
+      };
+    }
+    if (suggested && min && suggested < min) {
+      return {
+        status: 400,
+        message: `endDate is shorter than the minimum duration of a ${contractType} contract (${formatColombianISODate(min)})`,
+      };
+    }
+    return {
+      contractType,
+      startDate,
+      stipulatedEndDate: stipulated ? formatColombianISODate(stipulated) : null,
+      suggestedEndDate: suggested ? formatColombianISODate(suggested) : null,
+      terminationDaysBefore: CONTRACT_RULES[contractType].terminationDaysBefore,
+      minEndDate: min ? formatColombianISODate(min) : null,
+      maxEndDate: max ? formatColombianISODate(max) : null,
+      endDateRequired: contractType !== 'INDEFINITE',
+    };
+  }
+
+  /**
+   * Valida un contrato nuevo (empresa, fechas según la modalidad, estado del
+   * trabajador y cruces) sin escribir nada. Si no llega endDate se usa la
+   * fecha calculada para la modalidad.
+   */
+  async prepare(tx: Db, input: ContractInput, worker: WorkerState): Promise<PreparedContract | ServiceError> {
+    const companyError = await this.validateCompany(tx, input.id_company);
+    if (companyError) return companyError;
+
+    const type = input.contractType;
+    const start = toColombianDateOnly(input.startDate);
+    let end: Date | null;
+
+    if (input.isRelocated && !RELOCATION_TYPES.includes(type)) {
+      return { status: 400, message: `isRelocated does not apply to ${type} contracts` };
+    }
+
+    if (input.isRelocated) {
+      if (input.endDate) {
+        return { status: 400, message: 'A relocated contract has no endDate when registered; set it when the contract ends' };
+      }
+      end = null;
+    } else if (type === 'INDEFINITE') {
+      if (input.endDate) {
+        return { status: 400, message: 'INDEFINITE contracts have no endDate when registered; set it when the contract ends' };
+      }
+      end = null;
+    } else {
+      if (input.months !== undefined) {
+        const suggestion = this.getEndDateSuggestion(type, input.startDate, input.months);
+        if (isError(suggestion)) return suggestion;
+      }
+      end = input.endDate
+        ? toColombianDateOnly(input.endDate)
+        : calculateEndDate(type, start, { months: input.months });
+      if (!end) {
+        return { status: 400, message: `endDate is required for ${type} contracts` };
+      }
+      if (start > end) {
+        return { status: 400, message: 'startDate must be before or equal to endDate' };
+      }
+      const max = maxEndDate(type, start);
+      if (max && end > max) {
+        return { status: 400, message: `endDate exceeds the maximum duration of a ${type} contract (${formatColombianISODate(max)})` };
+      }
+      const min = minEndDate(type, start);
+      if (min && end < min) {
+        return { status: 400, message: `endDate is shorter than the minimum duration of a ${type} contract (${formatColombianISODate(min)})` };
+      }
+    }
+
+    const historyError = this.validateDeactivatedHistory(worker, end);
+    if (historyError) return historyError;
+
+    if (worker.id !== undefined) {
+      const overlap = await this.findOverlap(tx, worker.id, start, end);
+      if (overlap) return this.overlapError(overlap);
+    }
+
+    return {
+      id_company: input.id_company,
+      startDate: start,
+      endDate: end,
+      workerType: input.workerType,
+      contractType: type,
+      isRelocated: input.isRelocated ?? false,
+    };
+  }
+
+  /** Guarda un contrato ya validado con prepare() y sincroniza el trabajador */
+  async createPrepared(tx: Db, id_worker: number, data: PreparedContract, id_user: number) {
+    const contract = await tx.workerContract.create({
+      data: { ...data, id_worker, id_user },
+      include: CONTRACT_INCLUDE,
+    });
+    await this.syncRetirementDate(tx, id_worker);
+    return contract;
+  }
+
+  /**
+   * dateRetierment del trabajador = fecha de terminación de su último
+   * contrato (null si es indefinido). Un trabajador inactivo conserva su
+   * fecha de retiro; solo se completa si no la tenía.
    */
   async syncRetirementDate(tx: Db, id_worker: number) {
-    const latest = await tx.workerContract.findFirst({
-      where: { id_worker, endDate: { not: null } },
-      orderBy: { endDate: 'desc' },
+    const worker = await tx.worker.findUnique({
+      where: { id: id_worker },
+      select: { status: true, dateRetierment: true },
     });
-    if (latest?.endDate) {
-      await tx.worker.update({
-        where: { id: id_worker },
-        data: { dateRetierment: latest.endDate },
+    if (!worker) return;
+
+    if (worker.status === 'DEACTIVATED') {
+      if (worker.dateRetierment) return;
+      const latestEnded = await tx.workerContract.findFirst({
+        where: { id_worker, endDate: { not: null } },
+        orderBy: { endDate: 'desc' },
       });
+      if (latestEnded?.endDate) {
+        await tx.worker.update({ where: { id: id_worker }, data: { dateRetierment: latestEnded.endDate } });
+      }
+      return;
+    }
+
+    const latest = await tx.workerContract.findFirst({
+      where: { id_worker, isLegacy: false },
+      orderBy: { startDate: 'desc' },
+    });
+    if (latest) {
+      await tx.worker.update({ where: { id: id_worker }, data: { dateRetierment: latest.endDate } });
     }
   }
 
   /**
    * Al reactivar un trabajador DEACTIVATED que no tiene ningún contrato, se
    * conserva su retiro anterior como contrato histórico (legacy) con la fecha
-   * de dateRetierment y los demás datos vacíos.
+   * de dateRetierment y los demás datos vacíos. Sin dateRetierment no hay
+   * nada que conservar y no se crea el registro (quedaría vacío).
    */
   async archiveRetirementIfNoHistory(
     tx: Db,
     worker: { id: number; dateRetierment: Date | null },
     id_user: number,
   ) {
+    if (!worker.dateRetierment) return null;
     const count = await tx.workerContract.count({ where: { id_worker: worker.id } });
     if (count > 0) return null;
     return tx.workerContract.create({
@@ -120,7 +334,7 @@ export class WorkerContractService {
    * la terminación de su último contrato iniciado antes de ella.
    */
   async applyRetirementDate(tx: Db, id_worker: number, retirement: Date): Promise<ServiceError | null> {
-    const date = toDate(dateKey(retirement));
+    const date = toColombianDateOnly(formatColombianISODate(retirement));
     const contracts = await tx.workerContract.count({ where: { id_worker, isLegacy: false } });
     if (contracts === 0) return null;
 
@@ -131,7 +345,7 @@ export class WorkerContractService {
     if (!target) {
       return {
         status: 409,
-        message: `dateRetierment ${dateKey(date)} is before the start of every contract of the worker`,
+        message: `dateRetierment ${formatColombianISODate(date)} is before the start of every contract of the worker`,
       };
     }
     await tx.workerContract.update({ where: { id: target.id }, data: { endDate: date } });
@@ -145,7 +359,7 @@ export class WorkerContractService {
 
         const worker = await tx.worker.findUnique({
           where: { id: dto.id_worker },
-          select: { id: true, status: true, id_site: true, code: true, payroll_code: true, dateRetierment: true },
+          select: { id: true, status: true, id_site: true, dateRetierment: true },
         });
         if (!worker) {
           return { status: 404, message: `Worker with id ${dto.id_worker} not found` };
@@ -154,75 +368,60 @@ export class WorkerContractService {
           return { status: 403, message: 'Not authorized to manage contracts of workers from another site' };
         }
 
-        const companyError = await this.validateCompany(tx, dto.id_company);
-        if (companyError) return companyError;
-
-        const start = toDate(dto.startDate);
-        const end = toDate(dto.endDate);
-        if (start > end) {
-          return { status: 400, message: 'startDate must be before or equal to endDate' };
-        }
-
-        const overlap = await this.findOverlap(tx, worker.id, start, end);
-        if (overlap) return this.overlapError(overlap);
-
-        const reactivate = worker.status === 'DEACTIVATED';
-        if (reactivate) {
-          if (worker.dateRetierment && dateKey(worker.dateRetierment) >= dto.startDate) {
-            return {
-              status: 409,
-              message: `startDate must be after the worker retirement date (${dateKey(worker.dateRetierment)})`,
-            };
-          }
-          // Mismas reglas que la reactivación desde PATCH /worker
-          if (worker.code) {
-            const codeInUse = await tx.worker.findFirst({
-              where: { code: worker.code, id: { not: worker.id }, status: { not: 'DEACTIVATED' } },
-            });
-            if (codeInUse) {
-              return {
-                status: 409,
-                message: `Cannot activate worker. Code ${worker.code} is already in use by another active worker. Please assign a new code first.`,
-              };
-            }
-          }
-          if (worker.payroll_code) {
-            const payrollInUse = await tx.worker.findFirst({
-              where: { payroll_code: worker.payroll_code, id: { not: worker.id } },
-            });
-            if (payrollInUse) {
-              return {
-                status: 409,
-                message: `Cannot activate worker. Payroll code ${worker.payroll_code} is already in use by another worker.`,
-              };
-            }
-          }
-          await this.archiveRetirementIfNoHistory(tx, worker, dto.id_user);
-        }
-
-        const contract = await tx.workerContract.create({
-          data: {
-            id_worker: worker.id,
-            id_company: dto.id_company,
-            startDate: start,
-            endDate: end,
-            workerType: dto.workerType,
-            id_user: dto.id_user,
-          },
-          include: CONTRACT_INCLUDE,
-        });
-
-        if (reactivate) {
-          await tx.worker.update({
-            where: { id: worker.id },
-            data: { status: 'AVALIABLE', createAt: new Date() },
-          });
-        }
-        await this.syncRetirementDate(tx, worker.id);
-        return contract;
+        const prepared = await this.prepare(tx, dto, worker);
+        if (isError(prepared)) return prepared;
+        return this.createPrepared(tx, worker.id, prepared, dto.id_user);
       });
     } catch (error) {
       throw new Error(`Error creating worker contract: ${error}`);
+    }
+  }
+
+  /**
+   * Renovación: contrato nuevo que empieza el día siguiente a la terminación
+   * del contrato renovado, con la misma empresa, tipo de trabajador y
+   * modalidad. Si no llega endDate se usa la fecha calculada.
+   */
+  async renew(
+    id_worker: number,
+    contractId: number,
+    dto: RenewWorkerContractDto,
+    id_user: number,
+    siteId?: number,
+    role?: string,
+  ) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.lockTable(tx);
+
+        const contract = await tx.workerContract.findUnique({
+          where: { id: contractId },
+          include: { worker: { select: { id: true, id_site: true, status: true, dateRetierment: true } } },
+        });
+        if (!contract || contract.id_worker !== id_worker || !this.canAccessSite(contract.worker.id_site, siteId, role)) {
+          return { status: 404, message: `Worker contract with id ${contractId} not found` };
+        }
+        if (contract.isLegacy || !contract.endDate || !contract.contractType || !contract.id_company || !contract.workerType) {
+          return { status: 409, message: 'Only complete fixed-term contracts (with endDate and contractType) can be renewed' };
+        }
+
+        const prepared = await this.prepare(
+          tx,
+          {
+            id_company: contract.id_company,
+            startDate: formatColombianISODate(addColombianDays(contract.endDate, 1)),
+            endDate: dto.endDate,
+            workerType: contract.workerType,
+            contractType: contract.contractType,
+            months: dto.months,
+          },
+          contract.worker,
+        );
+        if (isError(prepared)) return prepared;
+        return this.createPrepared(tx, id_worker, prepared, id_user);
+      });
+    } catch (error) {
+      throw new Error(`Error renewing worker contract ${contractId}: ${error}`);
     }
   }
 
@@ -241,7 +440,7 @@ export class WorkerContractService {
       return await this.prisma.workerContract.findMany({
         where: { id_worker },
         include: CONTRACT_INCLUDE,
-        orderBy: [{ endDate: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+        orderBy: [{ startDate: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
       });
     } catch (error) {
       throw new Error(`Error fetching contracts of worker ${id_worker}: ${error}`);
@@ -252,45 +451,30 @@ export class WorkerContractService {
   async findCurrent(id_worker: number, siteId?: number, role?: string, date?: string) {
     const list = await this.findByWorker(id_worker, siteId, role);
     if (!Array.isArray(list)) return list;
-    const day = date ? toDate(date) : todayColombia();
+    const day = date ? toColombianDateOnly(date) : getColombianToday();
     const current = list.find(
-      (c) => !c.isLegacy && c.startDate && c.endDate && c.startDate <= day && day <= c.endDate,
+      (c) => !c.isLegacy && c.startDate && c.startDate <= day && (!c.endDate || day <= c.endDate),
     );
     if (!current) {
-      return { status: 404, message: `Worker ${id_worker} has no contract in effect on ${dateKey(day)}` };
+      return { status: 404, message: `Worker ${id_worker} has no contract in effect on ${formatColombianISODate(day)}` };
     }
     return current;
   }
 
-  async findOne(id: number, siteId?: number, role?: string) {
-    try {
-      const contract = await this.prisma.workerContract.findUnique({
-        where: { id },
-        include: { ...CONTRACT_INCLUDE, worker: { select: { id_site: true } } },
-      });
-      if (!contract || !this.canAccessSite(contract.worker.id_site, siteId, role)) {
-        return { status: 404, message: `Worker contract with id ${id} not found` };
-      }
-      const { worker, ...rest } = contract;
-      return rest;
-    } catch (error) {
-      throw new Error(`Error fetching worker contract with id ${id}: ${error}`);
-    }
-  }
-
   /**
-   * Contratos que vencen dentro de `days` días (o ya vencieron) cuyo
-   * trabajador sigue activo y no tiene un contrato posterior. Solo alerta:
-   * desactivar al trabajador lo hace el usuario.
+   * Contratos por terminar: su trabajador sigue activo, no tienen un contrato
+   * posterior y su fecha de terminación cae dentro de los próximos `days`
+   * días (por defecto 30) o ya pasó. Solo informa: desactivar al trabajador
+   * lo hace el usuario.
    */
-  async findExpiring(days: number, siteId?: number, role?: string) {
+  async findExpiring(days: number | undefined, siteId?: number, role?: string) {
     try {
-      const today = todayColombia();
-      const limit = new Date(today.getTime() + days * DAY_MS);
+      const today = getColombianToday();
+      const horizon = days ?? 30;
       const candidates = await this.prisma.workerContract.findMany({
         where: {
           isLegacy: false,
-          endDate: { lte: limit },
+          endDate: { not: null, lte: addColombianDays(today, horizon) },
           worker: {
             status: { not: 'DEACTIVATED' },
             ...(role === 'SUPERADMIN' || siteId === undefined ? {} : { id_site: siteId }),
@@ -304,33 +488,35 @@ export class WorkerContractService {
       });
       if (candidates.length === 0) return [];
 
-      const later = await this.prisma.workerContract.findMany({
+      const others = await this.prisma.workerContract.findMany({
         where: { id_worker: { in: candidates.map((c) => c.id_worker) }, isLegacy: false },
         select: { id_worker: true, startDate: true },
       });
       return candidates
-        .filter(
-          (c) => !later.some((o) => o.id_worker === c.id_worker && o.startDate && c.endDate && o.startDate > c.endDate),
-        )
+        .filter((c) => !others.some((o) => o.id_worker === c.id_worker && o.startDate && o.startDate > c.endDate!))
         .map((c) => ({
           ...c,
-          daysLeft: Math.round((c.endDate!.getTime() - today.getTime()) / DAY_MS),
+          daysLeft: getDaysBetween(today, c.endDate!),
         }));
     } catch (error) {
       throw new Error(`Error fetching expiring contracts: ${error}`);
     }
   }
 
-  async update(id: number, dto: UpdateWorkerContractDto, siteId?: number, role?: string) {
+  async update(id: number, dto: UpdateWorkerContractDto, siteId?: number, role?: string, id_worker?: number) {
     try {
       return await this.prisma.$transaction(async (tx) => {
         await this.lockTable(tx);
 
         const contract = await tx.workerContract.findUnique({
           where: { id },
-          include: { worker: { select: { id_site: true } } },
+          include: { worker: { select: { id_site: true, status: true, dateRetierment: true } } },
         });
-        if (!contract || !this.canAccessSite(contract.worker.id_site, siteId, role)) {
+        if (
+          !contract ||
+          (id_worker !== undefined && contract.id_worker !== id_worker) ||
+          !this.canAccessSite(contract.worker.id_site, siteId, role)
+        ) {
           return { status: 404, message: `Worker contract with id ${id} not found` };
         }
 
@@ -339,23 +525,54 @@ export class WorkerContractService {
           if (companyError) return companyError;
         }
 
-        const start = dto.startDate ? toDate(dto.startDate) : contract.startDate;
-        const end = dto.endDate ? toDate(dto.endDate) : contract.endDate;
+        const type = dto.contractType ?? contract.contractType;
+        const start = dto.startDate ? toColombianDateOnly(dto.startDate) : contract.startDate;
+        // Al marcarlo como reubicado queda sin terminación; después se cierra indicando endDate
+        const relocated = dto.isRelocated ?? contract.isRelocated;
+        const becomesRelocated = relocated && !contract.isRelocated;
+        if (relocated && type && !RELOCATION_TYPES.includes(type)) {
+          return { status: 400, message: `isRelocated does not apply to ${type} contracts` };
+        }
+        const end = dto.endDate ? toColombianDateOnly(dto.endDate) : becomesRelocated ? null : contract.endDate;
         if (start && end && start > end) {
           return { status: 400, message: 'startDate must be before or equal to endDate' };
         }
-        if (end) {
-          const overlap = await this.findOverlap(tx, contract.id_worker, start, end, id);
-          if (overlap) return this.overlapError(overlap);
+
+        if (!contract.isLegacy && type && start) {
+          if (type !== 'INDEFINITE' && !relocated && !end) {
+            return { status: 400, message: `endDate is required for ${type} contracts` };
+          }
+          // Aprendizaje: solo GH puede extender la terminación (incluso más allá de 1 año)
+          const extendsApprenticeship =
+            type === 'APPRENTICESHIP' && end && (!contract.endDate || end > contract.endDate);
+          if (extendsApprenticeship && role !== 'GH') {
+            return { status: 403, message: 'Only GH can extend the endDate of an APPRENTICESHIP contract' };
+          }
+          const max = maxEndDate(type, start);
+          if (type !== 'APPRENTICESHIP' && !relocated && max && end && end > max) {
+            return {
+              status: 400,
+              message: `endDate exceeds the maximum duration of a ${type} contract (${formatColombianISODate(max)}); register a renewal instead`,
+            };
+          }
         }
+
+        if (dto.endDate || becomesRelocated) {
+          const historyError = this.validateDeactivatedHistory(contract.worker, end);
+          if (historyError) return historyError;
+        }
+        const overlap = await this.findOverlap(tx, contract.id_worker, start, end, id);
+        if (overlap) return this.overlapError(overlap);
 
         const updated = await tx.workerContract.update({
           where: { id },
           data: {
             id_company: dto.id_company,
             startDate: dto.startDate ? start : undefined,
-            endDate: dto.endDate ? end : undefined,
+            endDate: dto.endDate || becomesRelocated ? end : undefined,
             workerType: dto.workerType,
+            contractType: dto.contractType,
+            isRelocated: dto.isRelocated,
           },
           include: CONTRACT_INCLUDE,
         });
@@ -367,14 +584,18 @@ export class WorkerContractService {
     }
   }
 
-  async remove(id: number, siteId?: number, role?: string) {
+  async remove(id: number, siteId?: number, role?: string, id_worker?: number) {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const contract = await tx.workerContract.findUnique({
           where: { id },
           include: { worker: { select: { id_site: true } } },
         });
-        if (!contract || !this.canAccessSite(contract.worker.id_site, siteId, role)) {
+        if (
+          !contract ||
+          (id_worker !== undefined && contract.id_worker !== id_worker) ||
+          !this.canAccessSite(contract.worker.id_site, siteId, role)
+        ) {
           return { status: 404, message: `Worker contract with id ${id} not found` };
         }
         const deleted = await tx.workerContract.delete({ where: { id } });
@@ -393,3 +614,5 @@ export class WorkerContractService {
     }
   }
 }
+
+export { isError as isContractServiceError };

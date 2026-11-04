@@ -46,6 +46,9 @@ import { EpsModule } from './eps/eps.module';
 import { ArlModule } from './arl/arl.module';
 import { CompanyModule } from './company/company.module';
 import { WorkerContractModule } from './worker-contract/worker-contract.module';
+import { MinimumWageModule } from './minimum-wage/minimum-wage.module';
+import { AiUsageModule } from './ai-usage/ai-usage.module';
+import { AppLogModule } from './app-log/app-log.module';
 
 @Module({
   imports: [
@@ -89,6 +92,9 @@ import { WorkerContractModule } from './worker-contract/worker-contract.module';
     ArlModule,
     CompanyModule,
     WorkerContractModule,
+    MinimumWageModule,
+    AiUsageModule,
+    AppLogModule,
   ],
   providers: [
     DocsAuthMiddleware,

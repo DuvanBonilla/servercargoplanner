@@ -1,0 +1,15 @@
+# Entorno virtual y caché de Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Variables de entorno (API keys, tokens)
+.env
+
+# Nunca versionar documentos reales: contienen datos de salud
+samples/
+*.pdf
+*.png
+*.jpg
+*.jpeg

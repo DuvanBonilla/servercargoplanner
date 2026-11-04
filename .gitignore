@@ -55,3 +55,6 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Certificados de incapacidad (INABILITY_STORAGE_DIR por defecto)
+/storage

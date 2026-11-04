@@ -1,7 +1,8 @@
-import {  IsEnum, IsNumber, IsOptional, IsString, Matches, IsDate } from 'class-validator';
+import {  IsEnum, IsNumber, IsOptional, IsString, Matches, IsDate, IsDefined, ValidateNested } from 'class-validator';
 import { Status } from '@prisma/client';
 import { Type, Transform } from 'class-transformer';
 import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
+import { WorkerContractBodyDto } from 'src/worker-contract/dto/create-worker-contract.dto';
 
 /**
  * @category DTOs
@@ -98,5 +99,14 @@ export class CreateWorkerDto {
   @IsOptional()
   id_subsite?: number;
 
-  
+  @ApiProperty({
+    type: () => WorkerContractBodyDto,
+    description:
+      'Contract of the worker. Required when creating a worker and when reactivating a DEACTIVATED worker (PATCH); ' +
+      'not accepted in other updates (use POST /worker/:id/contracts).',
+  })
+  @IsDefined({ message: 'contract is required: every active worker must have a contract' })
+  @ValidateNested()
+  @Type(() => WorkerContractBodyDto)
+  contract: WorkerContractBodyDto;
 }

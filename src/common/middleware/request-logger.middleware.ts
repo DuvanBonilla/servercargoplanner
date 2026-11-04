@@ -23,11 +23,14 @@ export class RequestLoggerMiddleware implements NestMiddleware {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
     const userInfo = this.extractUserInfo(req);
+    // La app móvil envía X-Request-Id para cruzar esta línea con sus logs [APP]
+    const requestId = req.headers['x-request-id'];
+    const cid = requestId ? ` cid=${requestId}` : '';
 
     res.on('finish', () => {
       const durationMs = Date.now() - startTime;
       const { statusCode } = res;
-      const message = `${method} ${originalUrl} ${statusCode} ${durationMs}ms - user=${userInfo} ip=${ip}`;
+      const message = `${method} ${originalUrl} ${statusCode} ${durationMs}ms - user=${userInfo} ip=${ip}${cid}`;
 
       // Marcar como advertencia las peticiones lentas (>3s) para facilitar
       // encontrar en logs los endpoints que consumen más CPU/tiempo.

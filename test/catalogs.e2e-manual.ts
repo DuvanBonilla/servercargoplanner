@@ -25,11 +25,10 @@ async function seq(prisma: PrismaService, table: string) {
   return `${row.last_value}/${row.is_called}`;
 }
 
-// Deja la secuencia en MAX(id) para que la prueba no deje huecos
-async function restoreSeq(prisma: PrismaService, table: string) {
-  await prisma.$queryRawUnsafe(
-    `SELECT setval('"${table}_id_seq"', COALESCE(MAX(id), 1), MAX(id) IS NOT NULL) FROM "${table}"`,
-  );
+// Devuelve la secuencia exactamente al valor que tenía antes de la prueba
+async function restoreSeq(prisma: PrismaService, table: string, snapshot: string) {
+  const [value, called] = snapshot.split('/');
+  await prisma.$queryRawUnsafe(`SELECT setval('"${table}_id_seq"', ${Number(value)}, ${called === 'true'})`);
 }
 
 async function runCatalog(app: INestApplication, path: string, table: string, gh: string, reception: string) {
@@ -89,7 +88,7 @@ async function runCatalog(app: INestApplication, path: string, table: string, gh
   r = await http().delete(`/${path}/${created.id}`).set(auth(gh));
   check(`${path}: eliminar -> 200`, r.status === 200, r.body);
 
-  await restoreSeq(prisma, table);
+  await restoreSeq(prisma, table, seqBefore);
   check(`${path}: secuencia restaurada (${seqBefore})`, (await seq(prisma, table)) === seqBefore, await seq(prisma, table));
 }
 
@@ -128,8 +127,8 @@ async function runCompanyArl(app: INestApplication, gh: string) {
   await http().delete(`/company/${company.id}`).set(auth);
   await http().delete(`/arl/${arl.id}`).set(auth);
   await http().delete(`/arl/${arlInactive.id}`).set(auth);
-  await restoreSeq(prisma, 'Company');
-  await restoreSeq(prisma, 'Arl');
+  await restoreSeq(prisma, 'Company', seqCompany);
+  await restoreSeq(prisma, 'Arl', seqArl);
   check('company+arl: secuencias restauradas',
     (await seq(prisma, 'Company')) === seqCompany && (await seq(prisma, 'Arl')) === seqArl);
 }

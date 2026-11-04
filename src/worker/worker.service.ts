@@ -5,7 +5,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ValidationService } from 'src/common/validation/validation.service';
 import { ValidationUserSiteService } from 'src/common/validation/services/validation-user-site/validation-user-site.service';
 import { getColombianDateTime } from 'src/common/utils/dateColombia';
-import { WorkerContractService } from 'src/worker-contract/worker-contract.service';
+import {
+  WorkerContractService,
+  isContractServiceError,
+} from 'src/worker-contract/worker-contract.service';
+import { formatColombianISODate } from 'src/common/utils/dateColombia';
 import { isPermissionActive } from 'src/common/utils/permission.utils';
 
 /**
@@ -488,11 +492,22 @@ for (const permission of activePermissions) {
         return { message: 'User ID is required', status: 400 };
       }
 
+      // Todo trabajador activo tiene contrato: se valida ANTES de crear el
+      // trabajador para no dejar registros (ni ids) a medias
+      const { contract, ...workerData } = createWorkerDto;
+      const preparedContract = await this.workerContractService.prepare(this.prisma, contract, {
+        status: createWorkerDto.status ?? 'AVALIABLE',
+        dateRetierment: createWorkerDto.dateRetierment ?? null,
+      });
+      if (isContractServiceError(preparedContract)) {
+        return { ...preparedContract, source: 'contract' };
+      }
+
       // console.log(`[WorkerService] Iniciando creación en base de datos...`);
 
       const response = await this.prisma.worker.create({
         data: {
-          ...createWorkerDto,
+          ...workerData,
           id_user: createWorkerDto.id_user,
         },
       });
@@ -541,8 +556,23 @@ for (const permission of activePermissions) {
         }
       }
 
-      // Si no hay conflictos post-creación, retornar el trabajador creado
-      return response;
+      // Si no hay conflictos post-creación, se registra su contrato
+      try {
+        const createdContract = await this.prisma.$transaction(async (tx) => {
+          await this.workerContractService.lockTable(tx);
+          return this.workerContractService.createPrepared(
+            tx,
+            response.id,
+            preparedContract,
+            requestingUserId ?? createWorkerDto.id_user!, // validado arriba
+          );
+        });
+        const worker = await this.prisma.worker.findUnique({ where: { id: response.id } });
+        return { ...worker, contract: createdContract };
+      } catch (error) {
+        await this.prisma.worker.delete({ where: { id: response.id } });
+        throw error;
+      }
     } catch (error) {
       throw new Error(String(error));
     }
@@ -1036,8 +1066,46 @@ async findById(id: number, id_site?: number) {
         // // console.log(`[WorkerService] ✅ Códigos disponibles, permitiendo activación del worker ${id}`);
       }
 
-      // Contratos: al desactivar, la fecha de retiro pasa a ser la terminación
-      // del contrato; al reactivar sin historial, se conserva el retiro anterior
+      // Contratos: reactivar exige el contrato nuevo en la misma petición; en
+      // cualquier otra edición los contratos se gestionan en /worker/:id/contracts
+      const { contract, ...workerChanges } = updateWorkerDto;
+      const reactivating =
+        currentWorker.status === 'DEACTIVATED' &&
+        updateWorkerDto.status !== undefined &&
+        updateWorkerDto.status !== 'DEACTIVATED';
+      let preparedContract: Awaited<ReturnType<WorkerContractService['prepare']>> | null = null;
+      if (reactivating) {
+        if (!contract) {
+          return {
+            status: 400,
+            message: 'contract is required to reactivate a DEACTIVATED worker',
+            source: 'contract',
+          };
+        }
+        if (currentWorker.dateRetierment && contract.startDate <= formatColombianISODate(currentWorker.dateRetierment)) {
+          return {
+            status: 409,
+            message: `contract startDate must be after the retirement date (${formatColombianISODate(currentWorker.dateRetierment)})`,
+            source: 'contract',
+          };
+        }
+        preparedContract = await this.workerContractService.prepare(this.prisma, contract, {
+          id,
+          status: updateWorkerDto.status!,
+          dateRetierment: null,
+        });
+        if (isContractServiceError(preparedContract)) {
+          return { ...preparedContract, source: 'contract' };
+        }
+      } else if (contract) {
+        return {
+          status: 400,
+          message: 'contract is only accepted when reactivating a DEACTIVATED worker; use POST /worker/:id/contracts',
+          source: 'contract',
+        };
+      }
+
+      // Al desactivar, la fecha de retiro pasa a ser la terminación del contrato
       if (updateWorkerDto.status === 'DEACTIVATED' && updateWorkerDto.dateRetierment) {
         const retirementError = await this.workerContractService.applyRetirementDate(
           this.prisma,
@@ -1046,21 +1114,32 @@ async findById(id: number, id_site?: number) {
         );
         if (retirementError) return retirementError;
       }
-      if (currentWorker.status === 'DEACTIVATED' && updateWorkerDto.status === 'AVALIABLE') {
-        await this.workerContractService.archiveRetirementIfNoHistory(
-          this.prisma,
-          { id, dateRetierment: currentWorker.dateRetierment },
-          requestingUserId ?? currentWorker.id_user,
-        );
-      }
-
         // ✅ Preparar datos de actualización
-      const dataToUpdate: any = { ...updateWorkerDto };
+      const dataToUpdate: any = { ...workerChanges };
       
       // ✅ Si cambia de DEACTIVATED a AVAILABLE, actualizar createAt
       if (currentWorker.status === 'DEACTIVATED' && updateWorkerDto.status === 'AVALIABLE') {
         // console.log(`[WorkerService] 📅 Actualizando createAt a fecha actual por reactivación`);
         dataToUpdate.createAt = new Date();
+      }
+
+      // Reactivación: histórico del retiro anterior, trabajador y contrato
+      // nuevo se guardan juntos (si algo falla no queda nada a medias)
+      if (reactivating && preparedContract && !isContractServiceError(preparedContract)) {
+        const prepared = preparedContract;
+        const userId = requestingUserId ?? currentWorker.id_user;
+        return await this.prisma.$transaction(async (tx) => {
+          await this.workerContractService.lockTable(tx);
+          await this.workerContractService.archiveRetirementIfNoHistory(
+            tx,
+            { id, dateRetierment: currentWorker.dateRetierment },
+            userId,
+          );
+          await tx.worker.update({ where: { id }, data: dataToUpdate });
+          const createdContract = await this.workerContractService.createPrepared(tx, id, prepared, userId);
+          const worker = await tx.worker.findUnique({ where: { id } });
+          return { ...worker, contract: createdContract };
+        });
       }
 
       // ✅ ACTUALIZAR SOLO POR ID (ya validamos acceso arriba)
