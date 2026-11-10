@@ -322,9 +322,6 @@ model WorkerFeeding {
   id           Int           @id @default(autoincrement())
   id_worker    Int?
   id_operation Int
-  // Código de OperationGroup (siempre numérico) al que se adhiere la
-  // alimentación cuando NO pertenece a un trabajador específico
-  // (ver FeedingService.feedingAddedToService).
   code_group   Int?
   dateFeeding  DateTime      @db.Date
   type         FeedingStatus

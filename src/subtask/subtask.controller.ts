@@ -71,7 +71,9 @@ async create(
   return response;
 }
 
+  // Lectura abierta al SUPERVISOR: necesita los subservicios al crear/editar operaciones
   @Get()
+  @Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPERVISOR)
   async findAll(
     @CurrentUser('siteId') siteId: number,
     @CurrentUser('isSuperAdmin') isSuperAdmin: boolean,

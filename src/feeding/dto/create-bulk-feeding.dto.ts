@@ -49,6 +49,16 @@ export class CreateBulkFeedingDto {
   })
   dateFeeding?: string;
 
+  @ApiProperty({
+    example: 'd4a3820f-da5b-42b5-aef3-8c474b23e3b1',
+    required: false,
+    description:
+      'Grupo (Operation_Worker.id_group) desde el que se registra la alimentación. Se guarda en cada registro para saber en qué grupo se le dio al trabajador',
+  })
+  @IsString()
+  @IsOptional()
+  id_group?: string;
+
   @ApiProperty({ type: [BulkFeedingItemDto] })
   @IsArray()
   @ArrayMinSize(1, { message: 'items debe contener al menos 1 elemento' })

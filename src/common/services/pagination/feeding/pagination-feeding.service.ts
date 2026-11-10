@@ -107,7 +107,7 @@ export class PaginationFeedingService {
   /**
    * Construye la cláusula where para la alimentación de trabajadores
    */
-  private buildWorkerFeedingWhereClause(filters?: FilterWorkerFeedingDto): any {
+  buildWorkerFeedingWhereClause(filters?: FilterWorkerFeedingDto): any {
     const whereClause: any = {};
 
     if (!filters) {
@@ -143,17 +143,17 @@ export class PaginationFeedingService {
       // Si hay id_site, incluirlo en cada condición del OR
       if (filters.id_site) {
         whereClause.OR = [
-          { 
-            worker: { 
+          {
+            worker: {
               id_site: filters.id_site,
-              dni: { contains: searchTerm, mode: 'insensitive' } 
-            } 
+              dni: { contains: searchTerm, mode: 'insensitive' }
+            }
           },
-          { 
-            worker: { 
+          {
+            worker: {
               id_site: filters.id_site,
-              name: { contains: searchTerm, mode: 'insensitive' } 
-            } 
+              name: { contains: searchTerm, mode: 'insensitive' }
+            }
           },
         ];
       } else {
@@ -162,6 +162,22 @@ export class PaginationFeedingService {
           { worker: { dni: { contains: searchTerm, mode: 'insensitive' } } },
           { worker: { name: { contains: searchTerm, mode: 'insensitive' } } },
         ];
+      }
+
+      // Búsqueda numérica: también por número de operación o id del registro,
+      // igual que la tabla de la web. Incluye la alimentación de grupo (sin
+      // trabajador), filtrada por el sitio de la operación.
+      if (/^\d+$/.test(searchTerm)) {
+        const numericTerm = Number(searchTerm);
+        if (Number.isSafeInteger(numericTerm) && numericTerm <= 2147483647) {
+          const siteCondition = filters.id_site
+            ? { operation: { id_site: filters.id_site } }
+            : {};
+          whereClause.OR.push(
+            { id_operation: numericTerm, ...siteCondition },
+            { id: numericTerm, ...siteCondition },
+          );
+        }
       }
     } else if (filters.id_site) {
       // Solo filtro por id_site sin búsqueda.

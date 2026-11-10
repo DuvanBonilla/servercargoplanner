@@ -995,6 +995,8 @@ export class OperationController {
   async findAllPaginated(
     @CurrentUser('siteId') siteId: number,
     @CurrentUser('subsiteId') subsiteId: number,
+    @CurrentUser('userId') userId: number,
+    @CurrentUser('role') userRole: Role,
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     queryParams: PaginatedOperationQueryDto,
     @Query('activatePaginated', new BooleanTransformPipe(true))
@@ -1030,7 +1032,11 @@ export class OperationController {
         filters.userId = queryParams.userId;
       }
 
-      if (queryParams.inChargedId && queryParams.inChargedId > 0) {
+      // El SUPERVISOR solo ve las operaciones donde él es encargado,
+      // sin importar el inChargedId que envíe el cliente.
+      if (userRole === Role.SUPERVISOR && userId) {
+        filters.inChargedId = userId;
+      } else if (queryParams.inChargedId && queryParams.inChargedId > 0) {
         filters.inChargedId = queryParams.inChargedId;
       }
 
@@ -1430,6 +1436,7 @@ async removeMultipleGroups(
     @CurrentUser('userId') userIdClaim: number,
     @CurrentUser('siteId') siteIdClaim: number,
     @CurrentUser('subsiteId') subsiteIdClaim: number,
+    @CurrentUser('role') userRole: Role,
   ): Promise<StreamableFile> {
     const userId = userIdClaim ?? user?.userId ?? user?.id;
     const siteId = siteIdClaim ?? user?.siteId;
@@ -1456,7 +1463,13 @@ async removeMultipleGroups(
         dateEnd,
         status: normalizeStringArray(body?.status),
         jobAreaIds: normalizeNumberArray(body?.jobAreaIds),
-        inChargedId: body?.inChargedId ? Number(body.inChargedId) : undefined,
+        // El SUPERVISOR solo exporta sus propias operaciones
+        inChargedId:
+          userRole === Role.SUPERVISOR && userId
+            ? Number(userId)
+            : body?.inChargedId
+              ? Number(body.inChargedId)
+              : undefined,
         search: body?.search,
       },
     };

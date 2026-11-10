@@ -14,6 +14,7 @@ import {
   ValidationPipe,
   UseInterceptors,
   ConflictException,
+  StreamableFile,
 } from '@nestjs/common';
 import { FeedingService } from './feeding.service';
 import { CreateFeedingDto } from './dto/create-feeding.dto';
@@ -139,6 +140,36 @@ export class FeedingController {
         `Error processing paginated request: ${(error as Error).message}`,
       );
     }
+  }
+
+  @Get('export')
+  @ApiOperation({
+    summary:
+      'Exportar registros de alimentación a Excel (mismos filtros que /feeding/paginated), incluye código de grupo',
+  })
+  async exportExcel(
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    queryParams: PaginatedWorkerFeedingQueryDto,
+    @CurrentUser('siteId') siteId: number,
+  ): Promise<StreamableFile> {
+    const filters: FilterWorkerFeedingDto = {};
+    if (siteId) filters.id_site = siteId;
+    if (queryParams.type) filters.type = queryParams.type;
+    if (queryParams.startDate) filters.startDate = queryParams.startDate;
+    if (queryParams.endDate) filters.endDate = queryParams.endDate;
+    if (queryParams.search && queryParams.search.trim() !== '') {
+      filters.search = queryParams.search.trim();
+    }
+
+    const result = await this.feedingService.exportFeedingsExcel(filters);
+    if ('noContent' in result) {
+      throw new NotFoundException('No hay datos para exportar');
+    }
+
+    return new StreamableFile(result.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${result.fileName}"`,
+    });
   }
 
   @Get('operation/:id')

@@ -41,6 +41,19 @@ export const getColombianStartOfDay = (date: Date): Date => {
 };
 
 /**
+ * Hora del día en Colombia como fracción de día (formato de hora de Excel).
+ * `date` es un instante UTC real (ej. createAt).
+ */
+export const getColombianTimeOfDayFraction = (date: Date): number => {
+  const bogotaShifted = new Date(date.getTime() - COLOMBIA_OFFSET_MS);
+  const seconds =
+    bogotaShifted.getUTCHours() * 3600 +
+    bogotaShifted.getUTCMinutes() * 60 +
+    bogotaShifted.getUTCSeconds();
+  return seconds / 86400;
+};
+
+/**
  * Crea el fin del día en zona horaria de Colombia.
  */
 export const getColombianEndOfDay = (date: Date): Date => {

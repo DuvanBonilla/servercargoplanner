@@ -5043,8 +5043,24 @@ export class BillService {
     });
 
     // ✅ CREAR MAPS UNA SOLA VEZ
+    // Alimentación de trabajador SIN código de grupo (registros antiguos en
+    // los que el trabajador estaba en varios grupos): se cuenta por operación
+    // + trabajador, como siempre.
     const feedingsByWorkerMap = new Map<string, number>();
-    // Alimentaciones adheridas al grupo (sin worker propio, ver
+    // Alimentación de trabajador CON código de grupo (code_group = grupo en
+    // que se le dio): se cuenta solo en ese grupo, por operación + trabajador
+    // + código, para no repetirla en los demás grupos del trabajador.
+    const feedingsByWorkerGroupMap = new Map<string, number>();
+    const workerFeedingCount = (opId: number, workerId?: number, groupCode?: number | '') => {
+      if (!workerId) return 0;
+      const legacy = feedingsByWorkerMap.get(`${opId}-${workerId}`) || 0;
+      const inGroup =
+        typeof groupCode === 'number'
+          ? feedingsByWorkerGroupMap.get(`${opId}-${workerId}-${groupCode}`) || 0
+          : 0;
+      return legacy + inGroup;
+    };
+    // Alimentaciones EXTRA adheridas al grupo (sin trabajador, ver
     // FeedingService.feedingAddedToService), contadas por operación + código
     // de grupo (OperationGroup.code) para no mezclarlas entre grupos de una
     // misma operación.
@@ -5054,12 +5070,17 @@ export class BillService {
       const opId = f.id_operation;
       const workerId = f.id_worker;
 
-      if (f.code_group != null) {
-        // alimentación de grupo
+      if (workerId == null) {
+        // alimentación extra del grupo (sin trabajador)
+        if (f.code_group == null) return;
         const groupKey = `${opId}-${f.code_group}`;
         feedingsByGroupMap.set(groupKey, (feedingsByGroupMap.get(groupKey) || 0) + 1);
+      } else if (f.code_group != null) {
+        // por worker, en el grupo donde se le dio
+        const key = `${opId}-${workerId}-${f.code_group}`;
+        feedingsByWorkerGroupMap.set(key, (feedingsByWorkerGroupMap.get(key) || 0) + 1);
       } else {
-        // por worker
+        // por worker (registro sin código de grupo)
         const key = `${opId}-${workerId}`;
         feedingsByWorkerMap.set(key, (feedingsByWorkerMap.get(key) || 0) + 1);
       }
@@ -5210,14 +5231,13 @@ export class BillService {
       // alimentación adherida a ESTE grupo (code_group), sin mezclar con la
       // de otros grupos de la misma operación.
       const individualFeedingCount = (bill.billDetails || []).reduce(
-        (sum, detail) => {
-          const workerId = detail.operationWorker?.worker?.id;
-          if (!workerId) return sum;
-          return (
-            sum +
-            (feedingsByWorkerMap.get(`${bill.id_operation}-${workerId}`) || 0)
-          );
-        },
+        (sum, detail) =>
+          sum +
+          workerFeedingCount(
+            bill.id_operation,
+            detail.operationWorker?.worker?.id,
+            this.resolveGroupCode(bill.operation, detail.operationWorker?.id_group),
+          ),
         0,
       );
       const groupFeedingCount =
@@ -5319,7 +5339,11 @@ export class BillService {
 
         const comp = await this.calculateCompensatoryForBill(bill, sundayHoursConfig, weekHoursConfig);
 
-        const feedingCount = feedingsByWorkerMap.get(`${bill.id_operation}-${detail.operationWorker?.worker?.id}`) || 0;
+        const feedingCount = workerFeedingCount(
+          bill.id_operation,
+          detail.operationWorker?.worker?.id,
+          this.resolveGroupCode(bill.operation, detail.operationWorker?.id_group),
+        );
         const grupoCode = this.resolveGroupCode(bill.operation, detail.operationWorker?.id_group);
 
         const rowRTD = worksheetRTD.addRow([

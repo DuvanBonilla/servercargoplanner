@@ -9,6 +9,46 @@ import { CreateBulkFeedingDto } from './dto/create-bulk-feeding.dto';
 import { CreateFeedingAddedToServiceDto } from './dto/create-feeding-added-to-service.dto';
 import { FeedingStatus } from '@prisma/client';
 import { FEEDING_TYPE_NAMES } from './constants/meal-schedule.constant';
+import * as ExcelJS from 'exceljs';
+import {
+  formatColombianISODate,
+  getColombianTimeOfDayFraction,
+} from 'src/common/utils/dateColombia';
+
+// Etiquetas del reporte Excel (mismas que usaba el front)
+const FEEDING_TYPE_LABELS: Record<FeedingStatus, string> = {
+  BREAKFAST: 'Desayuno',
+  LUNCH: 'Almuerzo',
+  DINNER: 'Cena',
+  SNACK: 'Media noche',
+};
+
+// Fecha de solo día (@db.Date, medianoche UTC) → número de serie de Excel
+const toExcelDateSerial = (date?: Date | null): number | string => {
+  if (!date) return '';
+  const excelEpoch = Date.UTC(1899, 11, 30);
+  const target = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return Math.floor((target - excelEpoch) / 86400000);
+};
+
+// Hora "HH:mm[:ss]" → fracción de día para Excel
+const timeStringToExcelFraction = (time?: string | null): number | string => {
+  if (!time) return '';
+  const [h, m, s = '0'] = time.split(':');
+  const hours = parseInt(h, 10);
+  const minutes = parseInt(m, 10);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return 'N/A';
+  return (hours * 3600 + minutes * 60 + (parseInt(s, 10) || 0)) / 86400;
+};
+
+// Semana ISO 8601 (lunes a domingo) de una fecha de solo día
+const getIsoWeekNumber = (date: Date): number => {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = Date.UTC(d.getUTCFullYear(), 0, 1);
+  return Math.ceil(((d.getTime() - yearStart) / 86400000 + 1) / 7);
+};
 
 @Injectable()
 export class FeedingService {
@@ -361,6 +401,13 @@ export class FeedingService {
                   name: true,
                 },
               },
+              // Datos que muestra el detalle de alimentación en la web
+              // (ViewFeedingDialog): área, cliente, embarcación e inicio.
+              dateStart: true,
+              timeStrat: true,
+              motorShip: true,
+              client: { select: { name: true } },
+              jobArea: { select: { name: true } },
             },
           },
           worker: {
@@ -442,6 +489,227 @@ export class FeedingService {
     } catch (error) {
       throw new Error(String(error));
     }
+  }
+
+  /**
+   * Genera el reporte Excel de alimentación con los mismos filtros de
+   * /feeding/paginated. Incluye la columna "Grupo" (OperationGroup.code),
+   * resuelta igual que en el reporte de Bill:
+   * - Alimentación con code_group (extra del grupo, o de un trabajador con el
+   *   grupo en que se le dio): ese código.
+   * - Alimentación de un trabajador sin code_group (registros antiguos de un
+   *   trabajador en varios grupos): su id_group en Operation_Worker de esa
+   *   operación traducido a OperationGroup.code (varios se unen con ", ").
+   */
+  async exportFeedingsExcel(
+    filters: FilterWorkerFeedingDto,
+  ): Promise<{ buffer: Buffer; fileName: string } | { noContent: true }> {
+    const feedings = await this.prisma.workerFeeding.findMany({
+      where: this.paginationService.buildWorkerFeedingWhereClause(filters),
+      orderBy: { dateFeeding: 'desc' },
+      include: {
+        worker: { select: { name: true, payroll_code: true } },
+        user: { select: { name: true } },
+        operation: {
+          select: {
+            id: true,
+            dateStart: true,
+            timeStrat: true,
+            dateEnd: true,
+            timeEnd: true,
+            op_duration: true,
+            motorShip: true,
+            client: { select: { name: true } },
+            task: { select: { name: true } },
+            jobArea: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (feedings.length === 0) {
+      return { noContent: true };
+    }
+
+    const operationIds = [...new Set(feedings.map((f) => f.id_operation))];
+    const [assignments, groups] = await Promise.all([
+      this.prisma.operation_Worker.findMany({
+        where: { id_operation: { in: operationIds } },
+        select: {
+          id_operation: true,
+          id_worker: true,
+          id_group: true,
+          SubTask: { select: { code: true, name: true } },
+        },
+      }),
+      this.prisma.operationGroup.findMany({
+        where: { id_operation: { in: operationIds } },
+        select: { id_operation: true, id_group: true, code: true },
+      }),
+    ]);
+
+    const codeByGroup = new Map(
+      groups.map((g) => [`${g.id_operation}-${g.id_group}`, g.code]),
+    );
+    const groupByCode = new Map(
+      groups.map((g) => [`${g.id_operation}-${g.code}`, g.id_group]),
+    );
+    // Grupos y subservicio de cada trabajador por operación, y subservicio por grupo
+    const groupCodesByWorker = new Map<string, Set<string>>();
+    const subTaskByWorker = new Map<string, { code: string; name: string }>();
+    const subTaskByGroup = new Map<string, { code: string; name: string }>();
+    for (const a of assignments) {
+      const workerKey = `${a.id_operation}-${a.id_worker}`;
+      const groupKey = `${a.id_operation}-${a.id_group}`;
+      const code = a.id_group ? codeByGroup.get(groupKey) : undefined;
+      if (code) {
+        if (!groupCodesByWorker.has(workerKey)) groupCodesByWorker.set(workerKey, new Set());
+        groupCodesByWorker.get(workerKey)!.add(code);
+      }
+      if (a.SubTask) {
+        if (!subTaskByWorker.has(workerKey)) subTaskByWorker.set(workerKey, a.SubTask);
+        if (a.id_group && !subTaskByGroup.has(groupKey)) subTaskByGroup.set(groupKey, a.SubTask);
+      }
+    }
+
+    const toNumberIfNumeric = (value: string) =>
+      /^\d+$/.test(value) ? Number(value) : value;
+
+    const headers = [
+      'Código Nómina',
+      'Trabajador',
+      'Operación',
+      'Grupo',
+      'Área',
+      'Fecha Inicio',
+      'Hora Inicio',
+      'Fecha Fin',
+      'Hora Fin',
+      'Código Subservicio',
+      'Subservicio',
+      'Q Horas',
+      'Cliente',
+      'Embarcación',
+      'Tipo de Alimentación',
+      'Fecha Alimentación',
+      'Semana',
+      'Hora Registro',
+      'Registrado Por',
+    ];
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'PlannerWeb';
+    workbook.created = new Date();
+    const worksheet = workbook.addWorksheet('Alimentación', {
+      pageSetup: { fitToPage: true, fitToHeight: 5, fitToWidth: 7 },
+    });
+
+    const headerRow = worksheet.addRow(headers);
+    headerRow.height = 28;
+    headerRow.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4472C4' } };
+      cell.font = { bold: true, color: { argb: 'FFFFFF' }, size: 12 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      };
+    });
+
+    feedings.forEach((feeding, index) => {
+      const operation = feeding.operation;
+      const workerKey = `${feeding.id_operation}-${feeding.id_worker}`;
+
+      let groupCode: number | string = '';
+      let subTask: { code: string; name: string } | undefined;
+      if (feeding.code_group != null) {
+        // Alimentación extra del grupo (sin trabajador) o alimentación de un
+        // trabajador con el grupo en que se le dio: el grupo es code_group.
+        groupCode = feeding.code_group;
+        const idGroup = groupByCode.get(`${feeding.id_operation}-${feeding.code_group}`);
+        if (idGroup) subTask = subTaskByGroup.get(`${feeding.id_operation}-${idGroup}`);
+        if (!subTask && feeding.id_worker != null) subTask = subTaskByWorker.get(workerKey);
+      } else if (feeding.id_worker != null) {
+        // Registros sin código de grupo (trabajador en varios grupos):
+        // grupos del trabajador en esa operación.
+        const codes = [...(groupCodesByWorker.get(workerKey) || [])];
+        groupCode = codes.length === 1 ? toNumberIfNumeric(codes[0]) : codes.join(', ');
+        subTask = subTaskByWorker.get(workerKey);
+      }
+
+      // Alimentación adherida al grupo: no tiene trabajador, así que en vez de
+      // un código de nómina 0 se identifica con el texto "Alimentación".
+      const isGroupFeeding = feeding.id_worker == null;
+      const row = worksheet.addRow([
+        feeding.worker?.payroll_code
+          ? toNumberIfNumeric(feeding.worker.payroll_code)
+          : isGroupFeeding
+            ? 'Alimentación'
+            : 0,
+        feeding.worker?.name || (isGroupFeeding ? 'Alimentación de grupo' : 'N/A'),
+        feeding.id_operation,
+        groupCode,
+        // Área de la operación donde se entregó la alimentación
+        operation?.jobArea?.name || '',
+        toExcelDateSerial(operation?.dateStart),
+        timeStringToExcelFraction(operation?.timeStrat),
+        toExcelDateSerial(operation?.dateEnd),
+        timeStringToExcelFraction(operation?.timeEnd),
+        subTask?.code ? toNumberIfNumeric(subTask.code) : 0,
+        subTask?.name || operation?.task?.name || 'Sin subservicio',
+        operation?.op_duration || 0,
+        operation?.client?.name || 'Sin cliente',
+        operation?.motorShip || '',
+        FEEDING_TYPE_LABELS[feeding.type] || feeding.type,
+        toExcelDateSerial(feeding.dateFeeding),
+        getIsoWeekNumber(feeding.dateFeeding),
+        getColombianTimeOfDayFraction(feeding.createAt),
+        feeding.user?.name || 'N/A',
+      ]);
+
+      row.getCell(1).numFmt = '0'; // Código Nómina
+      row.getCell(3).numFmt = '0'; // Operación
+      row.getCell(4).numFmt = '0'; // Grupo
+      // 5: Área (texto)
+      row.getCell(6).numFmt = 'dd/mm/yyyy'; // Fecha Inicio
+      row.getCell(7).numFmt = 'hh:mm'; // Hora Inicio
+      row.getCell(8).numFmt = 'dd/mm/yyyy'; // Fecha Fin
+      row.getCell(9).numFmt = 'hh:mm'; // Hora Fin
+      row.getCell(10).numFmt = '0'; // Código Subservicio
+      row.getCell(12).numFmt = '0.00'; // Q Horas
+      row.getCell(16).numFmt = 'dd/mm/yyyy'; // Fecha Alimentación
+      row.getCell(17).numFmt = '0'; // Semana
+      row.getCell(18).numFmt = 'hh:mm'; // Hora Registro
+
+      const isEven = index % 2 === 0;
+      row.eachCell((cell) => {
+        if (isEven) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F2F7FF' } };
+        }
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'E0E0E0' } },
+          left: { style: 'thin', color: { argb: 'E0E0E0' } },
+          bottom: { style: 'thin', color: { argb: 'E0E0E0' } },
+          right: { style: 'thin', color: { argb: 'E0E0E0' } },
+        };
+        cell.alignment = { vertical: 'middle' };
+      });
+    });
+
+    worksheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell?.({ includeEmpty: true }, (cell) => {
+        const length = cell.value ? String(cell.value).length : 10;
+        if (length > maxLength) maxLength = length;
+      });
+      column.width = Math.min(maxLength + 4, 30);
+    });
+
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const fileName = `registros_alimentacion_${formatColombianISODate(new Date())}.xlsx`;
+    return { buffer, fileName };
   }
 
   async findAllPaginated(
@@ -700,6 +968,35 @@ export class FeedingService {
       };
     }
 
+    // Grupo desde el que se registra (Operation_Worker.id_group): debe ser un
+    // grupo de ESTA operación. Se guarda como code_group (OperationGroup.code)
+    // y solo para los trabajadores que están en ese grupo.
+    let workersInGroup = new Set<number>();
+    let groupCode: number | null = null;
+    if (dto.id_group) {
+      const [groupAssignments, operationGroup] = await Promise.all([
+        this.prisma.operation_Worker.findMany({
+          where: { id_operation: dto.id_operation, id_group: dto.id_group },
+          select: { id_worker: true },
+        }),
+        this.prisma.operationGroup.findUnique({
+          where: {
+            id_operation_id_group: { id_operation: dto.id_operation, id_group: dto.id_group },
+          },
+          select: { code: true },
+        }),
+      ]);
+      const code = operationGroup ? Number(operationGroup.code) : NaN;
+      if (groupAssignments.length === 0 || !Number.isSafeInteger(code)) {
+        return {
+          status: 404,
+          message: `El grupo ${dto.id_group} no pertenece a la operación ${dto.id_operation}`,
+        };
+      }
+      workersInGroup = new Set(groupAssignments.map((a) => a.id_worker));
+      groupCode = code;
+    }
+
     type FailedItem = {
       id_worker: number;
       type: string;
@@ -714,6 +1011,7 @@ export class FeedingService {
       dateFeeding: Date;
       id_operation: number;
       id_user?: number;
+      code_group?: number | null;
     }[] = [];
     const batchKeys = new Set<string>();
 
@@ -735,6 +1033,7 @@ export class FeedingService {
         dateFeeding: this.toDateOnlyUTC(dateOnly),
         id_operation: dto.id_operation,
         id_user: dto.id_user,
+        code_group: groupCode != null && workersInGroup.has(item.id_worker) ? groupCode : null,
       });
     }
 
