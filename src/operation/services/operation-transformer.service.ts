@@ -8,7 +8,7 @@ export class OperationTransformerService {
     
     // ✅ AGREGAR LOG PARA VERIFICAR op_duration EN EL TRANSFORMADOR
   
-    const { id_area, id_task, workers, inChargeOperation, ...rest } = operation;
+    const { id_area, id_task, workers, inChargeOperation, operationGroups, ...rest } = operation;
     
     // ✅ VERIFICAR QUE op_duration ESTÉ EN rest
    // ✅ Ordenar workers por id_group y luego por id antes de transformar
@@ -71,8 +71,27 @@ export class OperationTransformerService {
       inCharge = this.removeDuplicateInCharge(operation.inCharge);
     }
 
-    const workerGroups =
-      this.groupWorkersByScheduleAndGroup(workersWithSchedule);
+    // Código legible (OperationGroup.code, ej. 3280501) y alias de cada grupo
+    const groupInfoById = new Map<string, { code: string; alias: number }>(
+      (operationGroups || []).map((g) => [g.id_group, { code: g.code, alias: g.alias }]),
+    );
+
+    // Ordenar por alias (el número que ve el usuario: Grupo 1, 2, 3...) para
+    // que "Grupo N" coincida con OperationGroup.alias en todas las vistas. Los
+    // grupos sin OperationGroup van al final conservando su orden de creación.
+    const workerGroups = this.groupWorkersByScheduleAndGroup(workersWithSchedule)
+      .map((group: any, creationIndex: number) => ({
+        ...group,
+        groupCode: groupInfoById.get(group.groupId)?.code ?? null,
+        groupAlias: groupInfoById.get(group.groupId)?.alias ?? null,
+        creationIndex,
+      }))
+      .sort((a: any, b: any) => {
+        const aliasA = a.groupAlias ?? Number.MAX_SAFE_INTEGER;
+        const aliasB = b.groupAlias ?? Number.MAX_SAFE_INTEGER;
+        return aliasA !== aliasB ? aliasA - aliasB : a.creationIndex - b.creationIndex;
+      })
+      .map(({ creationIndex, ...group }: any) => group);
 
     const result = {
       ...rest,

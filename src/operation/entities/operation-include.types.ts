@@ -114,6 +114,13 @@ export interface OperationIncludeConfig {
       };
     };
   };
+  operationGroups: {
+    select: {
+      id_group: boolean;
+      code: boolean;
+      alias: boolean;
+    };
+  };
 }
 
 /**
@@ -217,6 +224,14 @@ export function createOperationInclude(): OperationIncludeConfig {
           }
         }
       }
+    },
+    // Código legible del grupo (ej. 3280501) que el frontend muestra junto a "Grupo N"
+    operationGroups: {
+      select: {
+        id_group: true,
+        code: true,
+        alias: true,
+      },
     },
   };
 }

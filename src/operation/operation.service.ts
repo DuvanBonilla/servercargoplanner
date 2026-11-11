@@ -3144,16 +3144,6 @@ async removeGroup(
     
     // Iniciar transacción
     return await this.prisma.$transaction(async (tx) => {
-      // Buscar Bill del grupo
-      const bill = await tx.bill.findFirst({
-        where: {
-          id_operation: id,
-          id_group: id_group,
-        },
-        select: {
-          id: true,
-        },
-      });
       // Obtener trabajadores del grupo
       const workersInGroup = await tx.operation_Worker.findMany({
         where: {
@@ -3169,25 +3159,56 @@ async removeGroup(
       const workerIds = workersInGroup.map(
         worker => worker.id_worker,
       );
-      // Eliminar BillDetail
-      if (bill) {
+      const operationWorkerIds = workersInGroup.map(worker => worker.id);
 
+      // Bills afectadas: las marcadas con este id_group y también las que
+      // tengan BillDetail apuntando a trabajadores de este grupo. bill.id_group
+      // puede quedar desactualizado (p. ej. si el grupo se reasignó después de
+      // facturar), así que buscar solo por id_group dejaba Bills huérfanas sin
+      // BillDetail, o Bills con detalles de otro grupo.
+      const affectedBills = await tx.bill.findMany({
+        where: {
+          id_operation: id,
+          OR: [
+            { id_group: id_group },
+            ...(operationWorkerIds.length > 0
+              ? [{ billDetails: { some: { id_operation_worker: { in: operationWorkerIds } } } }]
+              : []),
+          ],
+        },
+        select: { id: true, id_group: true },
+      });
+
+      // Eliminar BillDetail de los trabajadores de este grupo (en cualquier Bill)
+      if (operationWorkerIds.length > 0) {
         await tx.billDetail.deleteMany({
           where: {
-            id_bill: bill.id,
+            id_operation_worker: { in: operationWorkerIds },
           },
         });
-
       }
-      // Eliminar Bill
-      if (bill) {
 
-        await tx.bill.delete({
-          where: {
-            id: bill.id,
-          },
+      // Eliminar las Bills que quedaron sin BillDetail. Si una Bill marcada con
+      // este id_group aún tiene detalles, pertenecen a otro grupo: se le corrige
+      // el id_group en lugar de borrarla.
+      for (const affectedBill of affectedBills) {
+        const remainingDetail = await tx.billDetail.findFirst({
+          where: { id_bill: affectedBill.id },
+          select: { operationWorker: { select: { id_group: true } } },
         });
 
+        if (!remainingDetail) {
+          await tx.bill.delete({ where: { id: affectedBill.id } });
+        } else if (
+          affectedBill.id_group === id_group &&
+          remainingDetail.operationWorker?.id_group &&
+          remainingDetail.operationWorker.id_group !== id_group
+        ) {
+          await tx.bill.update({
+            where: { id: affectedBill.id },
+            data: { id_group: remainingDetail.operationWorker.id_group },
+          });
+        }
       }
       // Eliminar WorkerFeeding
       if (workerIds.length > 0) {
