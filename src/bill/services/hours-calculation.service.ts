@@ -4,7 +4,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { WorkerGroupSummary } from '../entities/worker-group-analysis.types';
 import { GroupBillDto, HoursDistribution } from '../dto/create-bill.dto';
 import { BaseCalculationService } from './base-calculation.service';
-import { getDayNamesInRange, hasSundayInRange } from 'src/common/utils/dateType';
+import { getNonSundayHoursInRange, hasSundayInRange } from 'src/common/utils/dateType';
 
 export interface ProcessHoursGroupsResult {
   groupId: string;
@@ -164,16 +164,8 @@ export class HoursCalculationService {
   billStatus?: string,
   startDate?: Date,
   endDate?: Date,
+  nonSundayHours?: number | null,
 ): Promise<number> {
-
-  // Si se proporcionan fechas, verificar si hay domingo
-  if (
-    startDate &&
-    endDate &&
-    !this.shouldCalculateCompensatory(startDate, endDate)
-  ) {
-    return 0;
-  }
 
   // ✅ OBTENER EL LÍMITE SEMANAL DESDE CONFIGURATION
   // HORAS_SEMANALES o HORAS_SEMANALES_DOMINGO
@@ -183,10 +175,25 @@ export class HoursCalculationService {
     );
   }
 
-  const weekHours = await this.getWeeklyHoursLimit(
-    startDate,
-    endDate,
-  );
+  let weekHours: number;
+  if (!this.shouldCalculateCompensatory(startDate, endDate)) {
+    // ✅ DOMINGO PARCIAL: si el grupo cruza un domingo (ej. sábado 18:30 →
+    // domingo 00:30, o domingo → lunes 02:00), el compensatorio se calcula
+    // solo sobre las horas fuera de domingo. Si todo es domingo, no aplica.
+    if (!nonSundayHours || nonSundayHours <= 0) {
+      return 0;
+    }
+    hours = Math.min(hours, nonSundayHours);
+    // Las horas compensables no son de domingo → límite semanal normal
+    const weekHoursConfig =
+      await this.configurationService.findOneByName('HORAS_SEMANALES');
+    if (!weekHoursConfig?.value) {
+      throw new Error('No se encontró la configuración HORAS_SEMANALES');
+    }
+    weekHours = Number(weekHoursConfig.value);
+  } else {
+    weekHours = await this.getWeeklyHoursLimit(startDate, endDate);
+  }
 
   // ✅ TODO SE CALCULA DINÁMICAMENTE
   const dayHours = weekHours / 6;
@@ -264,19 +271,29 @@ export class HoursCalculationService {
     // Obtener fechas para validaciones
     let startDate: Date | null = null;
     let endDate: Date | null = null;
+    // Horas del grupo que NO caen en domingo (para compensatorio parcial).
+    // null = sin domingo en el rango o sin horas del grupo disponibles.
+    let nonSundayHours: number | null = null;
 
     if (groupSummary.dateRange?.start && groupSummary.dateRange?.end) {
       startDate = toLocalDate(groupSummary.dateRange.start);
       endDate = toLocalDate(groupSummary.dateRange.end);
 
-      const diasSemana = getDayNamesInRange(startDate, endDate);
-      const tieneDomingo = hasSundayInRange(startDate, endDate);
-      const horasLimite = await this.getWeeklyHoursLimit(startDate, endDate);
+      if (hasSundayInRange(startDate, endDate)) {
+        // summarizeWorkerGroups expone timeRange; el flujo de actualización
+        // usa los workerGroups crudos, que traen las horas en schedule.
+        const timeStart = gfmt.timeRange?.start ?? gfmt.schedule?.timeStart;
+        const timeEnd = gfmt.timeRange?.end ?? gfmt.schedule?.timeEnd;
+        nonSundayHours = getNonSundayHoursInRange(
+          groupSummary.dateRange.start,
+          timeStart,
+          groupSummary.dateRange.end,
+          timeEnd,
+        );
+      }
     }
 
-
-
-    const result = await this.calculateHoursGroupResult(combinedGroupData, billStatus, startDate, endDate);
+    const result = await this.calculateHoursGroupResult(combinedGroupData, billStatus, startDate, endDate, nonSundayHours);
 
     // console.log('processHoursGroups------------', result);
     return result;
@@ -284,7 +301,8 @@ export class HoursCalculationService {
   }
 
   private async calculateHoursGroupResult(combinedGroupData: any,
-    billStatus?: string, startDate?: Date | null, endDate?: Date | null) {
+    billStatus?: string, startDate?: Date | null, endDate?: Date | null,
+    nonSundayHours?: number | null) {
     // ✅ USAR group_hours para el compensatorio (duración específica del grupo)
     const groupDuration = Number(combinedGroupData.group_hours) > 0
       ? Number(combinedGroupData.group_hours)
@@ -326,13 +344,15 @@ export class HoursCalculationService {
       totalBillHours,
       billStatus,
       startDate || undefined,
-      endDate || undefined
+      endDate || undefined,
+      nonSundayHours,
     );
     const compPayroll = await this.calculateCompensatoryHours(
       totalPaysheetHours,
       billStatus,
       startDate || undefined,
-      endDate || undefined
+      endDate || undefined,
+      nonSundayHours,
     );
 
     // Calcular montos de distribución de horas - PASANDO LAS FECHAS
@@ -385,8 +405,10 @@ export class HoursCalculationService {
       totalFinalPayroll = 0;
     }
 
+    // Hay compensatorio si no hay domingo, o si hay domingo parcial con horas
+    // fuera de domingo (calculateCompensatoryHours ya las limitó a esas horas).
     const shouldCalculateComp = startDate && endDate
-      ? this.shouldCalculateCompensatory(startDate, endDate)
+      ? this.shouldCalculateCompensatory(startDate, endDate) || (nonSundayHours ?? 0) > 0
       : true;
 
     // ✅ SIN HORAS ORDINARIAS NO HAY COMPENSATORIO: el compensatorio retribuye

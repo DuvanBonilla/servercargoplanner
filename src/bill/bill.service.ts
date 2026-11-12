@@ -7,7 +7,7 @@ import { WorkerGroupAnalysisService } from './services/worker-group-analysis.ser
 import { PayrollCalculationService } from './services/payroll-calculation.service';
 import { HoursCalculationService } from './services/hours-calculation.service';
 import { ConfigurationService } from 'src/configuration/configuration.service';
-import { getWeekNumber, hasSundayInRange, getDayName, toLocalDate, } from 'src/common/utils/dateType';
+import { getWeekNumber, hasSundayInRange, getDayName, toLocalDate, getNonSundayHoursInRange } from 'src/common/utils/dateType';
 import { BaseCalculationService } from './services/base-calculation.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { group } from 'console';
@@ -1005,14 +1005,35 @@ export class BillService {
       //   });
       // }
 
+      // ✅ DOMINGO PARCIAL: si el grupo cruza un domingo (ej. sábado 18:30 →
+      // domingo 00:30), el compensatorio se calcula solo sobre las horas que
+      // NO caen en domingo. Si todo el rango es domingo (o faltan las horas),
+      // no aplica.
+      let compensableDuration = groupDuration;
+      let partialSundayInfo = '';
       if (hasSundayReal) {
-        return {
-          hours: 0,
-          amount: 0,
-          percentage: 0,
-          includeInTotal: false,
-          info: 'No se calcula compensatorio porque hay domingo en el rango',
-        };
+        const nonSundayHours =
+          startDate && endDate
+            ? getNonSundayHoursInRange(
+                startDate,
+                operationWorker.timeStart,
+                endDate,
+                operationWorker.timeEnd,
+              )
+            : null;
+
+        if (!nonSundayHours || nonSundayHours <= 0) {
+          return {
+            hours: 0,
+            amount: 0,
+            percentage: 0,
+            includeInTotal: false,
+            info: 'No se calcula compensatorio porque hay domingo en el rango',
+          };
+        }
+
+        compensableDuration = Math.min(groupDuration, nonSundayHours);
+        partialSundayInfo = ` — solo ${Number(compensableDuration.toFixed(2))}h fuera de domingo (el tramo en domingo no genera compensatorio)`;
       }
 
       // ✅ SIN HORAS ORDINARIAS NO HAY COMPENSATORIO: si el grupo solo
@@ -1045,13 +1066,11 @@ export class BillService {
       const compensatoryFlag = billDB.billDetails?.[0]?.operationWorker?.tariff?.compensatory ?? 'NO';
 
       // ✅ USAR CONFIGURACIONES PASADAS COMO PARÁMETRO (optimización)
+      // Las horas compensables nunca son de domingo, así que siempre se usa
+      // HORAS_SEMANALES (también en el caso de domingo parcial).
       let weekHours = weekHoursConfig; // valor por defecto
-      if (startDate && endDate) {
-        if (hasSundayReal && sundayHoursConfig?.value) {
-          weekHours = parseInt(sundayHoursConfig.value, 10);
-        } else if (!hasSundayReal && weekHoursConfig?.value) {
-          weekHours = parseInt(weekHoursConfig.value, 10);
-        }
+      if (weekHoursConfig?.value) {
+        weekHours = parseInt(weekHoursConfig.value, 10);
       }
 
       // ✅ CÁLCULO CORRECTO DEL COMPENSATORIO
@@ -1069,7 +1088,7 @@ export class BillService {
       // console.log('===========================================');
 
       // ✅ USAR DURACIÓN REAL DEL GRUPO, LIMITADA AL MÁXIMO DIARIO
-      const effectiveHours = Math.min(groupDuration, dayHours);
+      const effectiveHours = Math.min(compensableDuration, dayHours);
       const compensatoryHours = effectiveHours * compensatoryPerHour;
 
       // console.log('📊 [Cálculo Compensatorio Detallado]:', {
@@ -1099,9 +1118,9 @@ export class BillService {
           : 0,
         includeInTotal: includeInTotal,
         compensatoryFlag: compensatoryFlag,
-        info: includeInTotal
+        info: (includeInTotal
           ? 'Compensatorio incluido en total de facturación (tarifa compensatory: YES)'
-          : 'Compensatorio mostrado pero NO incluido en total facturación (tarifa compensatory: NO)',
+          : 'Compensatorio mostrado pero NO incluido en total facturación (tarifa compensatory: NO)') + partialSundayInfo,
       };
     } catch (error) {
       console.error('Error en calculateCompensatoryForBill:', error);
@@ -2034,17 +2053,11 @@ export class BillService {
       timeStart_group: operationWorker?.timeStart ?? null,
       dateEnd_group: operationWorker?.dateEnd ?? null,
       timeEnd_group: operationWorker?.timeEnd ?? null,
+      // FACTURACIÓN = columnas FAC_*, NÓMINA = columnas sin prefijo (igual que
+      // updateBillFields). Antes estaban invertidas: al guardar fechas del grupo
+      // desde el reporte, el front pintaba la respuesta y la nómina aparecía en
+      // facturación (y se persistía invertida al volver a guardar).
       billHoursDistribution: {
-        HOD: billDB.HOD,
-        HON: billDB.HON,
-        HED: billDB.HED,
-        HEN: billDB.HEN,
-        HFOD: billDB.HFOD,
-        HFON: billDB.HFON,
-        HFED: billDB.HFED,
-        HFEN: billDB.HFEN,
-      },
-      paysheetHoursDistribution: {
         HOD: billDB.FAC_HOD,
         HON: billDB.FAC_HON,
         HED: billDB.FAC_HED,
@@ -2053,6 +2066,16 @@ export class BillService {
         HFON: billDB.FAC_HFON,
         HFED: billDB.FAC_HFED,
         HFEN: billDB.FAC_HFEN,
+      },
+      paysheetHoursDistribution: {
+        HOD: billDB.HOD,
+        HON: billDB.HON,
+        HED: billDB.HED,
+        HEN: billDB.HEN,
+        HFOD: billDB.HFOD,
+        HFON: billDB.HFON,
+        HFED: billDB.HFED,
+        HFEN: billDB.HFEN,
       },
       pays: billDB.billDetails.map((detail) => ({
         id_worker: detail.operationWorker.worker.id,
@@ -2147,6 +2170,33 @@ export class BillService {
       ...updateBillDto,
       id: groupId // Usar el groupId determinado arriba
     };
+
+    // ✅ CAMBIO SOLO DE FECHAS/HORAS DEL GRUPO: los recargos (Nómina y
+    // Facturación) NO se tocan. Se recalculan totales con las distribuciones
+    // que ya están guardadas en BD, ignorando las que mande el front (que
+    // pueden venir vacías o desactualizadas y dejaban Facturación en 0).
+    if (shouldUpdateGroupDates) {
+      completeUpdateBillDto.billHoursDistribution = {
+        HOD: Number(billDb.FAC_HOD) || 0,
+        HON: Number(billDb.FAC_HON) || 0,
+        HED: Number(billDb.FAC_HED) || 0,
+        HEN: Number(billDb.FAC_HEN) || 0,
+        HFOD: Number(billDb.FAC_HFOD) || 0,
+        HFON: Number(billDb.FAC_HFON) || 0,
+        HFED: Number(billDb.FAC_HFED) || 0,
+        HFEN: Number(billDb.FAC_HFEN) || 0,
+      };
+      completeUpdateBillDto.paysheetHoursDistribution = {
+        HOD: Number(billDb.HOD) || 0,
+        HON: Number(billDb.HON) || 0,
+        HED: Number(billDb.HED) || 0,
+        HEN: Number(billDb.HEN) || 0,
+        HFOD: Number(billDb.HFOD) || 0,
+        HFON: Number(billDb.HFON) || 0,
+        HFED: Number(billDb.HFED) || 0,
+        HFEN: Number(billDb.HFEN) || 0,
+      };
+    }
 
     this.validateUpdateGroups([completeUpdateBillDto]);
 

@@ -302,6 +302,47 @@ export function hasSundayInRange(startDate: Date | string, endDate: Date | strin
 }
 
 /**
+ * Horas del rango [inicio, fin] que NO caen en domingo.
+ * Ej: sábado 18:30 → domingo 00:30 = 5.5h (solo el tramo del sábado).
+ * Retorna null si faltan las horas (timeStart/timeEnd) o el rango es inválido.
+ */
+export function getNonSundayHoursInRange(
+  startDate: Date | string,
+  timeStart: string | null | undefined,
+  endDate: Date | string,
+  timeEnd: string | null | undefined,
+): number | null {
+  const parseTime = (t?: string | null): [number, number] | null => {
+    const match = /^(\d{1,2}):(\d{2})/.exec((t ?? '').trim());
+    return match ? [Number(match[1]), Number(match[2])] : null;
+  };
+
+  const startTime = parseTime(timeStart);
+  const endTime = parseTime(timeEnd);
+  if (!startTime || !endTime) return null;
+
+  const start = toLocalDate(startDate);
+  start.setHours(startTime[0], startTime[1], 0, 0);
+  const end = toLocalDate(endDate);
+  end.setHours(endTime[0], endTime[1], 0, 0);
+  if (end <= start) return null;
+
+  let totalMs = 0;
+  const dayStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  while (dayStart < end) {
+    const nextDay = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1);
+    if (getDay(dayStart) !== 0) {
+      const from = Math.max(start.getTime(), dayStart.getTime());
+      const to = Math.min(end.getTime(), nextDay.getTime());
+      if (to > from) totalMs += to - from;
+    }
+    dayStart.setTime(nextDay.getTime());
+  }
+
+  return totalMs / 3_600_000;
+}
+
+/**
  * Determina si una operación debe usar límites de horas para domingo
  */
 export function shouldUseSundayHours(startDate: Date, endDate: Date): boolean {
